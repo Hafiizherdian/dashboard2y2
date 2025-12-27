@@ -18,51 +18,76 @@ export interface WeeklySales {
  * Data kuartal dengan target dan actual
  */
 export interface QuarterlyData {
-  quarter: string;              // Nama kuartal (Q1, Q2, Q3, Q4)
-  target: number;               // Target penjualan kuartal
-  actual: number;               // Actual penjualan kuartal
+  quarter: string;              // Kuartal (Q1, Q2, Q3, Q4)
+  target: number;               // Target penjualan
+  actual: number;               // Actual penjualan
   variance: number;             // Selisih actual - target
-  variancePercentage: number;  // Persentase variance ((actual - target) / target * 100)
+  variancePercentage: number;   // Persentase variance
 }
 
 /**
- * Data perbandingan penjualan mingguan antar tahun
+ * Data perbandingan mingguan antar tahun
  */
 export interface WeekComparison {
-  week: number;                 // Nomor minggu
-  previousYear: number;         // Penjualan tahun sebelumnya
-  currentYear: number;          // Penjualan tahun sekarang
-  variance: number;             // Selisih currentYear - previousYear
-  variancePercentage: number;   // Persentase variance
+  week: number;                    // Nomor minggu
+  previousYear: number;            // Penjualan tahun sebelumnya
+  currentYear: number;             // Penjualan tahun sekarang
+  variance: number;                // Selisih penjualan
+  variancePercentage: number;      // Persentase variance
 }
 
 /**
- * Data perbandingan Last 4 Weeks vs Current 4 Weeks
+ * Data L4W vs C4W
  */
 export interface L4WC4WData {
-  l4wAverage: number;           // Rata-rata penjualan 4 minggu terakhir
-  c4wAverage: number;           // Rata-rata penjualan 4 minggu sekarang
-  variance: number;             // Selisih c4wAverage - l4wAverage
-  variancePercentage: number;   // Persentase variance
+  l4wAverage: number;              // Rata-rata Last 4 Weeks
+  c4wAverage: number;              // Rata-rata Current 4 Weeks
+  variance: number;                 // Selisih C4W - L4W
+  variancePercentage: number;      // Persentase variance
 }
 
 /**
  * Data pertumbuhan tahun ke tahun
  */
 export interface YearOnYearGrowth {
-  previousYearTotal: number;    // Total penjualan tahun sebelumnya
-  currentYearTotal: number;     // Total penjualan tahun sekarang
-  variance: number;             // Selisih currentYearTotal - previousYearTotal
-  variancePercentage: number;   // Persentase pertumbuhan YoY
+  previousYearTotal: number;       // Total penjualan tahun sebelumnya
+  currentYearTotal: number;        // Total penjualan tahun sekarang
+  variance: number;                 // Selisih penjualan
+  variancePercentage: number;      // Persentase pertumbuhan
 }
 
 /**
- * Struktur data lengkap untuk dashboard
+ * Data penjualan lengkap untuk dashboard
  */
 export interface SalesData {
-  weeklyData: WeeklySales[];           // Data penjualan mingguan (2 tahun)
-  quarterlyData: QuarterlyData[];      // Data kuartal
-  weekComparisons: WeekComparison[];    // Perbandingan mingguan
-  l4wc4wData: L4WC4WData;              // Data L4W vs C4W
-  yearOnYearGrowth: YearOnYearGrowth;   // Data pertumbuhan YoY
+  weeklyData: WeeklySales[];
+  quarterlyData: QuarterlyData[];
+  weekComparisons: WeekComparison[];
+  l4wc4wData: L4WC4WData;
+  yearOnYearGrowth: YearOnYearGrowth;
+}
+
+/**
+ * Data penjualan untuk CMS (dengan ID dan produk)
+ */
+export interface SalesDataCMS {
+  id: string;
+  week: number;
+  year: number;
+  sales: number;
+  target: number;
+  product: string;
+  region: string;
+}
+
+/**
+ * Partial data untuk form tambah data
+ */
+export interface PartialSalesData {
+  week?: number;
+  year?: number;
+  sales?: number;
+  target?: number;
+  product?: string;
+  region?: string;
 }
