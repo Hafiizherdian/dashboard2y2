@@ -9,9 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "recharts": "^3.6.0",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -22,5 +26,10 @@
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "description": "Sales Analysis Dashboard with comprehensive year-over-year comparisons",
+  "keywords": ["nextjs", "typescript", "dashboard", "sales", "analytics"],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
 }
