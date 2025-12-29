@@ -26,7 +26,15 @@ export default function QuarterlyAnalysisComponent({ data }: QuarterlyAnalysisPr
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Quarterly Analysis (Q1-Q4)</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Analisis Kuartal Q1-Q4 (Target, Actual, Variance)</h2>
+      
+      <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+        <p className="text-sm text-green-800">
+          <strong>Periode:</strong> Q1-Q4 | 
+          <strong>Target Achievement:</strong> {data.reduce((sum, q) => sum + (q.actual / q.target) * 100, 0) / data.length}% rata-rata |
+          <strong>Best Quarter:</strong> {data.reduce((max, q) => q.actual > max.actual ? q : max).quarter}
+        </p>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="space-y-4">

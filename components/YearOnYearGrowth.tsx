@@ -13,33 +13,37 @@
 
 'use client';
 
-import { YearOnYearGrowth } from '@/types/sales';
+import { YearOnYearGrowth, ComparisonYears } from '@/types/sales';
 import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface YearOnYearGrowthProps {
   data: YearOnYearGrowth;
+  comparisonYears?: ComparisonYears;
 }
 
 const COLORS = ['#3b82f6', '#10b981'];
 
-export default function YearOnYearGrowthComponent({ data }: YearOnYearGrowthProps) {
+export default function YearOnYearGrowthComponent({ data, comparisonYears }: YearOnYearGrowthProps) {
+  const previousYearLabel = comparisonYears?.previousYear ?? 'Previous Year';
+  const currentYearLabel = comparisonYears?.currentYear ?? 'Current Year';
+
   const chartData = [
     {
-      year: '2023',
+      year: previousYearLabel.toString(),
       sales: data.previousYearTotal,
       fill: '#3b82f6'
     },
     {
-      year: '2024',
+      year: currentYearLabel.toString(),
       sales: data.currentYearTotal,
       fill: '#10b981'
     }
   ];
 
   const pieData = [
-    { name: '2023', value: data.previousYearTotal },
-    { name: '2024', value: data.currentYearTotal }
+    { name: previousYearLabel.toString(), value: data.previousYearTotal },
+    { name: currentYearLabel.toString(), value: data.currentYearTotal }
   ];
 
   const growthRate = data.variancePercentage;
@@ -47,7 +51,16 @@ export default function YearOnYearGrowthComponent({ data }: YearOnYearGrowthProp
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Analisis Tahun ke Tahun</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Growth Year-on-Year dengan Variance & Persentase</h2>
+      
+      <div className="mb-4 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+        <p className="text-sm text-emerald-800">
+          <strong>{previousYearLabel}:</strong> {formatCurrency(data.previousYearTotal)} | 
+          <strong>{currentYearLabel}:</strong> {formatCurrency(data.currentYearTotal)} | 
+          <strong>Variance:</strong> {formatCurrency(data.variance)} | 
+          <strong>Growth %:</strong> {formatPercentage(data.variancePercentage)}
+        </p>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="space-y-4">
@@ -92,13 +105,13 @@ export default function YearOnYearGrowthComponent({ data }: YearOnYearGrowthProp
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-          <h4 className="text-sm font-medium text-blue-600 mb-2">Total 2023</h4>
+          <h4 className="text-sm font-medium text-blue-600 mb-2">Total {previousYearLabel}</h4>
           <p className="text-2xl font-bold text-blue-800">{formatCurrency(data.previousYearTotal)}</p>
           <p className="text-xs text-blue-600 mt-1">Penjualan tahun sebelumnya</p>
         </div>
 
         <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-          <h4 className="text-sm font-medium text-green-600 mb-2">Total 2024</h4>
+          <h4 className="text-sm font-medium text-green-600 mb-2">Total {currentYearLabel}</h4>
           <p className="text-2xl font-bold text-green-800">{formatCurrency(data.currentYearTotal)}</p>
           <p className="text-xs text-green-600 mt-1">Penjualan tahun sekarang</p>
         </div>
@@ -137,11 +150,11 @@ export default function YearOnYearGrowthComponent({ data }: YearOnYearGrowthProp
                 <h4 className="font-medium text-gray-700 mb-3">Metrik Kunci</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Tahun Sebelumnya (2023):</span>
+                    <span className="text-sm text-gray-600">Tahun Sebelumnya ({previousYearLabel}):</span>
                     <span className="text-sm font-medium text-gray-800">{formatCurrency(data.previousYearTotal)}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Tahun Sekarang (2024):</span>
+                    <span className="text-sm text-gray-600">Tahun Sekarang ({currentYearLabel}):</span>
                     <span className="text-sm font-medium text-gray-800">{formatCurrency(data.currentYearTotal)}</span>
                   </div>
                   <div className="flex justify-between items-center">

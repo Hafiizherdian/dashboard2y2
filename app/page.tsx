@@ -11,17 +11,110 @@
  */
 'use client';
 
-import { useState } from 'react';
-import { mockSalesData } from '@/data/mockData';
+import { useState, useEffect } from 'react';
 import WeekComparison from '@/components/WeekComparison';
 import QuarterlyAnalysis from '@/components/QuarterlyAnalysis';
 import L4WC4WAnalysis from '@/components/L4WC4WAnalysis';
 import YearOnYearGrowth from '@/components/YearOnYearGrowth';
-import { TrendingUp, Calendar, BarChart3, PieChart, Activity } from 'lucide-react';
+import AnalysisSection from '@/components/AnalysisSection';
+import { fetchSalesData } from '@/lib/database';
+import { SalesData } from '@/types/sales';
+import { TrendingUp, Calendar, BarChart3, PieChart, Activity, FileText } from 'lucide-react';
 
 export default function Dashboard() {
   // State untuk mengatur tab yang aktif saat ini
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // State untuk filter tahun dan minggu
+  const [selectedYear1, setSelectedYear1] = useState<number>(2024);
+  const [selectedYear2, setSelectedYear2] = useState<number>(2025);
+  const [selectedWeek1, setSelectedWeek1] = useState(1);
+  const [selectedWeek2, setSelectedWeek2] = useState(1);
+  
+  // State untuk data yang sudah difilter
+  const [filteredData, setFilteredData] = useState<SalesData>({
+    weeklyData: [],
+    quarterlyData: [],
+    weekComparisons: [],
+    l4wc4wData: {
+      l4wAverage: 0,
+      c4wAverage: 0,
+      variance: 0,
+      variancePercentage: 0
+    },
+    yearOnYearGrowth: {
+      previousYearTotal: 0,
+      currentYearTotal: 0,
+      variance: 0,
+      variancePercentage: 0
+    },
+    comparisonYears: {
+      previousYear: null,
+      currentYear: null
+    }
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch data dari database saat component mount
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const syncSelectedYears = (data: SalesData) => {
+    if (data.comparisonYears.previousYear !== null) {
+      setSelectedYear1(data.comparisonYears.previousYear);
+    }
+    if (data.comparisonYears.currentYear !== null) {
+      setSelectedYear2(data.comparisonYears.currentYear);
+    }
+  };
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchSalesData();
+      syncSelectedYears(data);
+      setFilteredData(data);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fungsi untuk apply filter
+  const applyFilter = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchSalesData({
+        year1: selectedYear1,
+        year2: selectedYear2
+      });
+      syncSelectedYears(data);
+      setFilteredData(data);
+    } catch (error) {
+      console.error('Error applying filter:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fungsi untuk reset filter
+  const resetFilter = async () => {
+    setSelectedWeek1(1);
+    setSelectedWeek2(1);
+    
+    setIsLoading(true);
+    try {
+      const data = await fetchSalesData();
+      syncSelectedYears(data);
+      setFilteredData(data);
+    } catch (error) {
+      console.error('Error resetting filter:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Konfigurasi tab navigasi dengan label dan icon
   const tabs = [
@@ -30,6 +123,7 @@ export default function Dashboard() {
     { id: 'quarterly', label: 'Analisis Kuartal', icon: BarChart3 },
     { id: 'l4wc4w', label: 'L4W vs C4W', icon: Activity },
     { id: 'yoy', label: 'Tahun ke Tahun', icon: PieChart },
+    { id: 'analysis', label: 'Analisis', icon: FileText },
   ];
 
   /**
@@ -39,24 +133,44 @@ export default function Dashboard() {
   const renderContent = () => {
     switch (activeTab) {
       case 'weekly':
-        return <WeekComparison data={mockSalesData.weekComparisons} />;
+        return (
+          <WeekComparison
+            data={filteredData.weekComparisons}
+            comparisonYears={filteredData.comparisonYears}
+          />
+        );
       case 'quarterly':
-        return <QuarterlyAnalysis data={mockSalesData.quarterlyData} />;
+        return <QuarterlyAnalysis data={filteredData.quarterlyData} />;
       case 'l4wc4w':
-        return <L4WC4WAnalysis data={mockSalesData.l4wc4wData} />;
+        return <L4WC4WAnalysis data={filteredData.l4wc4wData} />;
       case 'yoy':
-        return <YearOnYearGrowth data={mockSalesData.yearOnYearGrowth} />;
+        return (
+          <YearOnYearGrowth
+            data={filteredData.yearOnYearGrowth}
+            comparisonYears={filteredData.comparisonYears}
+          />
+        );
+      case 'analysis':
+        return <AnalysisSection data={filteredData} />;
       default:
         // Tampilan Overview dengan metrik utama dan ringkasan performa
         return (
           <div className="space-y-6">
+            {(() => {
+              const prevYearLabel = filteredData.comparisonYears.previousYear ?? selectedYear1;
+              const currentYearLabel = filteredData.comparisonYears.currentYear ?? selectedYear2;
+              const growthLabel = filteredData.comparisonYears.previousYear !== null && filteredData.comparisonYears.currentYear !== null
+                ? `${filteredData.comparisonYears.previousYear} vs ${filteredData.comparisonYears.currentYear}`
+                : 'YoY';
+
+              return (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-600 text-sm font-medium">Total Penjualan 2024</p>
+                    <p className="text-gray-600 text-sm font-medium">Total Penjualan {prevYearLabel}</p>
                     <p className="text-2xl font-bold mt-1 text-gray-900">
-                      {mockSalesData.yearOnYearGrowth.currentYearTotal.toLocaleString('id-ID', {
+                      {filteredData.yearOnYearGrowth.previousYearTotal.toLocaleString('id-ID', {
                         style: 'currency',
                         currency: 'IDR',
                         minimumFractionDigits: 0,
@@ -73,10 +187,29 @@ export default function Dashboard() {
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-gray-600 text-sm font-medium">Pertumbuhan YoY</p>
+                    <p className="text-gray-600 text-sm font-medium">Total Penjualan {currentYearLabel}</p>
                     <p className="text-2xl font-bold mt-1 text-gray-900">
-                      {mockSalesData.yearOnYearGrowth.variancePercentage >= 0 ? '+' : ''}
-                      {mockSalesData.yearOnYearGrowth.variancePercentage.toFixed(1)}%
+                      {filteredData.yearOnYearGrowth.currentYearTotal.toLocaleString('id-ID', {
+                        style: 'currency',
+                        currency: 'IDR',
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0,
+                      })}
+                    </p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <TrendingUp className="h-6 w-6 text-green-600" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-600 text-sm font-medium">Pertumbuhan YoY ({growthLabel})</p>
+                    <p className="text-2xl font-bold mt-1 text-gray-900">
+                      {filteredData.yearOnYearGrowth.variancePercentage >= 0 ? '+' : ''}
+                      {filteredData.yearOnYearGrowth.variancePercentage.toFixed(1)}%
                     </p>
                   </div>
                   <div className="bg-green-50 p-3 rounded-lg">
@@ -90,7 +223,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Rata-rata C4W</p>
                     <p className="text-2xl font-bold mt-1 text-gray-900">
-                      {mockSalesData.l4wc4wData.c4wAverage.toLocaleString('id-ID', {
+                      {filteredData.l4wc4wData.c4wAverage.toLocaleString('id-ID', {
                         style: 'currency',
                         currency: 'IDR',
                         minimumFractionDigits: 0,
@@ -103,21 +236,9 @@ export default function Dashboard() {
                   </div>
                 </div>
               </div>
-
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-600 text-sm font-medium">Performa Q4</p>
-                    <p className="text-2xl font-bold mt-1 text-gray-900">
-                      {((mockSalesData.quarterlyData[3].actual / mockSalesData.quarterlyData[3].target) * 100).toFixed(1)}%
-                    </p>
-                  </div>
-                  <div className="bg-orange-50 p-3 rounded-lg">
-                    <PieChart className="h-6 w-6 text-orange-600" />
-                  </div>
-                </div>
-              </div>
             </div>
+              );
+            })()}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
@@ -133,14 +254,17 @@ export default function Dashboard() {
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Tren Pertumbuhan</span>
-                    <span className={`text-sm font-medium ${mockSalesData.yearOnYearGrowth.variancePercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {mockSalesData.yearOnYearGrowth.variancePercentage >= 0 ? 'Positif' : 'Negatif'}
+                    <span className={`text-sm font-medium ${filteredData.yearOnYearGrowth.variancePercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {filteredData.yearOnYearGrowth.variancePercentage >= 0 ? 'Positif' : 'Negatif'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Kuartal Terbaik</span>
                     <span className="text-sm font-medium text-gray-800">
-                      {mockSalesData.quarterlyData.reduce((max: any, q: any) => q.actual > max.actual ? q : max).quarter}
+                      {filteredData.quarterlyData.length > 0 
+                        ? filteredData.quarterlyData.reduce((max: any, q: any) => q.actual > max.actual ? q : max).quarter
+                        : 'N/A'
+                      }
                     </span>
                   </div>
                 </div>
@@ -151,22 +275,22 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   <div className="p-3 bg-blue-50 rounded border border-blue-200">
                     <p className="text-sm text-blue-800">
-                      <strong>Analisis Mingguan:</strong> {mockSalesData.weekComparisons.filter((w: any) => w.variancePercentage > 0).length} dari 52 minggu menunjukkan pertumbuhan positif
+                      <strong>Analisis Mingguan:</strong> {filteredData.weekComparisons.filter((w: any) => w.variancePercentage > 0).length} dari {filteredData.weekComparisons.length} minggu menunjukkan pertumbuhan positif
                     </p>
                   </div>
                   <div className="p-3 bg-green-50 rounded border border-green-200">
                     <p className="text-sm text-green-800">
-                      <strong>Performa Kuartal:</strong> {mockSalesData.quarterlyData.filter((q: any) => q.actual >= q.target).length} kuartal memenuhi atau melebihi target
+                      <strong>Performa Kuartal:</strong> {filteredData.quarterlyData.filter((q: any) => q.actual >= q.target).length} dari {filteredData.quarterlyData.length} kuartal memenuhi atau melebihi target
                     </p>
                   </div>
                   <div className="p-3 bg-purple-50 rounded border border-purple-200">
                     <p className="text-sm text-purple-800">
-                      <strong>Tren Terkini:</strong> Rata-rata C4W {mockSalesData.l4wc4wData.variancePercentage >= 0 ? 'lebih tinggi' : 'lebih rendah'} dari L4W sebesar {Math.abs(mockSalesData.l4wc4wData.variancePercentage).toFixed(1)}%
+                      <strong>Tren Terkini:</strong> Rata-rata C4W {filteredData.l4wc4wData.variancePercentage >= 0 ? 'lebih tinggi' : 'lebih rendah'} dari L4W sebesar {Math.abs(filteredData.l4wc4wData.variancePercentage).toFixed(1)}%
                     </p>
                   </div>
                   <div className="p-3 bg-orange-50 rounded border border-orange-200">
                     <p className="text-sm text-orange-800">
-                      <strong>Pertumbuhan Tahunan:</strong> Performa tahun ke tahun {Math.abs(mockSalesData.yearOnYearGrowth.variancePercentage) >= 10 ? 'Luar biasa' : Math.abs(mockSalesData.yearOnYearGrowth.variancePercentage) >= 5 ? 'Kuat' : 'Sedang'}
+                      <strong>Pertumbuhan Tahunan:</strong> Performa tahun ke tahun {Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 10 ? 'Luar biasa' : Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 5 ? 'Kuat' : 'Sedang'}
                     </p>
                   </div>
                 </div>
@@ -179,15 +303,106 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard Analisis Sales {mockSalesData.weeklyData[0].year} - {mockSalesData.weeklyData[mockSalesData.weeklyData.length - 1].year}</h1>
-              <p className="text-gray-600 mt-1">Analisis komprehensif performa sales tahun ke tahun</p>
+              <h1 className="text-3xl font-bold text-gray-900">Sales Dashboard</h1>
+              <p className="text-gray-600 mt-1">Analisis penjualan real-time dari database</p>
             </div>
-            <div className="text-sm text-gray-500">
-              Terakhir diperbarui: {new Date().toLocaleDateString('id-ID')}
+            <div className="flex items-center space-x-4">
+              {isLoading && (
+                <div className="flex items-center space-x-2 text-blue-600">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                  <span className="text-sm">Loading...</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter Section */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="flex flex-col sm:flex-row gap-4 items-center">
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Tahun 1:</label>
+                <select
+                  value={selectedYear1}
+                  onChange={(e) => setSelectedYear1(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value={2022}>2022</option>
+                  <option value={2023}>2023</option>
+                  <option value={2024}>2024</option>
+                  <option value={2025}>2025</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Minggu 1:</label>
+                <select
+                  value={selectedWeek1}
+                  onChange={(e) => setSelectedWeek1(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
+                    <option key={week} value={week}>Minggu {week}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Tahun 2:</label>
+                <select
+                  value={selectedYear2}
+                  onChange={(e) => setSelectedYear2(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value={2022}>2022</option>
+                  <option value={2023}>2023</option>
+                  <option value={2024}>2024</option>
+                  <option value={2025}>2025</option>
+                </select>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700">Minggu 2:</label>
+                <select
+                  value={selectedWeek2}
+                  onChange={(e) => setSelectedWeek2(parseInt(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
+                    <option key={week} value={week}>Minggu {week}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg">
+                <span>Filter:</span>
+                <span className="font-medium text-blue-800">
+                  {selectedYear1} (W{selectedWeek1}) vs {selectedYear2} (W{selectedWeek2})
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={resetFilter}
+                className="px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
+              >
+                Reset
+              </button>
+              <button
+                onClick={applyFilter}
+                className="px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200"
+              >
+                Apply Filter
+              </button>
             </div>
           </div>
         </div>

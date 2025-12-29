@@ -12,15 +12,19 @@
 
 'use client';
 
-import { WeekComparison } from '@/types/sales';
+import { WeekComparison, ComparisonYears } from '@/types/sales';
 import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 interface WeekComparisonProps {
   data: WeekComparison[];
+  comparisonYears?: ComparisonYears;
 }
 
-export default function WeekComparisonComponent({ data }: WeekComparisonProps) {
+export default function WeekComparisonComponent({ data, comparisonYears }: WeekComparisonProps) {
+  const previousYearLabel = comparisonYears?.previousYear ?? 'Tahun 1';
+  const currentYearLabel = comparisonYears?.currentYear ?? 'Tahun 2';
+
   // Transform data untuk chart Recharts
   const chartData = data.map(item => ({
     week: `W${item.week}`,
@@ -32,7 +36,15 @@ export default function WeekComparisonComponent({ data }: WeekComparisonProps) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Perbandingan Minggu 1-52 (2023 vs 2024)</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">Analisis Produk - Perbandingan Minggu 1-52</h2>
+      
+      <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <p className="text-sm text-blue-800">
+          <strong>Periode Analisis:</strong> Week 1-52 | 
+          <strong>Tahun Perbandingan:</strong> {`${previousYearLabel} vs ${currentYearLabel}`} |
+          <strong>Total Minggu:</strong> {data.length} minggu
+        </p>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
@@ -51,14 +63,14 @@ export default function WeekComparisonComponent({ data }: WeekComparisonProps) {
                 dataKey="previousYear" 
                 stroke="#3b82f6" 
                 strokeWidth={2}
-                name="2023"
+                name={previousYearLabel.toString()}
               />
               <Line 
                 type="monotone" 
                 dataKey="currentYear" 
                 stroke="#10b981" 
                 strokeWidth={2}
-                name="2024"
+                name={currentYearLabel.toString()}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -92,8 +104,8 @@ export default function WeekComparisonComponent({ data }: WeekComparisonProps) {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Minggu</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">2023</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">2024</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{previousYearLabel}</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{currentYearLabel}</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Variance</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Variance %</th>
               </tr>

@@ -56,6 +56,11 @@ export interface YearOnYearGrowth {
   variancePercentage: number;      // Persentase pertumbuhan
 }
 
+export interface ComparisonYears {
+  previousYear: number | null;
+  currentYear: number | null;
+}
+
 /**
  * Data penjualan lengkap untuk dashboard
  */
@@ -65,6 +70,7 @@ export interface SalesData {
   weekComparisons: WeekComparison[];
   l4wc4wData: L4WC4WData;
   yearOnYearGrowth: YearOnYearGrowth;
+  comparisonYears: ComparisonYears;
 }
 
 /**

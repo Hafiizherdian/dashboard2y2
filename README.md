@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sales Dashboard - PostgreSQL Integration
 
-## Getting Started
+Sales analysis dashboard dengan PostgreSQL database integration untuk upload Excel/CSV data penjualan.
 
-First, run the development server:
+## Features
+
+- **Dashboard Analisis**: 6 tabs dengan comprehensive sales analysis
+  - Ringkasan: Overview metrik utama
+  - Perbandingan Mingguan: Week 1-52 comparison
+  - Analisis Kuartal: Q1-Q4 target/actual/variance
+  - L4W vs C4W: Last 4 Weeks vs Current 4 Weeks
+  - Tahun ke Tahun: YoY growth analysis
+  - Analisis: Internal/External text areas
+
+- **Admin Upload**: Excel/CSV upload ke PostgreSQL
+  - Drag & drop file upload
+  - Real-time data processing
+  - Database statistics
+  - File management
+
+- **Database**: PostgreSQL dengan schema lengkap
+  - Sales records tracking
+  - File upload management
+  - User authentication (optional)
+
+## Tech Stack
+
+- **Frontend**: Next.js 16.1.1, TypeScript, TailwindCSS
+- **Charts**: Recharts
+- **Database**: PostgreSQL
+- **File Processing**: XLSX, Formidable
+- **Icons**: Lucide React
+
+## Setup Instructions
+
+### 1. Database Setup
+
+```bash
+# Create PostgreSQL database
+createdb dashboard_db
+
+# Run schema
+psql dashboard_db < database/schema.sql
+```
+
+### 2. Environment Variables
+
+Create `.env.local`:
+
+```env
+# Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=dashboard_db
+DB_USER=postgres
+DB_PASSWORD=your_password
+
+# Next.js
+NEXTAUTH_SECRET=your_secret_key
+NEXTAUTH_URL=http://localhost:3000
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) untuk dashboard dan [http://localhost:3000/admin](http://localhost:3000/admin) untuk admin panel.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## File Upload Format
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Excel/CSV files harus memiliki kolom berikut:
+- Grand Total
+- Minggu (Week)
+- Tanggal (Date)
+- Produk (Product)
+- Customer
+- Omzet (Nett)
 
-## Learn More
+## API Endpoints
 
-To learn more about Next.js, take a look at the following resources:
+- `GET /api/sales` - Fetch sales data dengan filter
+- `POST /api/upload` - Upload Excel/CSV file
+- `GET /api/files` - Get uploaded files list
+- `DELETE /api/files/[id]` - Delete file dan records
+- `GET /api/stats` - Database statistics
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Database Schema
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Lihat `database/schema.sql` untuk complete schema structure.
 
-## Deploy on Vercel
+## Development
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# Install dependencies
+npm install
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Run development
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production
+npm start
+```
+
+## Deployment
+
+1. Setup PostgreSQL database
+2. Configure environment variables
+3. Run database schema
+4. Deploy aplikasi
+
+## Notes
+
+- Mock data sudah dihapus - semua data dari database
+- Admin only access (authentication middleware pending)
+- Real-time data processing
+- Comprehensive error handling

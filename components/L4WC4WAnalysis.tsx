@@ -48,7 +48,16 @@ export default function L4WC4WAnalysisComponent({ data }: L4WC4WAnalysisProps) {
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Analisis L4W vs C4W</h2>
+      <h2 className="text-2xl font-bold text-gray-800 mb-6">AVG L4W vs C4W dengan Growth Analysis</h2>
+      
+      <div className="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+        <p className="text-sm text-purple-800">
+          <strong>AVG L4W:</strong> {formatCurrency(data.l4wAverage)} | 
+          <strong>AVG C4W:</strong> {formatCurrency(data.c4wAverage)} | 
+          <strong>Growth:</strong> {formatPercentage(data.variancePercentage)} | 
+          <strong>Variance:</strong> {formatCurrency(data.variance)}
+        </p>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
