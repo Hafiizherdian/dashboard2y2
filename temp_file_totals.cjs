@@ -14,7 +14,8 @@ async function run() {
     const result = await client.query(`
       SELECT file_id,
              COUNT(*) AS rows,
-             SUM(omzet) AS total_omzet
+             SUM(omzet) AS total_omzet,
+             COUNT(DISTINCT product) AS total_products
       FROM sales_records
       GROUP BY file_id
       ORDER BY file_id

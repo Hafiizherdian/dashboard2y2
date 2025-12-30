@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS sales_records (
     units_slop INTEGER DEFAULT 0,
     units_bal INTEGER DEFAULT 0,
     units_dos INTEGER DEFAULT 0,
-    omzet DECIMAL(15,2) NOT NULL,
+    omzet DECIMAL(18,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

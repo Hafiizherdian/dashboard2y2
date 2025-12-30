@@ -28,12 +28,25 @@ export interface QuarterlyData {
 /**
  * Data perbandingan mingguan antar tahun
  */
+export interface WeekComparisonProductDetail {
+  product: string;
+  previousYear: number;
+  currentYear: number;
+  variance: number;
+  variancePercentage: number;
+  units_bks?: { previous: number; current: number };
+  units_slop?: { previous: number; current: number };
+  units_bal?: { previous: number; current: number };
+  units_dos?: { previous: number; current: number };
+}
+
 export interface WeekComparison {
   week: number;                    // Nomor minggu
   previousYear: number;            // Penjualan tahun sebelumnya
   currentYear: number;             // Penjualan tahun sekarang
   variance: number;                // Selisih penjualan
   variancePercentage: number;      // Persentase variance
+  details?: WeekComparisonProductDetail[];
 }
 
 /**
@@ -61,6 +74,16 @@ export interface ComparisonYears {
   currentYear: number | null;
 }
 
+export interface WeekRange {
+  start: number;
+  end: number;
+}
+
+export interface ComparisonWeeks {
+  previousYear: WeekRange | null;
+  currentYear: WeekRange | null;
+}
+
 /**
  * Data penjualan lengkap untuk dashboard
  */
@@ -71,6 +94,7 @@ export interface SalesData {
   l4wc4wData: L4WC4WData;
   yearOnYearGrowth: YearOnYearGrowth;
   comparisonYears: ComparisonYears;
+  comparisonWeeks: ComparisonWeeks;
 }
 
 /**

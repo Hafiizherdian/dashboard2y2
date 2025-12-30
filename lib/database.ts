@@ -3,7 +3,7 @@
  * Fungsi untuk fetch dan process data dari PostgreSQL
  */
 
-import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth } from '@/types/sales';
+import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail } from '@/types/sales';
 
 // Database connection configuration
 const dbConfig = {
@@ -14,23 +14,68 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || 'cakra123',
 };
 
-/**
- * Fetch sales data dari database dengan filter
- */
-export async function fetchSalesData(filters?: {
+const OMZET_SCALE = 1;
+
+function getOmzetValue(record: any): number {
+  if (!record) {
+    return 0;
+  }
+
+  if (typeof record.omzetValue === 'number') {
+    return record.omzetValue;
+  }
+
+  const raw = record.omzet;
+  const numeric = typeof raw === 'number' ? raw : parseFloat(raw ?? '0');
+  const normalized = Number.isFinite(numeric) ? numeric * OMZET_SCALE : 0;
+  record.omzetValue = normalized;
+  return normalized;
+}
+
+interface FetchFilters {
   year1?: number;
   year2?: number;
   product?: string;
-}): Promise<SalesData> {
+  weekStart1?: number;
+  weekEnd1?: number;
+  weekStart2?: number;
+  weekEnd2?: number;
+}
+
+/**
+ * Fetch sales data dari database dengan filter
+ */
+export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData> {
   try {
 
     // Fetch raw data
-    const response = await fetch('/api/sales?' + new URLSearchParams({
-      ...(filters?.year1 && { year1: filters.year1.toString() }),
-      ...(filters?.year2 && { year2: filters.year2.toString() }),
-      ...(filters?.product && { product: filters.product }),
-      limit: '1000000' // Fetch sufficient rows for both years
-    }));
+    const params = new URLSearchParams();
+
+    if (filters?.year1 !== undefined) {
+      params.append('year1', filters.year1.toString());
+    }
+    if (filters?.year2 !== undefined) {
+      params.append('year2', filters.year2.toString());
+    }
+    if (filters?.weekStart1 !== undefined) {
+      params.append('weekStart1', filters.weekStart1.toString());
+    }
+    if (filters?.weekEnd1 !== undefined) {
+      params.append('weekEnd1', filters.weekEnd1.toString());
+    }
+    if (filters?.weekStart2 !== undefined) {
+      params.append('weekStart2', filters.weekStart2.toString());
+    }
+    if (filters?.weekEnd2 !== undefined) {
+      params.append('weekEnd2', filters.weekEnd2.toString());
+    }
+    if (filters?.product && filters.product.trim().length > 0) {
+      params.append('product', filters.product.trim());
+    }
+
+    params.append('limit', '1000000');
+
+    const response = await fetch('/api/sales?' + params.toString());
 
     if (!response.ok) {
       throw new Error('Failed to fetch sales data');
@@ -57,7 +102,8 @@ export async function fetchSalesData(filters?: {
       comparisonYears: {
         previousYear: null,
         currentYear: null
-      }
+      },
+      comparisonWeeks: generateEmptyComparisonWeeks()
     };
   }
 }
@@ -65,7 +111,7 @@ export async function fetchSalesData(filters?: {
 /**
  * Process raw sales records menjadi dashboard data
  */
-function processSalesRecords(records: any[], filters?: { year1?: number; year2?: number }): SalesData {
+function processSalesRecords(records: any[], filters?: FetchFilters): SalesData {
   if (records.length === 0) {
     return {
       weeklyData: [],
@@ -76,23 +122,31 @@ function processSalesRecords(records: any[], filters?: { year1?: number; year2?:
       comparisonYears: {
         previousYear: null,
         currentYear: null
-      }
+      },
+      comparisonWeeks: generateEmptyComparisonWeeks()
     };
   }
 
   // Group data by week and year
   const weeklyMap = new Map<string, any[]>();
   const yearSet = new Set<number>();
+  const weekSetByYear = new Map<number, Set<number>>();
   
   records.forEach(record => {
     const year = new Date(record.date).getFullYear();
     record.year = year;
     yearSet.add(year);
+    getOmzetValue(record);
     const key = `${year}-${record.week}`;
     if (!weeklyMap.has(key)) {
       weeklyMap.set(key, []);
     }
     weeklyMap.get(key)!.push(record);
+
+    if (!weekSetByYear.has(year)) {
+      weekSetByYear.set(year, new Set());
+    }
+    weekSetByYear.get(year)!.add(record.week);
   });
 
   const sortedYears = Array.from(yearSet).sort((a, b) => a - b);
@@ -103,17 +157,145 @@ function processSalesRecords(records: any[], filters?: { year1?: number; year2?:
     currentYear: currentYear ?? null
   };
 
+  const getWeekRangeFromData = (year?: number) => {
+    if (year === undefined) return null;
+    const weeks = weekSetByYear.get(year);
+    if (!weeks || weeks.size === 0) {
+      return null;
+    }
+    const sortedWeeks = Array.from(weeks).sort((a, b) => a - b);
+    return {
+      start: sortedWeeks[0],
+      end: sortedWeeks[sortedWeeks.length - 1]
+    };
+  };
+
+  const normalizeWeekRange = (start?: number, end?: number, fallback?: { start: number; end: number } | null) => {
+    let rangeStart = start ?? fallback?.start ?? 1;
+    let rangeEnd = end ?? fallback?.end ?? 52;
+
+    if (rangeStart > rangeEnd) {
+      [rangeStart, rangeEnd] = [rangeEnd, rangeStart];
+    }
+
+    rangeStart = Math.max(1, Math.min(rangeStart, 52));
+    rangeEnd = Math.max(1, Math.min(rangeEnd, 52));
+
+    return { start: rangeStart, end: rangeEnd };
+  };
+
+  const previousYearWeekRange = previousYear !== undefined
+    ? normalizeWeekRange(filters?.weekStart1, filters?.weekEnd1, getWeekRangeFromData(previousYear))
+    : null;
+
+  const currentYearWeekRange = currentYear !== undefined
+    ? normalizeWeekRange(filters?.weekStart2, filters?.weekEnd2, getWeekRangeFromData(currentYear))
+    : null;
+
+  const comparisonWeeks = {
+    previousYear: previousYearWeekRange,
+    currentYear: currentYearWeekRange
+  };
+
   // Generate weekly data
   const weeklyData: WeeklySales[] = [];
   const weekComparisons: WeekComparison[] = [];
 
+  // Get all unique products from both years
+  const allProductsSet = new Set<string>();
+  records.forEach(record => {
+    if (record.product) {
+      allProductsSet.add(record.product);
+    }
+  });
+
   // Process weekly comparisons
+  const prevRange = comparisonWeeks.previousYear;
+  const currRange = comparisonWeeks.currentYear;
+
   for (let week = 1; week <= 52; week++) {
     const prevYearWeekData = previousYear !== undefined ? (weeklyMap.get(`${previousYear}-${week}`) || []) : [];
     const currYearWeekData = currentYear !== undefined ? (weeklyMap.get(`${currentYear}-${week}`) || []) : [];
 
-    const prevYearSales = prevYearWeekData.reduce((sum, record) => sum + parseFloat(record.omzet), 0);
-    const currYearSales = currYearWeekData.reduce((sum, record) => sum + parseFloat(record.omzet), 0);
+    const prevYearInRange = prevRange ? week >= prevRange.start && week <= prevRange.end : true;
+    const currYearInRange = currRange ? week >= currRange.start && week <= currRange.end : true;
+
+    const productTotalsMap = new Map<string, { 
+        previous: number; 
+        current: number; 
+        units_bks: { previous: number; current: number };
+        units_slop: { previous: number; current: number };
+        units_bal: { previous: number; current: number };
+        units_dos: { previous: number; current: number };
+      }>();
+
+    // Initialize all products with 0 values
+    allProductsSet.forEach(product => {
+      productTotalsMap.set(product, { 
+        previous: 0, 
+        current: 0,
+        units_bks: { previous: 0, current: 0 },
+        units_slop: { previous: 0, current: 0 },
+        units_bal: { previous: 0, current: 0 },
+        units_dos: { previous: 0, current: 0 }
+      });
+    });
+
+    if (prevYearInRange) {
+      for (const record of prevYearWeekData) {
+        const productName = record.product ?? 'Produk Tidak Diketahui';
+        const totals = productTotalsMap.get(productName);
+        if (totals) {
+          totals.previous += getOmzetValue(record);
+          totals.units_bks.previous += record.units_bks || 0;
+          totals.units_slop.previous += record.units_slop || 0;
+          totals.units_bal.previous += record.units_bal || 0;
+          totals.units_dos.previous += record.units_dos || 0;
+        }
+      }
+    }
+
+    if (currYearInRange) {
+      for (const record of currYearWeekData) {
+        const productName = record.product ?? 'Produk Tidak Diketahui';
+        const totals = productTotalsMap.get(productName);
+        if (totals) {
+          totals.current += getOmzetValue(record);
+          totals.units_bks.current += record.units_bks || 0;
+          totals.units_slop.current += record.units_slop || 0;
+          totals.units_bal.current += record.units_bal || 0;
+          totals.units_dos.current += record.units_dos || 0;
+        }
+      }
+    }
+
+    const prevYearSales = prevYearInRange
+      ? prevYearWeekData.reduce((sum, record) => sum + getOmzetValue(record), 0)
+      : 0;
+    const currYearSales = currYearInRange
+      ? currYearWeekData.reduce((sum, record) => sum + getOmzetValue(record), 0)
+      : 0;
+
+    const details: WeekComparisonProductDetail[] = Array.from(productTotalsMap.entries())
+      .map(([product, totals]) => {
+        const variance = totals.current - totals.previous;
+        const variancePercentage = totals.previous > 0 ? (variance / totals.previous) * 100 : 0;
+        return {
+          product,
+          previousYear: totals.previous,
+          currentYear: totals.current,
+          variance,
+          variancePercentage,
+          units_bks: { previous: totals.units_bks.previous, current: totals.units_bks.current },
+          units_slop: { previous: totals.units_slop.previous, current: totals.units_slop.current },
+          units_bal: { previous: totals.units_bal.previous, current: totals.units_bal.current },
+          units_dos: { previous: totals.units_dos.previous, current: totals.units_dos.current },
+        } satisfies WeekComparisonProductDetail;
+      })
+      .sort((a, b) => {
+        // Sort by current year values: highest to lowest
+        return b.currentYear - a.currentYear;
+      });
 
     if (prevYearSales > 0 || currYearSales > 0) {
       weekComparisons.push({
@@ -122,11 +304,12 @@ function processSalesRecords(records: any[], filters?: { year1?: number; year2?:
         currentYear: currYearSales,
         variance: currYearSales - prevYearSales,
         variancePercentage: prevYearSales > 0 ? ((currYearSales - prevYearSales) / prevYearSales) * 100 : 0,
+        details,
       });
     }
 
     // Add weekly data
-    if (currYearSales > 0 && currentYear !== undefined) {
+    if (currYearSales > 0 && currentYear !== undefined && currYearInRange) {
       weeklyData.push({
         week,
         year: currentYear,
@@ -134,7 +317,7 @@ function processSalesRecords(records: any[], filters?: { year1?: number; year2?:
         target: currYearSales * 1.1, // Estimated target
       });
     }
-    if (prevYearSales > 0 && previousYear !== undefined) {
+    if (prevYearSales > 0 && previousYear !== undefined && prevYearInRange) {
       weeklyData.push({
         week,
         year: previousYear,
@@ -159,7 +342,8 @@ function processSalesRecords(records: any[], filters?: { year1?: number; year2?:
     weekComparisons,
     l4wc4wData,
     yearOnYearGrowth,
-    comparisonYears
+    comparisonYears,
+    comparisonWeeks
   };
 }
 
@@ -178,7 +362,7 @@ function generateQuarterlyData(records: any[], year: number): QuarterlyData[] {
       record.year === year && record.week >= startWeek && record.week <= endWeek
     );
 
-    const actual = quarterRecords.reduce((sum, record) => sum + (parseFloat(record.omzet) || 0), 0);
+    const actual = quarterRecords.reduce((sum, record) => sum + getOmzetValue(record), 0);
     const target = actual > 0 ? actual * 1.1 : 100000; // Estimated target
     const variance = actual - target;
 
@@ -227,7 +411,7 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
 
     const year = record.year ?? date.getFullYear();
     const key = `${year}-${week.toString().padStart(2, '0')}`;
-    const omzet = parseFloat(record.omzet) || 0;
+    const omzet = getOmzetValue(record);
 
     if (!weeklyTotalsMap.has(key)) {
       weeklyTotalsMap.set(key, {
@@ -283,8 +467,8 @@ function generateYearOnYearGrowth(records: any[], previousYear: number, currentY
   const previousYearRecords = records.filter(record => record.year === previousYear);
   const currentYearRecords = records.filter(record => record.year === currentYear);
 
-  const previousYearTotal = previousYearRecords.reduce((sum, record) => sum + (parseFloat(record.omzet) || 0), 0);
-  const currentYearTotal = currentYearRecords.reduce((sum, record) => sum + (parseFloat(record.omzet) || 0), 0);
+  const previousYearTotal = previousYearRecords.reduce((sum, record) => sum + getOmzetValue(record), 0);
+  const currentYearTotal = currentYearRecords.reduce((sum, record) => sum + getOmzetValue(record), 0);
   const variance = currentYearTotal - previousYearTotal;
 
   return {
@@ -321,5 +505,12 @@ function generateEmptyYearOnYearGrowth(): YearOnYearGrowth {
     currentYearTotal: 0,
     variance: 0,
     variancePercentage: 0
+  };
+}
+
+function generateEmptyComparisonWeeks(): ComparisonWeeks {
+  return {
+    previousYear: null,
+    currentYear: null
   };
 }

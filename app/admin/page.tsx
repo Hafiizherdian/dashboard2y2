@@ -180,7 +180,6 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-gray-600 mt-1">Upload data penjualan ke database PostgreSQL</p>
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -317,11 +316,14 @@ export default function AdminDashboard() {
               <div className="text-sm text-gray-600 space-y-2">
                 <p><strong>Kolom yang harus ada:</strong></p>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                  <span className="bg-white px-2 py-1 rounded border border-gray-200">Grand Total</span>
                   <span className="bg-white px-2 py-1 rounded border border-gray-200">Minggu</span>
                   <span className="bg-white px-2 py-1 rounded border border-gray-200">Tanggal</span>
                   <span className="bg-white px-2 py-1 rounded border border-gray-200">Produk</span>
+                  <span className="bg-white px-2 py-1 rounded border border-gray-200">Kategori</span>
+                  <span className="bg-white px-2 py-1 rounded border border-gray-200">No.Customer</span>
                   <span className="bg-white px-2 py-1 rounded border border-gray-200">Customer</span>
+                  <span className="bg-white px-2 py-1 rounded border border-gray-200">Tipe Customer</span>
+                  <span className="bg-white px-2 py-1 rounded border border-gray-200">Kota</span>
                   <span className="bg-white px-2 py-1 rounded border border-gray-200">Omzet (Nett)</span>
                 </div>
               </div>

@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
             filename: file.name,
             record_count: processedData.length,
             total_omzet: totalOmzet,
-            preview: processedData.slice(0, 5) // Return first 5 records as preview
+            preview: processedData.slice(0, 5) // Mengembalikan 5 records awal sebagai preview
           }
         });
 
@@ -265,7 +265,7 @@ async function processCSVFile(filePath: string): Promise<any[]> {
 
         results.push(data);
         
-        // Log first few rows for debugging
+        // Log beberapa row awal untuk debugging
         if (results.length <= 2) {
           console.log(`Row ${results.length}:`, data);
         }
@@ -410,7 +410,7 @@ function processSalesData(data: any[]): any[] {
         continue;
       }
 
-      // Parse week number from "W1", "W2", etc.
+      // Mengambil nomor minggu dari "W1", "W2", etc.
       let week = 1;
       const weekStr = row['Minggu'] || '';
       if (weekStr.startsWith('W')) {
@@ -430,7 +430,7 @@ function processSalesData(data: any[]): any[] {
         continue;
       }
 
-      // Map CSV columns to database fields
+      // Memetakan data dari CSV ke database
       const record = {
         grand_total: row['Grand Total'] || '',
         week: week,
@@ -444,10 +444,10 @@ function processSalesData(data: any[]): any[] {
         village: row['Desa'] || row['Village'] || '',
         district: row['Kecamatan'] || row['District'] || '',
         city: row['Kota'] || row['City'] || '',
-        units_bks: parseNumericValue(row['Jual (Bks Net)']),
-        units_slop: parseNumericValue(row['Jual (Slop Net)']),
-        units_bal: parseNumericValue(row['Jual (Bal Net)']),
-        units_dos: parseNumericValue(row['Jual (Dos Net)']),
+        units_bks: Math.round(parseNumericValue(row['Jual (Bks Net)'])),
+        units_slop: Math.round(parseNumericValue(row['Jual (Slop Net)'])),
+        units_bal: Math.round(parseNumericValue(row['Jual (Bal Net)'])),
+        units_dos: Math.round(parseNumericValue(row['Jual (Dos Net)'])),
         omzet: parseNumericValue(row['Omzet (Nett)'])
       };
 

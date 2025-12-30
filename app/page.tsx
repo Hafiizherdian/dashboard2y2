@@ -28,8 +28,9 @@ export default function Dashboard() {
   // State untuk filter tahun dan minggu
   const [selectedYear1, setSelectedYear1] = useState<number>(2024);
   const [selectedYear2, setSelectedYear2] = useState<number>(2025);
-  const [selectedWeek1, setSelectedWeek1] = useState(1);
-  const [selectedWeek2, setSelectedWeek2] = useState(1);
+  const [selectedWeek1, setSelectedWeek1] = useState<number>(0);
+  const [selectedWeek2, setSelectedWeek2] = useState<number>(0);
+  const [productFilter, setProductFilter] = useState('');
   
   // State untuk data yang sudah difilter
   const [filteredData, setFilteredData] = useState<SalesData>({
@@ -51,21 +52,73 @@ export default function Dashboard() {
     comparisonYears: {
       previousYear: null,
       currentYear: null
+    },
+    comparisonWeeks: {
+      previousYear: null,
+      currentYear: null
     }
   });
   const [isLoading, setIsLoading] = useState(true);
+
+  const formatWeekRange = (range?: { start: number; end: number } | null) => {
+    if (!range) {
+      return 'Minggu 1-52';
+    }
+
+    if (range.start === range.end) {
+      return `Minggu ${range.start}`;
+    }
+
+    return `Minggu ${range.start}-${range.end}`;
+  };
+
+  const formatSelectedWeekLabel = (week: number) => {
+    if (!week || week <= 0) {
+      return 'Semua Minggu';
+    }
+    if (week === 1) {
+      return 'Minggu 1';
+    }
+    return `Minggu 1-${week}`;
+  };
 
   // Fetch data dari database saat component mount
   useEffect(() => {
     loadData();
   }, []);
 
-  const syncSelectedYears = (data: SalesData) => {
+  const syncSelectedFilters = (data: SalesData) => {
     if (data.comparisonYears.previousYear !== null) {
       setSelectedYear1(data.comparisonYears.previousYear);
     }
     if (data.comparisonYears.currentYear !== null) {
       setSelectedYear2(data.comparisonYears.currentYear);
+    }
+
+    const previousRange = data.comparisonWeeks.previousYear;
+    if (previousRange) {
+      if (previousRange.start === previousRange.end) {
+        setSelectedWeek1(previousRange.start);
+      } else if (previousRange.start === 1 && previousRange.end === 52) {
+        setSelectedWeek1(0);
+      } else {
+        setSelectedWeek1(previousRange.end);
+      }
+    } else {
+      setSelectedWeek1(0);
+    }
+
+    const currentRange = data.comparisonWeeks.currentYear;
+    if (currentRange) {
+      if (currentRange.start === currentRange.end) {
+        setSelectedWeek2(currentRange.start);
+      } else if (currentRange.start === 1 && currentRange.end === 52) {
+        setSelectedWeek2(0);
+      } else {
+        setSelectedWeek2(currentRange.end);
+      }
+    } else {
+      setSelectedWeek2(0);
     }
   };
 
@@ -73,8 +126,9 @@ export default function Dashboard() {
     setIsLoading(true);
     try {
       const data = await fetchSalesData();
-      syncSelectedYears(data);
+      syncSelectedFilters(data);
       setFilteredData(data);
+      setProductFilter('');
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -82,15 +136,40 @@ export default function Dashboard() {
     }
   };
 
+  const buildFilters = () => {
+    const filters: Parameters<typeof fetchSalesData>[0] = {};
+
+    if (selectedYear1) {
+      filters.year1 = selectedYear1;
+    }
+    if (selectedYear2) {
+      filters.year2 = selectedYear2;
+    }
+
+    if (selectedWeek1 > 0) {
+      filters.weekStart1 = 1;
+      filters.weekEnd1 = selectedWeek1;
+    }
+
+    if (selectedWeek2 > 0) {
+      filters.weekStart2 = 1;
+      filters.weekEnd2 = selectedWeek2;
+    }
+
+    if (productFilter.trim()) {
+      filters.product = productFilter.trim();
+    }
+
+    return filters;
+  };
+
   // Fungsi untuk apply filter
   const applyFilter = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchSalesData({
-        year1: selectedYear1,
-        year2: selectedYear2
-      });
-      syncSelectedYears(data);
+      const filters = buildFilters();
+      const data = await fetchSalesData(filters);
+      syncSelectedFilters(data);
       setFilteredData(data);
     } catch (error) {
       console.error('Error applying filter:', error);
@@ -101,13 +180,14 @@ export default function Dashboard() {
 
   // Fungsi untuk reset filter
   const resetFilter = async () => {
-    setSelectedWeek1(1);
-    setSelectedWeek2(1);
+    setSelectedWeek1(0);
+    setSelectedWeek2(0);
+    setProductFilter('');
     
     setIsLoading(true);
     try {
       const data = await fetchSalesData();
-      syncSelectedYears(data);
+      syncSelectedFilters(data);
       setFilteredData(data);
     } catch (error) {
       console.error('Error resetting filter:', error);
@@ -137,6 +217,7 @@ export default function Dashboard() {
           <WeekComparison
             data={filteredData.weekComparisons}
             comparisonYears={filteredData.comparisonYears}
+            comparisonWeeks={filteredData.comparisonWeeks}
           />
         );
       case 'quarterly':
@@ -164,7 +245,7 @@ export default function Dashboard() {
                 : 'YoY';
 
               return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
@@ -218,7 +299,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              {/* <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Rata-rata C4W</p>
@@ -235,7 +316,7 @@ export default function Dashboard() {
                     <Activity className="h-6 w-6 text-purple-600" />
                   </div>
                 </div>
-              </div>
+              </div> */}
             </div>
               );
             })()}
@@ -246,11 +327,11 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Minggu Dianalisis</span>
-                    <span className="text-sm font-medium text-gray-800">52 weeks</span>
+                    <span className="text-sm font-medium text-gray-800">52 Minggu</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Kuartal</span>
-                    <span className="text-sm font-medium text-gray-800">4 quarters</span>
+                    <span className="text-sm font-medium text-gray-800">4 Kuartal</span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Tren Pertumbuhan</span>
@@ -283,11 +364,11 @@ export default function Dashboard() {
                       <strong>Performa Kuartal:</strong> {filteredData.quarterlyData.filter((q: any) => q.actual >= q.target).length} dari {filteredData.quarterlyData.length} kuartal memenuhi atau melebihi target
                     </p>
                   </div>
-                  <div className="p-3 bg-purple-50 rounded border border-purple-200">
+                  {/* <div className="p-3 bg-purple-50 rounded border border-purple-200">
                     <p className="text-sm text-purple-800">
                       <strong>Tren Terkini:</strong> Rata-rata C4W {filteredData.l4wc4wData.variancePercentage >= 0 ? 'lebih tinggi' : 'lebih rendah'} dari L4W sebesar {Math.abs(filteredData.l4wc4wData.variancePercentage).toFixed(1)}%
                     </p>
-                  </div>
+                  </div> */}
                   <div className="p-3 bg-orange-50 rounded border border-orange-200">
                     <p className="text-sm text-orange-800">
                       <strong>Pertumbuhan Tahunan:</strong> Performa tahun ke tahun {Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 10 ? 'Luar biasa' : Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 5 ? 'Kuat' : 'Sedang'}
@@ -308,8 +389,8 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Sales Dashboard</h1>
-              <p className="text-gray-600 mt-1">Analisis penjualan real-time dari database</p>
+              <h1 className="text-3xl font-bold text-gray-900">Year On Year Sales Dashboard</h1>
+              
             </div>
             <div className="flex items-center space-x-4">
               {isLoading && (
@@ -325,88 +406,112 @@ export default function Dashboard() {
 
       {/* Filter Section */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Tahun 1:</label>
-                <select
-                  value={selectedYear1}
-                  onChange={(e) => setSelectedYear1(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value={2022}>2022</option>
-                  <option value={2023}>2023</option>
-                  <option value={2024}>2024</option>
-                  <option value={2025}>2025</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Minggu 1:</label>
-                <select
-                  value={selectedWeek1}
-                  onChange={(e) => setSelectedWeek1(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
-                    <option key={week} value={week}>Minggu {week}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Tahun 2:</label>
-                <select
-                  value={selectedYear2}
-                  onChange={(e) => setSelectedYear2(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value={2022}>2022</option>
-                  <option value={2023}>2023</option>
-                  <option value={2024}>2024</option>
-                  <option value={2025}>2025</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-gray-700">Minggu 2:</label>
-                <select
-                  value={selectedWeek2}
-                  onChange={(e) => setSelectedWeek2(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
-                    <option key={week} value={week}>Minggu {week}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2 text-sm text-gray-600 bg-blue-50 px-3 py-2 rounded-lg">
-                <span>Filter:</span>
-                <span className="font-medium text-blue-800">
-                  {selectedYear1} (W{selectedWeek1}) vs {selectedYear2} (W{selectedWeek2})
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={resetFilter}
-                className="px-3 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
-              >
-                Reset
-              </button>
-              <button
-                onClick={applyFilter}
-                className="px-3 py-2 text-sm text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors duration-200"
-              >
-                Apply Filter
-              </button>
-            </div>
-          </div>
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="flex flex-col gap-6">
+      {/* Header + Preview Filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <h2 className="text-lg font-semibold text-gray-900">Filter Perbandingan Periode</h2>
+        
+        {/* Preview Filter - Chip Style lebih compact */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-gray-600">Menampilkan:</span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-100 text-blue-800 font-medium text-sm">
+            {selectedYear1} {formatSelectedWeekLabel(selectedWeek1)}
+          </span>
+          <span className="text-gray-500">vs</span>
+          <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-100 text-indigo-800 font-medium text-sm">
+            {selectedYear2} {formatSelectedWeekLabel(selectedWeek2)}
+          </span>
+          {productFilter.trim() && (
+            <>
+              <span className="text-gray-500 mx-1">•</span>
+              <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-green-100 text-green-800 font-medium text-sm">
+                Produk: {productFilter}
+              </span>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Form Filter - Grid Layout Responsif */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Periode 1 */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Tahun Pertama</label>
+          <select
+            value={selectedYear1}
+            onChange={(e) => setSelectedYear1(parseInt(e.target.value))}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
+          >
+            <option value={2022}>2022</option>
+            <option value={2023}>2023</option>
+            <option value={2024}>2024</option>
+            <option value={2025}>2025</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Minggu Pertama</label>
+          <select
+            value={selectedWeek1}
+            onChange={(e) => setSelectedWeek1(parseInt(e.target.value))}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
+          >
+            <option value={0}>Semua Minggu</option>
+            {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
+              <option key={week} value={week}>Minggu {week}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Periode 2 */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Tahun Kedua</label>
+          <select
+            value={selectedYear2}
+            onChange={(e) => setSelectedYear2(parseInt(e.target.value))}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
+          >
+            <option value={2022}>2022</option>
+            <option value={2023}>2023</option>
+            <option value={2024}>2024</option>
+            <option value={2025}>2025</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700">Minggu Kedua</label>
+          <select
+            value={selectedWeek2}
+            onChange={(e) => setSelectedWeek2(parseInt(e.target.value))}
+            className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all"
+          >
+            <option value={0}>Semua Minggu</option>
+            {Array.from({ length: 52 }, (_, i) => i + 1).map(week => (
+              <option key={week} value={week}>Minggu {week}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex flex-wrap items-center gap-3 space-x-3 sm:justify-end">
+        <button
+          onClick={resetFilter}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100"
+        >
+          Reset Filter
+        </button>
+        <button
+          onClick={applyFilter}
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        >
+          Terapkan Filter
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="border-b border-gray-200 mb-8">

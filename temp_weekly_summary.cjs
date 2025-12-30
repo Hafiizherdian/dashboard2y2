@@ -19,7 +19,7 @@ async function run() {
       FROM sales_records
       GROUP BY 1, 2
       ORDER BY 1, 2
-      LIMIT 40
+      LIMIT 51
     `);
 
     console.log(result.rows);

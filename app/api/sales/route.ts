@@ -23,10 +23,40 @@ const pool = new Pool({
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const year1 = searchParams.get('year1');
-    const year2 = searchParams.get('year2');
+    const year1Param = searchParams.get('year1');
+    const year2Param = searchParams.get('year2');
+    const weekStart1Param = searchParams.get('weekStart1');
+    const weekEnd1Param = searchParams.get('weekEnd1');
+    const weekStart2Param = searchParams.get('weekStart2');
+    const weekEnd2Param = searchParams.get('weekEnd2');
     const product = searchParams.get('product');
-    const limit = parseInt(searchParams.get('limit') || '1000');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '1000'), 1000000);
+
+    const year1 = year1Param ? parseInt(year1Param) : undefined;
+    const year2 = year2Param ? parseInt(year2Param) : undefined;
+
+    const normalizeWeekRange = (start?: string | null, end?: string | null) => {
+      const startNum = start ? parseInt(start) : undefined;
+      const endNum = end ? parseInt(end) : undefined;
+      if (!startNum && !endNum) {
+        return undefined;
+      }
+
+      const boundedStart = startNum ? Math.max(1, Math.min(startNum, 52)) : undefined;
+      const boundedEnd = endNum ? Math.max(1, Math.min(endNum, 52)) : boundedStart;
+
+      if (boundedStart !== undefined && boundedEnd !== undefined && boundedStart > boundedEnd) {
+        return { start: boundedEnd, end: boundedStart };
+      }
+
+      return {
+        start: boundedStart ?? boundedEnd ?? 1,
+        end: boundedEnd ?? boundedStart ?? 52,
+      };
+    };
+
+    const range1 = normalizeWeekRange(weekStart1Param, weekEnd1Param);
+    const range2 = normalizeWeekRange(weekStart2Param, weekEnd2Param);
 
     let query = `
       SELECT * FROM sales_records 
@@ -35,14 +65,45 @@ export async function GET(request: NextRequest) {
     const params: any[] = [];
     let paramIndex = 1;
 
-    if (year1 && year2) {
-      query += ` AND EXTRACT(YEAR FROM date) IN ($${paramIndex}, $${paramIndex + 1})`
-      params.push(year1, year2);
-      paramIndex += 2;
-    } else if (year1) {
+    if (year1 !== undefined && year2 !== undefined) {
+      const year1Conditions: string[] = [];
+      year1Conditions.push(`EXTRACT(YEAR FROM date) = $${paramIndex}`);
+      params.push(year1);
+      paramIndex++;
+
+      if (range1) {
+        year1Conditions.push(`week BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+        params.push(range1.start, range1.end);
+        paramIndex += 2;
+      }
+
+      const year2Conditions: string[] = [];
+      year2Conditions.push(`EXTRACT(YEAR FROM date) = $${paramIndex}`);
+      params.push(year2);
+      paramIndex++;
+
+      if (range2) {
+        year2Conditions.push(`week BETWEEN $${paramIndex} AND $${paramIndex + 1}`);
+        params.push(range2.start, range2.end);
+        paramIndex += 2;
+      }
+
+      const yearClauses = [];
+      yearClauses.push(`(${year1Conditions.join(' AND ')})`);
+      yearClauses.push(`(${year2Conditions.join(' AND ')})`);
+
+      query += ` AND (${yearClauses.join(' OR ')})`;
+    } else if (year1 !== undefined) {
       query += ` AND EXTRACT(YEAR FROM date) = $${paramIndex}`;
       params.push(year1);
       paramIndex++;
+
+      const range = range1 ?? range2;
+      if (range) {
+        query += ` AND week BETWEEN $${paramIndex} AND $${paramIndex + 1}`;
+        params.push(range.start, range.end);
+        paramIndex += 2;
+      }
     }
 
     if (product) {
@@ -51,8 +112,12 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    query += ` ORDER BY date DESC, week DESC LIMIT $${paramIndex}`;
-    params.push(limit);
+    query += ` ORDER BY date DESC, week DESC`;
+
+    if (Number.isFinite(limit) && limit > 0) {
+      query += ` LIMIT $${paramIndex}`;
+      params.push(limit);
+    }
 
     const result = await pool.query(query, params);
 
