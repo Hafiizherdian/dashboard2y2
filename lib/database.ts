@@ -3,16 +3,8 @@
  * Fungsi untuk fetch dan process data dari PostgreSQL
  */
 
+import { pool } from './db';
 import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail } from '@/types/sales';
-
-// Database connection configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'dashboard_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'cakra123',
-};
 
 const OMZET_SCALE = 1;
 
@@ -247,10 +239,16 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
         const totals = productTotalsMap.get(productName);
         if (totals) {
           totals.previous += getOmzetValue(record);
-          totals.units_bks.previous += record.units_bks || 0;
-          totals.units_slop.previous += record.units_slop || 0;
-          totals.units_bal.previous += record.units_bal || 0;
-          totals.units_dos.previous += record.units_dos || 0;
+          // Include all valid numeric values (positive and negative) - exclude only NaN
+          const bksVal = Number(record.units_bks);
+          const slopVal = Number(record.units_slop);
+          const balVal = Number(record.units_bal);
+          const dosVal = Number(record.units_dos);
+          
+          if (!isNaN(bksVal)) totals.units_bks.previous += bksVal;
+          if (!isNaN(slopVal)) totals.units_slop.previous += slopVal;
+          if (!isNaN(balVal)) totals.units_bal.previous += balVal;
+          if (!isNaN(dosVal)) totals.units_dos.previous += dosVal;
         }
       }
     }
@@ -261,10 +259,16 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
         const totals = productTotalsMap.get(productName);
         if (totals) {
           totals.current += getOmzetValue(record);
-          totals.units_bks.current += record.units_bks || 0;
-          totals.units_slop.current += record.units_slop || 0;
-          totals.units_bal.current += record.units_bal || 0;
-          totals.units_dos.current += record.units_dos || 0;
+          // Include all valid numeric values (positive and negative) - exclude only NaN
+          const bksVal = Number(record.units_bks);
+          const slopVal = Number(record.units_slop);
+          const balVal = Number(record.units_bal);
+          const dosVal = Number(record.units_dos);
+          
+          if (!isNaN(bksVal)) totals.units_bks.current += bksVal;
+          if (!isNaN(slopVal)) totals.units_slop.current += slopVal;
+          if (!isNaN(balVal)) totals.units_bal.current += balVal;
+          if (!isNaN(dosVal)) totals.units_dos.current += dosVal;
         }
       }
     }
@@ -280,16 +284,29 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
       .map(([product, totals]) => {
         const variance = totals.current - totals.previous;
         const variancePercentage = totals.previous > 0 ? (variance / totals.previous) * 100 : 0;
+        
         return {
           product,
           previousYear: totals.previous,
           currentYear: totals.current,
           variance,
           variancePercentage,
-          units_bks: { previous: totals.units_bks.previous, current: totals.units_bks.current },
-          units_slop: { previous: totals.units_slop.previous, current: totals.units_slop.current },
-          units_bal: { previous: totals.units_bal.previous, current: totals.units_bal.current },
-          units_dos: { previous: totals.units_dos.previous, current: totals.units_dos.current },
+          units_bks: { 
+            previous: Number(totals.units_bks.previous) || 0, 
+            current: Number(totals.units_bks.current) || 0 
+          },
+          units_slop: { 
+            previous: Number(totals.units_slop.previous) || 0, 
+            current: Number(totals.units_slop.current) || 0 
+          },
+          units_bal: { 
+            previous: Number(totals.units_bal.previous) || 0, 
+            current: Number(totals.units_bal.current) || 0 
+          },
+          units_dos: { 
+            previous: Number(totals.units_dos.previous) || 0, 
+            current: Number(totals.units_dos.current) || 0 
+          },
         } satisfies WeekComparisonProductDetail;
       })
       .sort((a, b) => {

@@ -5,21 +5,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { pool } from '@/lib/db';
 import * as ExcelJS from 'exceljs';
 import { writeFile, unlink, mkdir } from 'fs/promises';
 import { join } from 'path';
 import csv from 'csv-parser';
 import { createReadStream } from 'fs';
-
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'dashboard_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'cakra123',
-});
 
 export async function POST(request: NextRequest) {
   try {
@@ -360,6 +351,18 @@ function parseNumericValue(raw: unknown): number {
     return 0;
   }
 
+  // For unit values, we need to handle decimals properly
+  // Check if it's a simple decimal format first
+  const simpleDecimal = trimmed.match(/^[\d.]+$/);
+  if (simpleDecimal) {
+    const parsed = parseFloat(trimmed);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  // Handle Indonesian format: 1.234,56 (dot as thousand separator, comma as decimal)
+  // vs English format: 1,234.56 (comma as thousand separator, dot as decimal)
   const sanitized = trimmed.replace(/[^0-9.,\-]/g, '');
   const negative = sanitized.includes('-');
   const unsigned = sanitized.replace(/-/g, '');
@@ -367,29 +370,43 @@ function parseNumericValue(raw: unknown): number {
   const hasComma = unsigned.includes(',');
   const hasDot = unsigned.includes('.');
 
-  let decimalSeparator: string | null = null;
-
-  if (hasComma && hasDot) {
-    const lastComma = unsigned.lastIndexOf(',');
-    const lastDot = unsigned.lastIndexOf('.');
-    decimalSeparator = lastComma > lastDot ? ',' : '.';
-  } else if (hasComma) {
-    const lastSegmentLength = unsigned.split(',').pop()?.length ?? 0;
-    decimalSeparator = lastSegmentLength > 0 && lastSegmentLength <= 2 ? ',' : null;
-  } else if (hasDot) {
-    const lastSegmentLength = unsigned.split('.').pop()?.length ?? 0;
-    decimalSeparator = lastSegmentLength > 0 && lastSegmentLength <= 2 ? '.' : null;
-  }
-
   let normalized: string;
 
-  if (decimalSeparator) {
-    const parts = unsigned.split(decimalSeparator);
-    const integerPart = parts[0].replace(/[.,]/g, '') || '0';
-    const fractionalPart = parts.slice(1).join('').replace(/[.,]/g, '');
-    normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
+  if (hasComma && hasDot) {
+    // Both separators present - determine which is decimal
+    const lastComma = unsigned.lastIndexOf(',');
+    const lastDot = unsigned.lastIndexOf('.');
+    const commaAfterDot = lastComma > lastDot;
+    
+    if (commaAfterDot) {
+      // Format: 1.234,56 (Indonesian)
+      const parts = unsigned.split(',');
+      const integerPart = parts[0].replace(/\./g, '') || '0';
+      const fractionalPart = parts.slice(1).join('');
+      normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
+    } else {
+      // Format: 1,234.56 (English)
+      const parts = unsigned.split('.');
+      const integerPart = parts[0].replace(/,/g, '') || '0';
+      const fractionalPart = parts.slice(1).join('');
+      normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
+    }
+  } else if (hasComma) {
+    // Only comma - could be decimal (Indonesian) or thousand separator (English)
+    const parts = unsigned.split(',');
+    if (parts.length === 2 && parts[1].length <= 2) {
+      // Likely decimal: 1234,56
+      normalized = `${parts[0]}.${parts[1]}`;
+    } else {
+      // Likely thousand separator: 1,234,567
+      normalized = parts.join('');
+    }
+  } else if (hasDot) {
+    // Only dot - treat as decimal (most common for unit values)
+    normalized = unsigned;
   } else {
-    normalized = unsigned.replace(/[.,]/g, '') || '0';
+    // No separators - pure integer
+    normalized = unsigned;
   }
 
   const parsed = Number.parseFloat(normalized);
@@ -432,8 +449,8 @@ function processSalesData(data: any[]): any[] {
 
       // Memetakan data dari CSV ke database
       const record = {
-        grand_total: row['Grand Total'] || '',
-        week: week,
+        grand_total: parseNumericValue(row['Grand Total']),
+        week: parseNumericValue(row['Minggu']),
         date: parsedDate,
         product: row['Produk'] || row['Product'] || '',
         category: row['Kategori'] || row['Category'] || '',
@@ -444,10 +461,10 @@ function processSalesData(data: any[]): any[] {
         village: row['Desa'] || row['Village'] || '',
         district: row['Kecamatan'] || row['District'] || '',
         city: row['Kota'] || row['City'] || '',
-        units_bks: Math.round(parseNumericValue(row['Jual (Bks Net)'])),
-        units_slop: Math.round(parseNumericValue(row['Jual (Slop Net)'])),
-        units_bal: Math.round(parseNumericValue(row['Jual (Bal Net)'])),
-        units_dos: Math.round(parseNumericValue(row['Jual (Dos Net)'])),
+        units_bks: parseNumericValue(row['Jual (Bks Net)']),
+        units_slop: parseNumericValue(row['Jual (Slop Net)']),
+        units_bal: parseNumericValue(row['Jual (Bal Net)']),
+        units_dos: parseNumericValue(row['Jual (Dos Net)']),
         omzet: parseNumericValue(row['Omzet (Nett)'])
       };
 

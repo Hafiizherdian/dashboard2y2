@@ -109,7 +109,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
     data.forEach(weekData => {
       if (weekData.details) {
         weekData.details.forEach(detail => {
-          const existing = productMap.get(detail.product) || { 
+          const existing = productMap.get(detail.product) || {
             previous: 0, 
             current: 0,
             units_bks: { previous: 0, current: 0 },
@@ -157,8 +157,13 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
           current = totals.current;
         } else {
           const unitData = totals[selectedUnit as keyof typeof totals] as { previous: number; current: number };
-          previous = unitData.previous;
-          current = unitData.current;
+          if (unitData && typeof unitData === 'object' && 'previous' in unitData && 'current' in unitData) {
+            previous = unitData.previous;
+            current = unitData.current;
+          } else {
+            previous = 0;
+            current = 0;
+          }
         }
         
         const variance = current - previous;
@@ -166,10 +171,10 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         
         return {
           product,
-          previousYear: previous,
-          currentYear: current,
-          variance,
-          variancePercentage,
+          previousYear: Math.round(previous * 100) / 100,
+          currentYear: Math.round(current * 100) / 100,
+          variance: Math.round(variance * 100) / 100,
+          variancePercentage: Math.round(variancePercentage * 10) / 10,
         };
       })
       .sort((a, b) => {
@@ -199,8 +204,13 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
           unitCurrent = detail.currentYear;
         } else {
           const unitData = detail[selectedUnit as keyof typeof detail] as { previous: number; current: number } | undefined;
-          unitPrevious = unitData?.previous || 0;
-          unitCurrent = unitData?.current || 0;
+          if (unitData && typeof unitData === 'object' && 'previous' in unitData && 'current' in unitData) {
+            unitPrevious = unitData.previous;
+            unitCurrent = unitData.current;
+          } else {
+            unitPrevious = 0;
+            unitCurrent = 0;
+          }
         }
         
         const unitVariance = unitCurrent - unitPrevious;
@@ -208,10 +218,10 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         
         return {
           ...detail,
-          previousYear: unitPrevious,
-          currentYear: unitCurrent,
-          variance: unitVariance,
-          variancePercentage: unitVariancePercentage
+          previousYear: Math.round(unitPrevious * 100) / 100,
+          currentYear: Math.round(unitCurrent * 100) / 100,
+          variance: Math.round(unitVariance * 100) / 100,
+          variancePercentage: Math.round(unitVariancePercentage * 10) / 10
         };
       }).sort((a, b) => {
         // Sort by current year values: highest to lowest
@@ -249,7 +259,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
               <XAxis dataKey="week" />
               <YAxis tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
               <Tooltip 
-                formatter={(value: number | undefined) => formatCurrency(value)}
+                formatter={(value: number | undefined) => formatUnitValue(value || 0, selectedUnit)}
                 labelFormatter={(label) => `Week ${label}`}
               />
               <Line 
@@ -343,10 +353,10 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
                 productDetails.map((detail) => (
                   <tr key={detail.product} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{detail.product}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(detail.previousYear)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(detail.currentYear)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatUnitValue(detail.previousYear, selectedUnit)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatUnitValue(detail.currentYear, selectedUnit)}</td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(detail.variance)}`}>
-                      {formatCurrency(detail.variance)}
+                      {formatUnitValue(detail.variance, selectedUnit)}
                     </td>
                     <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(detail.variancePercentage)}`}>
                       {formatPercentage(detail.variancePercentage)}
@@ -356,10 +366,10 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
               ) : selectedWeekData ? (
                 <tr className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Semua Produk</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(selectedWeekData.previousYear)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(selectedWeekData.currentYear)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatUnitValue(selectedWeekData.previousYear, selectedUnit)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatUnitValue(selectedWeekData.currentYear, selectedUnit)}</td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(selectedWeekData.variance)}`}>
-                    {formatCurrency(selectedWeekData.variance)}
+                    {formatUnitValue(selectedWeekData.variance, selectedUnit)}
                   </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(selectedWeekData.variancePercentage)}`}>
                     {formatPercentage(selectedWeekData.variancePercentage)}

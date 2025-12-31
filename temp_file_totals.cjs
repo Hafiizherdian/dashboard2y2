@@ -15,7 +15,15 @@ async function run() {
       SELECT file_id,
              COUNT(*) AS rows,
              SUM(omzet) AS total_omzet,
-             COUNT(DISTINCT product) AS total_products
+             COUNT(DISTINCT product) AS total_products,
+             COUNT(DISTINCT units_bks) AS total_units_bks,
+             SUM(units_bks) AS total_units_bks_sum,
+             COUNT(DISTINCT units_slop) AS total_units_slop,
+             SUM(units_slop) AS total_units_slop_sum,
+             COUNT(DISTINCT units_bal) AS total_units_bal,
+             SUM(units_bal) AS total_units_bal_sum,
+             COUNT(DISTINCT units_dos) AS total_units_dos,
+             SUM(units_dos) AS total_units_dos_sum
       FROM sales_records
       GROUP BY file_id
       ORDER BY file_id
