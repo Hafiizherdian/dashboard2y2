@@ -6,11 +6,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
-import * as ExcelJS from 'exceljs';
-import { writeFile, unlink, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import csv from 'csv-parser';
 import { createReadStream } from 'fs';
+import * as XLSX from 'xlsx';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
+    // Memvalidasi tipe file
     const allowedTypes = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.ms-excel',
@@ -68,13 +68,13 @@ export async function POST(request: NextRequest) {
     try {
       let data: any[] = [];
 
-      // Process file based on type
+      // Memproses file berdasarkan tipe
       if (file.type === 'text/csv') {
         console.log('Processing CSV file...');
         data = await processCSVFile(tempPath);
       } else {
         console.log('Processing Excel file...');
-        data = await processExcelFile(tempPath);
+        data = await processExcelFile(buffer);
       }
 
       console.log('File processed successfully:', {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         sampleRow: data[0]
       });
 
-      // Process and validate data
+      // Data di proses dan di validasi
       const processedData = processSalesData(data);
       
       console.log('Data validation completed:', {
@@ -93,18 +93,18 @@ export async function POST(request: NextRequest) {
       
       if (processedData.length === 0) {
         return NextResponse.json(
-          { success: false, error: 'No valid data found in file. Please check if your file has the required columns: Grand Total, Minggu, Tanggal, Produk, Customer, Omzet (Nett)' },
+          { success: false, error: 'Data tidak valid. Cek kembali kolom yang diperlukan: Grand Total, Minggu, Tanggal, Produk, Customer, Omzet (Nett)' },
           { status: 400 }
         );
       }
 
-      // Save to database
+      // Menyimpan ke database
       const client = await pool.connect();
       
       try {
         await client.query('BEGIN');
 
-        // Insert file record
+        // Menyimpan record file
         const fileQuery = `
           INSERT INTO uploaded_files (
             filename, original_name, file_size, record_count, total_omzet, 
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
 
         const fileId = fileResult.rows[0].id;
 
-        // Insert sales records
+        // Menyimpan record penjualan
         const salesQuery = `
           INSERT INTO sales_records (
             file_id, grand_total, week, date, product, category, customer_no, customer,
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
           ]);
         }
 
-        // Update file status to completed
+        // Update file status ke selesai
         await client.query(
           'UPDATE uploaded_files SET status = $1 WHERE id = $2',
           ['completed', fileId]
@@ -203,38 +203,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processExcelFile(filePath: string): Promise<any[]> {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.readFile(filePath);
+async function processExcelFile(buffer: Buffer): Promise<any[]> {
+  console.log('Memulai proses Excel dengan xlsx library dari buffer...');
   
-  const worksheet = workbook.getWorksheet(1);
-  const data: any[] = [];
-  
-  if (worksheet) {
-    // Get header row
-    const headerRow = worksheet.getRow(1);
-    const headers: string[] = [];
+  try {
+    // membaca Excel file langsung dari buffer (no file path issues)
+    const workbook = XLSX.read(buffer, {
+      type: 'buffer',
+      cellDates: true,
+      cellNF: false,
+      cellText: false
+    });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
     
-    headerRow.eachCell((cell, colNumber) => {
-      headers[colNumber - 1] = cell.value?.toString() || '';
+    // Convert ke JSON with options (object-based like CSV)
+    const data = XLSX.utils.sheet_to_json(worksheet, {
+      defval: '',
+      blankrows: false
     });
     
-    // Process data rows
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) { // Skip header row
-        const rowData: any = {};
-        row.eachCell((cell, colNumber) => {
-          const header = headers[colNumber - 1];
-          if (header) {
-            rowData[header] = cell.value;
-          }
-        });
-        data.push(rowData);
-      }
-    });
+    console.log(`Excel processing completed: ${data.length} rows`);
+    return data;
+    
+  } catch (error) {
+    console.error('Error processing Excel file:', error);
+    throw new Error(`Gagal untuk process Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  return data;
 }
 
 async function processCSVFile(filePath: string): Promise<any[]> {
@@ -287,8 +281,18 @@ const INDONESIAN_MONTH_TRANSLATIONS: Record<string, string> = {
 const INDONESIAN_DAY_PREFIX = /^(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)\s*,\s*/i;
 const MONTH_TRANSLATION_REGEX = new RegExp(`\\b(${Object.keys(INDONESIAN_MONTH_TRANSLATIONS).join('|')})\\b`, 'gi');
 
-function parseSalesDate(rawValue: string): Date | null {
+function parseSalesDate(rawValue: string | Date): Date | null {
   if (!rawValue) {
+    return null;
+  }
+
+  // Handle Date objects dari Excel
+  if (rawValue instanceof Date) {
+    return rawValue;
+  }
+
+  // Handle string dates dari CSV
+  if (typeof rawValue !== 'string') {
     return null;
   }
 
@@ -297,11 +301,11 @@ function parseSalesDate(rawValue: string): Date | null {
     return null;
   }
 
-  // Remove Indonesian day prefix like "Kamis,"
+  // Hapus format hari dalam bahasa Indonesia dengan prefix seperti "Kamis,"
   normalized = normalized.replace(INDONESIAN_DAY_PREFIX, '').trim();
   normalized = normalized.replace(/\s+/g, ' ');
 
-  // Translate Indonesian month names to English equivalents
+  // Menterjemahkan bulan ke bahasa Inggris
   normalized = normalized.replace(MONTH_TRANSLATION_REGEX, (match) => {
     const translated = INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()];
     return translated ?? match;
@@ -351,8 +355,13 @@ function parseNumericValue(raw: unknown): number {
     return 0;
   }
 
-  // For unit values, we need to handle decimals properly
-  // Check if it's a simple decimal format first
+  // untuk unit values, kita perlu untuk memisahkan desimal dengan benar
+  // Format: 1.234,56 atau 1,234.56
+  // Contoh: 1.234,56 -> 1234.56, 1,234.56 -> 1234.56
+  // Kita akan mendeteksi format berdasarkan penggunaan titik dan koma
+  // Jika ada titik dan koma, kita asumsikan titik adalah pemisah ribuan dan koma adalah desimal
+  // Jika hanya ada satu tanda baca, kita asumsikan itu adalah desimal
+  // Jika tidak ada tanda baca sama sekali, kita asumsikan format English (desimal dengan titik)
   const simpleDecimal = trimmed.match(/^[\d.]+$/);
   if (simpleDecimal) {
     const parsed = parseFloat(trimmed);
@@ -361,8 +370,7 @@ function parseNumericValue(raw: unknown): number {
     }
   }
 
-  // Handle Indonesian format: 1.234,56 (dot as thousand separator, comma as decimal)
-  // vs English format: 1,234.56 (comma as thousand separator, dot as decimal)
+
   const sanitized = trimmed.replace(/[^0-9.,\-]/g, '');
   const negative = sanitized.includes('-');
   const unsigned = sanitized.replace(/-/g, '');
@@ -374,6 +382,7 @@ function parseNumericValue(raw: unknown): number {
 
   if (hasComma && hasDot) {
     // Both separators present - determine which is decimal
+    // Kita akan mendeteksi format berdasarkan posisi separator
     const lastComma = unsigned.lastIndexOf(',');
     const lastDot = unsigned.lastIndexOf('.');
     const commaAfterDot = lastComma > lastDot;
@@ -468,11 +477,11 @@ function processSalesData(data: any[]): any[] {
         omzet: parseNumericValue(row['Omzet (Nett)'])
       };
 
-      // Validate required fields (more lenient validation)
+      // Memvalidasi field yang diperlukan
       if (record.product && record.customer && Number.isFinite(record.omzet) && !isNaN(record.week)) {
         processed.push(record);
       } else {
-        // Log validation failures for debugging
+        // Log kegagalan memvalidasi file untuk debug
         if (record.product || record.customer || record.omzet !== 0) {
           console.log('Validation failed for row:', {
             product: record.product,

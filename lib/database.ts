@@ -4,7 +4,7 @@
  */
 
 import { pool } from './db';
-import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail } from '@/types/sales';
+import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail, WeeklyTrendData, OutletSalesData } from '@/types/sales';
 
 const OMZET_SCALE = 1;
 
@@ -95,7 +95,8 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
         previousYear: null,
         currentYear: null
       },
-      comparisonWeeks: generateEmptyComparisonWeeks()
+      comparisonWeeks: generateEmptyComparisonWeeks(),
+      outletData: []
     };
   }
 }
@@ -115,7 +116,8 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
         previousYear: null,
         currentYear: null
       },
-      comparisonWeeks: generateEmptyComparisonWeeks()
+      comparisonWeeks: generateEmptyComparisonWeeks(),
+      outletData: []
     };
   }
 
@@ -353,6 +355,9 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
   // Generate year-on-year data
   const yearOnYearGrowth = generateYearOnYearGrowth(records, previousYear ?? currentYear ?? sortedYears[0], currentYear ?? sortedYears[sortedYears.length - 1]);
 
+  // Generate outlet contribution data
+  const outletData = generateOutletData(records);
+
   return {
     weeklyData,
     quarterlyData,
@@ -360,7 +365,8 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
     l4wc4wData,
     yearOnYearGrowth,
     comparisonYears,
-    comparisonWeeks
+    comparisonWeeks,
+    outletData
   };
 }
 
@@ -396,7 +402,7 @@ function generateQuarterlyData(records: any[], year: number): QuarterlyData[] {
 }
 
 /**
- * Generate L4W vs C4W data
+ * Generate L4W vs C4W data dengan data tren mingguan asli
  */
 function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
   if (records.length === 0) {
@@ -404,7 +410,8 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
       l4wAverage: 0,
       c4wAverage: 0,
       variance: 0,
-      variancePercentage: 0
+      variancePercentage: 0,
+      weeklyTrendData: []
     };
   }
 
@@ -454,7 +461,8 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
           (weeklyTotals.length || 1)
       ),
       variance: 0,
-      variancePercentage: 0
+      variancePercentage: 0,
+      weeklyTrendData: []
     };
   }
 
@@ -469,12 +477,75 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
 
   const variance = c4wAverageRaw - l4wAverageRaw;
 
+  // Generate weekly trend data dari data asli
+  const weeklyTrendData: WeeklyTrendData[] = [];
+  
+  // Tambahkan data L4W (4 minggu terakhir sebelum C4W)
+  l4wWeeks.forEach((entry, index) => {
+    weeklyTrendData.push({
+      week: `W-${l4wWeeks.length - index}`,
+      value: Math.round(entry.total),
+      period: 'L4W'
+    });
+  });
+
+  // Tambahkan data C4W (4 minggu terakhir)
+  c4wWeeks.forEach((entry, index) => {
+    weeklyTrendData.push({
+      week: `W+${index + 1}`,
+      value: Math.round(entry.total),
+      period: 'C4W'
+    });
+  });
+
   return {
     l4wAverage: Math.round(l4wAverageRaw),
     c4wAverage: Math.round(c4wAverageRaw),
     variance: Math.round(variance),
-    variancePercentage: l4wAverageRaw > 0 ? Math.round((variance / l4wAverageRaw) * 100 * 10) / 10 : 0
+    variancePercentage: l4wAverageRaw > 0 ? Math.round((variance / l4wAverageRaw) * 100 * 10) / 10 : 0,
+    weeklyTrendData
   };
+}
+
+/**
+ * Generate outlet contribution data dari records
+ */
+function generateOutletData(records: any[]): OutletSalesData[] {
+  const outletMap = new Map<string, Map<number, number>>(); // outletType -> (week -> dozNet)
+  
+  records.forEach(record => {
+    const outletType = record.customer_type || 'Unknown'; // ✅ Gunakan customer_type
+    const week = Number(record.week) || 0;
+    const dozNet = Number(record.units_dos) || 0; // Menggunakan units_dos sebagai DOZ Net
+    const year = record.year || new Date(record.date).getFullYear();
+    
+    if (!outletMap.has(outletType)) {
+      outletMap.set(outletType, new Map());
+    }
+    
+    const weekMap = outletMap.get(outletType)!;
+    const current = weekMap.get(week) || 0;
+    weekMap.set(week, current + dozNet);
+  });
+  
+  const outletData: OutletSalesData[] = [];
+  
+  outletMap.forEach((weekMap, outletType) => {
+    weekMap.forEach((dozNet, week) => {
+      // Get year from any record with this week (assuming same year for all records)
+      const sampleRecord = records.find(r => Number(r.week) === week);
+      const year = sampleRecord?.year || new Date().getFullYear();
+      
+      outletData.push({
+        week,
+        year,
+        outletType,
+        dozNet
+      });
+    });
+  });
+  
+  return outletData;
 }
 
 /**
@@ -512,7 +583,8 @@ function generateEmptyL4WC4WData(): L4WC4WData {
     l4wAverage: 0,
     c4wAverage: 0,
     variance: 0,
-    variancePercentage: 0
+    variancePercentage: 0,
+    weeklyTrendData: []
   };
 }
 

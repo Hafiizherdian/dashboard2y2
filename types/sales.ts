@@ -15,6 +15,18 @@ export interface WeeklySales {
 }
 
 /**
+ * Data penjualan per outlet untuk analisis kontribusi
+ */
+export interface OutletSalesData {
+  week: number;           // Nomor minggu (1-52)
+  year: number;           // Tahun penjualan
+  outletType: string;     // Tipe outlet (contoh: Retail, Whole Sale)
+  dozNet: number;        // DOZ Net (dozen netto)
+  sales?: number;         // Total penjualan (opsional)
+  target?: number;        // Target penjualan (opsional)
+}
+
+/**
  * Data kuartal dengan target dan actual
  */
 export interface QuarterlyData {
@@ -57,6 +69,16 @@ export interface L4WC4WData {
   c4wAverage: number;              // Rata-rata Current 4 Weeks
   variance: number;                 // Selisih C4W - L4W
   variancePercentage: number;      // Persentase variance
+  weeklyTrendData?: WeeklyTrendData[]; // Data tren mingguan untuk line chart
+}
+
+/**
+ * Data tren mingguan untuk line chart L4W vs C4W
+ */
+export interface WeeklyTrendData {
+  week: string;    // Label minggu (W-4, W-3, ..., W+4)
+  value: number;   // Nilai penjualan minggu tersebut
+  period: 'L4W' | 'C4W'; // Periode mana minggu ini termasuk
 }
 
 /**
@@ -95,6 +117,7 @@ export interface SalesData {
   yearOnYearGrowth: YearOnYearGrowth;
   comparisonYears: ComparisonYears;
   comparisonWeeks: ComparisonWeeks;
+  outletData?: OutletSalesData[];  // Data penjualan per outlet (opsional)
 }
 
 /**

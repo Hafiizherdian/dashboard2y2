@@ -64,10 +64,10 @@ export async function DELETE(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
-      // Delete related sales records first
+      // menghapus record penjualan terkait terlebih dahulu
       await client.query('DELETE FROM sales_records WHERE file_id = $1', [fileId]);
 
-      // Delete the file record
+      // Hapus record file
       const deleteResult = await client.query(
         'DELETE FROM uploaded_files WHERE id = $1 RETURNING *',
         [fileId]

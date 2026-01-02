@@ -13,7 +13,7 @@ async function run() {
     await client.connect();
     const result = await client.query(`
       SELECT id, file_id, week, date, product, customer, 
-      salesman, village, district, city, units_bks, 
+      Customer_Type, salesman, village, district, city, units_bks, 
       units_slop, units_bal, units_dos, omzet
       FROM sales_records
       WHERE EXTRACT(YEAR FROM date) = 2025

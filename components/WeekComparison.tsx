@@ -65,11 +65,11 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
 
   const selectedWeekData = selectedWeek !== null ? data.find(item => item.week === selectedWeek) : undefined;
 
-  // Calculate total product data for all weeks when "All Weeks" is selected
+  // Menjumlah total product data untuk semua minggu ketika "All Weeks" di pilih
   const allWeeksProductDetails: WeekComparisonProductDetail[] = useMemo(() => {
     const productMap = new Map<string, { previous: number; current: number }>();
     
-    // Aggregate data across all weeks
+    // Aggregate data all weeks
     data.forEach(weekData => {
       if (weekData.details) {
         weekData.details.forEach(detail => {
@@ -94,7 +94,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
       .sort((a, b) => (b.currentYear + b.previousYear) - (a.currentYear + a.previousYear));
   }, [data]);
 
-  // Get all unique products from all weeks data
+  // Get all unique products dari all weeks data
   const allProductsInData: WeekComparisonProductDetail[] = useMemo(() => {
     const productMap = new Map<string, { 
       previous: number; 
@@ -105,7 +105,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
       units_dos: { previous: number; current: number };
     }>();
     
-    // Collect all products from all weeks
+    // Collect all products dari all weeks
     data.forEach(weekData => {
       if (weekData.details) {
         weekData.details.forEach(detail => {
@@ -178,24 +178,24 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         };
       })
       .sort((a, b) => {
-        // Sort by current year values: highest to lowest
+        // urutkan mulai dari value tahun sekarang : Tinggi ke Rendah
         return b.currentYear - a.currentYear;
       });
   }, [data, selectedUnit]);
 
   const productDetails: WeekComparisonProductDetail[] = useMemo(() => {
     if (selectedWeek === null) {
-      // Show all weeks aggregated data
+      // Menampilkan all weeks aggregated data
       return allProductsInData;
     }
     
-    // Show specific week data
+    // Menampilkan data minggu secara spesifik
     if (!selectedWeekData?.details) {
       return [];
     }
 
     return selectedWeekData.details.map((detail) => {
-        // Calculate unit-specific values for this week
+        // Menghitung unit-specific values untuk minggun ini
         let unitPrevious: number;
         let unitCurrent: number;
         
@@ -224,7 +224,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
           variancePercentage: Math.round(unitVariancePercentage * 10) / 10
         };
       }).sort((a, b) => {
-        // Sort by current year values: highest to lowest
+        // Mengurutkann mulai dari value tahun sekarang: Tinggi to Rendah
         return b.currentYear - a.currentYear;
       });
   }, [selectedWeek, selectedWeekData?.details, allProductsInData]);

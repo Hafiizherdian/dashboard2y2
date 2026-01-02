@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   description: "Year On Year SalesDashboard",
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -25,9 +30,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background text-foreground`}
       >
-        {children}
+        <div className="w-full max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12">
+          <div className="w-full">
+            {children}
+          </div>
+        </div>
       </body>
     </html>
   );

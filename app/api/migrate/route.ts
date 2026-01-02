@@ -7,7 +7,7 @@ export async function POST() {
   try {
     await client.query('BEGIN');
     
-    // First, check if there are any values that might cause overflow
+    // check jika ada data yang mungkin menyebabkan overflow
     const checkResult = await client.query(`
       SELECT 
         MAX(units_bks) as max_bks,
@@ -19,7 +19,7 @@ export async function POST() {
     
     console.log('Current max values:', checkResult.rows[0]);
     
-    // If values are too large for DECIMAL(10,3), use DECIMAL(15,3)
+    // jika data melebihi batas DECIMAL(10,3), gunakan DECIMAL(15,3)
     const maxValues = checkResult.rows[0];
     const needsLargerPrecision = 
       (maxValues.max_bks && maxValues.max_bks > 9999999.999) ||
@@ -30,7 +30,7 @@ export async function POST() {
     const precision = needsLargerPrecision ? 'DECIMAL(15,3)' : 'DECIMAL(10,3)';
     console.log(`Using precision: ${precision}`);
     
-    // Alter unit columns to support decimal values
+    // Ubah kolom unit untuk mendukung nilai desimal dengan presisi yang sesuai
     await client.query(`
       ALTER TABLE sales_records 
       ALTER COLUMN units_bks TYPE ${precision} USING units_bks::${precision},

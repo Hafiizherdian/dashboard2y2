@@ -17,9 +17,10 @@ import QuarterlyAnalysis from '@/components/QuarterlyAnalysis';
 import L4WC4WAnalysis from '@/components/L4WC4WAnalysis';
 import YearOnYearGrowth from '@/components/YearOnYearGrowth';
 import AnalysisSection from '@/components/AnalysisSection';
+import OutletContributionSection from '@/components/OutletContributionSection';
 import { fetchSalesData } from '@/lib/database';
 import { SalesData } from '@/types/sales';
-import { TrendingUp, Calendar, BarChart3, PieChart, Activity, FileText } from 'lucide-react';
+import { TrendingUp, Calendar, BarChart3, PieChart, Activity, FileText, Store } from 'lucide-react';
 
 export default function Dashboard() {
   // State untuk mengatur tab yang aktif saat ini
@@ -203,6 +204,7 @@ export default function Dashboard() {
     { id: 'quarterly', label: 'Analisis Kuartal', icon: BarChart3 },
     { id: 'l4wc4w', label: 'L4W vs C4W', icon: Activity },
     { id: 'yoy', label: 'Tahun ke Tahun', icon: PieChart },
+    { id: 'outlet', label: 'Kontribusi Outlet', icon: Store },
     { id: 'analysis', label: 'Analisis', icon: FileText },
   ];
 
@@ -231,6 +233,8 @@ export default function Dashboard() {
             comparisonYears={filteredData.comparisonYears}
           />
         );
+      case 'outlet':
+        return <OutletContributionSection data={filteredData} />;
       case 'analysis':
         return <AnalysisSection data={filteredData} />;
       default:
@@ -245,8 +249,8 @@ export default function Dashboard() {
                 : 'YoY';
 
               return (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Total Penjualan {prevYearLabel}</p>
@@ -265,7 +269,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Total Penjualan {currentYearLabel}</p>
@@ -284,7 +288,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Pertumbuhan YoY ({growthLabel})</p>
@@ -321,8 +325,8 @@ export default function Dashboard() {
               );
             })()}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Statistik Cepat</h3>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
@@ -351,7 +355,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Ringkasan Performa</h3>
                 <div className="space-y-4">
                   <div className="p-3 bg-blue-50 rounded border border-blue-200">
@@ -386,7 +390,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Year On Year Sales Dashboard</h1>
@@ -434,7 +438,7 @@ export default function Dashboard() {
       </div>
 
       {/* Form Filter - Grid Layout Responsif */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Periode 1 */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700">Tahun Pertama</label>
@@ -498,13 +502,13 @@ export default function Dashboard() {
       <div className="flex flex-wrap items-center gap-3 space-x-3 sm:justify-end">
         <button
           onClick={resetFilter}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100"
         >
           Reset Filter
         </button>
         <button
           onClick={applyFilter}
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 sm:px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200"
         >
           Terapkan Filter
         </button>
@@ -515,21 +519,21 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="border-b border-gray-200 mb-8">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex space-x-2 sm:space-x-4 lg:space-x-8 overflow-x-auto">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
+                  className={`group inline-flex items-center py-4 px-2 sm:px-4 border-b-2 font-medium text-sm whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   <Icon
-                    className={`mr-2 h-5 w-5 ${
+                    className={`mr-1 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5 ${
                       activeTab === tab.id ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'
                     }`}
                   />
