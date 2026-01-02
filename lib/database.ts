@@ -514,7 +514,7 @@ function generateOutletData(records: any[]): OutletSalesData[] {
   const outletMap = new Map<string, Map<number, number>>(); // outletType -> (week -> dozNet)
   
   records.forEach(record => {
-    const outletType = record.customer_type || 'Unknown'; // ✅ Gunakan customer_type
+    const outletType = record.customer_type || 'Unknown'; 
     const week = Number(record.week) || 0;
     const dozNet = Number(record.units_dos) || 0; // Menggunakan units_dos sebagai DOZ Net
     const year = record.year || new Date(record.date).getFullYear();
