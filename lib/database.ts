@@ -28,6 +28,7 @@ interface FetchFilters {
   year1?: number;
   year2?: number;
   product?: string;
+  city?: string;
   weekStart1?: number;
   weekEnd1?: number;
   weekStart2?: number;
@@ -63,6 +64,9 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
     }
     if (filters?.product && filters.product.trim().length > 0) {
       params.append('product', filters.product.trim());
+    }
+    if (filters?.city && filters.city.trim().length > 0) {
+      params.append('city', filters.city.trim());
     }
 
     params.append('limit', '1000000');

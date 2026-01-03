@@ -20,6 +20,7 @@ import AnalysisSection from '@/components/AnalysisSection';
 import OutletContributionSection from '@/components/OutletContributionSection';
 import { fetchSalesData } from '@/lib/database';
 import { SalesData } from '@/types/sales';
+import { AreaConfig } from '@/lib/areaConfig';
 import { TrendingUp, Calendar, BarChart3, PieChart, Activity, FileText, Store } from 'lucide-react';
 
 export default function Dashboard() {
@@ -32,6 +33,9 @@ export default function Dashboard() {
   const [selectedWeek1, setSelectedWeek1] = useState<number>(0);
   const [selectedWeek2, setSelectedWeek2] = useState<number>(0);
   const [productFilter, setProductFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [availableAreas, setAvailableAreas] = useState<AreaConfig[]>([]);
+  const [isLoadingAreas, setIsLoadingAreas] = useState(false);
   
   // State untuk data yang sudah difilter
   const [filteredData, setFilteredData] = useState<SalesData>({
@@ -86,7 +90,38 @@ export default function Dashboard() {
   // Fetch data dari database saat component mount
   useEffect(() => {
     loadData();
+    loadAvailableAreas();
   }, []);
+
+  // Fetch daftar area yang tersedia
+  const loadAvailableAreas = async () => {
+    setIsLoadingAreas(true);
+    try {
+      const response = await fetch('/api/areas');
+      if (!response.ok) {
+        throw new Error('Failed to fetch areas');
+      }
+      const result = await response.json();
+      setAvailableAreas(result.data?.areas || []);
+      
+      // Reset area filter jika area yang dipilih tidak ada di list baru
+      if (cityFilter && !result.data?.areas?.some((area: any) => area.id === cityFilter)) {
+        setCityFilter('');
+      }
+    } catch (error) {
+      console.error('Error loading areas:', error);
+      setAvailableAreas([]);
+    } finally {
+      setIsLoadingAreas(false);
+    }
+  };
+
+  // Auto-apply filter saat area berubah
+  useEffect(() => {
+    if (availableAreas.length > 0) {
+      applyFilter();
+    }
+  }, [cityFilter]);
 
   const syncSelectedFilters = (data: SalesData) => {
     if (data.comparisonYears.previousYear !== null) {
@@ -130,6 +165,7 @@ export default function Dashboard() {
       syncSelectedFilters(data);
       setFilteredData(data);
       setProductFilter('');
+      setCityFilter('');
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -160,6 +196,9 @@ export default function Dashboard() {
     if (productFilter.trim()) {
       filters.product = productFilter.trim();
     }
+    if (cityFilter.trim()) {
+      filters.city = cityFilter.trim();
+    }
 
     return filters;
   };
@@ -184,6 +223,7 @@ export default function Dashboard() {
     setSelectedWeek1(0);
     setSelectedWeek2(0);
     setProductFilter('');
+    setCityFilter('');
     
     setIsLoading(true);
     try {
@@ -391,12 +431,31 @@ export default function Dashboard() {
       {/* Header */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Year On Year Sales Dashboard</h1>
-              
             </div>
             <div className="flex items-center space-x-4">
+              {/* Filter Area di Header */}
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter Area:</label>
+                <select
+                  value={cityFilter}
+                  onChange={(e) => setCityFilter(e.target.value)}
+                  disabled={isLoadingAreas || availableAreas.length === 0}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm min-w-40"
+                >
+                  <option value="">Semua Area</option>
+                  {availableAreas.map(area => (
+                    <option key={area.id} value={area.id} title={area.description || ''}>
+                      {area.name}
+                    </option>
+                  ))}
+                </select>
+                {availableAreas.length === 0 && !isLoadingAreas && (
+                  <span className="text-xs text-gray-500 whitespace-nowrap">Tidak ada data</span>
+                )}
+              </div>
               {isLoading && (
                 <div className="flex items-center space-x-2 text-blue-600">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
@@ -431,6 +490,14 @@ export default function Dashboard() {
               <span className="text-gray-500 mx-1">•</span>
               <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-green-100 text-green-800 font-medium text-sm">
                 Produk: {productFilter}
+              </span>
+            </>
+          )}
+          {cityFilter.trim() && (
+            <>
+              <span className="text-gray-500 mx-1">•</span>
+              <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-orange-100 text-orange-800 font-medium text-sm">
+                Area: {availableAreas.find(area => area.id === cityFilter)?.name || cityFilter}
               </span>
             </>
           )}
@@ -496,6 +563,11 @@ export default function Dashboard() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Additional Filters */}
+      <div className="grid grid-cols-1 gap-3 sm:gap-4">
+        {/* Filter Produk di-comment out, jadi hanya kosong */}
       </div>
 
       {/* Action Buttons */}

@@ -2,9 +2,14 @@
  * API route untuk mengambil data penjualan dari Posted by
  * Endpoint: GET /api/sales
  * Query params:
- * - year: Filter by year (optional)
- * - week: Filter by week (optional)
- * - product: Filter by product (optional)
+ * - year1: Filter by first year (optional)
+ * - year2: Filter by second year (optional)
+ * - weekStart1: Filter by first year week start (optional)
+ * - weekEnd1: Filter by first year week end (optional)
+ * - weekStart2: Filter by second year week start (optional)
+ * - weekEnd2: Filter by second year week end (optional)
+ * - product: Filter by product name (optional, ILIKE)
+ * - city: Filter by area ID or specific city name (optional)
  * - limit: Limit results (default: 1000)
  */
 
@@ -30,6 +35,7 @@ export async function GET(request: NextRequest) {
     const weekStart2Param = searchParams.get('weekStart2');
     const weekEnd2Param = searchParams.get('weekEnd2');
     const product = searchParams.get('product');
+    const city = searchParams.get('city');
     const limit = Math.min(parseInt(searchParams.get('limit') || '1000'), 1000000);
 
     const year1 = year1Param ? parseInt(year1Param) : undefined;
@@ -109,6 +115,13 @@ export async function GET(request: NextRequest) {
     if (product) {
       query += ` AND product ILIKE $${paramIndex}`;
       params.push(`%${product}%`);
+      paramIndex++;
+    }
+
+    if (city) {
+      // Filter by area column (simplified approach)
+      query += ` AND area = $${paramIndex}`;
+      params.push(city);
       paramIndex++;
     }
 

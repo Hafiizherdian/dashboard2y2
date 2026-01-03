@@ -7,6 +7,17 @@ export async function POST() {
   try {
     await client.query('BEGIN');
     
+    // Add area column if not exists
+    await client.query(`
+      ALTER TABLE sales_records 
+      ADD COLUMN IF NOT EXISTS area VARCHAR(50)
+    `);
+    
+    // Create index for area filtering
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sales_records_area ON sales_records(area)
+    `);
+    
     // check jika ada data yang mungkin menyebabkan overflow
     const checkResult = await client.query(`
       SELECT 
@@ -43,7 +54,7 @@ export async function POST() {
     
     return NextResponse.json({ 
       success: true, 
-      message: `Database migration completed successfully using ${precision}` 
+      message: `Database migration completed successfully. Area column and ${precision} precision added.` 
     });
     
   } catch (error) {

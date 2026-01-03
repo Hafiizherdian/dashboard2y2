@@ -16,11 +16,13 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const selectedArea = formData.get('area') as string;
     
     console.log('Upload request received:', {
       fileName: file?.name,
       fileSize: file?.size,
-      fileType: file?.type
+      fileType: file?.type,
+      selectedArea: selectedArea
     });
     
     if (!file) {
@@ -83,7 +85,7 @@ export async function POST(request: NextRequest) {
       });
 
       // Data di proses dan di validasi
-      const processedData = processSalesData(data);
+      const processedData = processSalesData(data, selectedArea);
       
       console.log('Data validation completed:', {
         totalRows: data.length,
@@ -131,9 +133,9 @@ export async function POST(request: NextRequest) {
         const salesQuery = `
           INSERT INTO sales_records (
             file_id, grand_total, week, date, product, category, customer_no, customer,
-            customer_type, salesman, village, district, city, units_bks, units_slop,
+            customer_type, salesman, village, district, city, area, units_bks, units_slop,
             units_bal, units_dos, omzet
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         `;
 
         for (const record of processedData) {
@@ -151,6 +153,7 @@ export async function POST(request: NextRequest) {
             record.village,
             record.district,
             record.city,
+            record.area,
             record.units_bks,
             record.units_slop,
             record.units_bal,
@@ -426,7 +429,7 @@ function parseNumericValue(raw: unknown): number {
   return negative ? -parsed : parsed;
 }
 
-function processSalesData(data: any[]): any[] {
+function processSalesData(data: any[], selectedArea?: string): any[] {
   const processed = [];
 
   for (const row of data) {
@@ -457,6 +460,7 @@ function processSalesData(data: any[]): any[] {
       }
 
       // Memetakan data dari CSV ke database
+      const city = row['Kota'] || row['City'] || '';
       const record = {
         grand_total: parseNumericValue(row['Grand Total']),
         week: parseNumericValue(row['Minggu']),
@@ -469,7 +473,8 @@ function processSalesData(data: any[]): any[] {
         salesman: row['Salesman'] || '',
         village: row['Desa'] || row['Village'] || '',
         district: row['Kecamatan'] || row['District'] || '',
-        city: row['Kota'] || row['City'] || '',
+        city: city,
+        area: selectedArea || null,
         units_bks: parseNumericValue(row['Jual (Bks Net)']),
         units_slop: parseNumericValue(row['Jual (Slop Net)']),
         units_bal: parseNumericValue(row['Jual (Bal Net)']),
@@ -487,7 +492,8 @@ function processSalesData(data: any[]): any[] {
             product: record.product,
             customer: record.customer,
             omzet: record.omzet,
-            week: record.week
+            week: record.week,
+            area: record.area
           });
         }
       }
@@ -498,5 +504,8 @@ function processSalesData(data: any[]): any[] {
   }
 
   console.log(`Processed ${processed.length} valid records from ${data.length} total rows`);
+  if (selectedArea) {
+    console.log(`All records assigned to area: ${selectedArea}`);
+  }
   return processed;
 }
