@@ -21,6 +21,8 @@ export interface OutletSalesData {
   week: number;           // Nomor minggu (1-52)
   year: number;           // Tahun penjualan
   outletType: string;     // Tipe outlet (contoh: Retail, Whole Sale)
+  category: string;       // Kategori produk (contoh: Food, Beverage)
+  product: string;        // Nama produk (contoh: CAKRA PRIMA 16 K)
   dozNet: number;        // DOZ Net (dozen netto)
   sales?: number;         // Total penjualan (opsional)
   target?: number;        // Target penjualan (opsional)

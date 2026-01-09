@@ -1,7 +1,7 @@
 /**
  * API route untuk mengelola uploaded files
  * GET /api/files - Get all uploaded files
- * DELETE /api/files/[id] - Delete uploaded file and its records
+ * DELETE /api/files/[id] - Delete uploaded file dan recordnya
  */
 
 import { NextRequest, NextResponse } from 'next/server';

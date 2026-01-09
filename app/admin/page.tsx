@@ -25,7 +25,7 @@ export default function AdminDashboard() {
   const [selectedArea, setSelectedArea] = useState('');
   const [availableAreas, setAvailableAreas] = useState<AreaConfig[]>([]);
 
-  // Fetch data from database
+  // Fetch data dari database
   useEffect(() => {
     fetchData();
     loadAreas();
@@ -37,7 +37,7 @@ export default function AdminDashboard() {
       const response = await fetch('/api/areas');
       console.log('Areas response status:', response.status);
       if (!response.ok) {
-        throw new Error('Failed to fetch areas');
+        throw new Error('Gagal untuk fetch areas');
       }
       const result = await response.json();
       console.log('Areas result:', result);
@@ -49,11 +49,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // Refresh areas when switching to areas tab
+  // Refresh areas ketika berpindah ke tab area
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     if (tab === 'areas') {
-      loadAreas(); // Refresh areas when switching to areas tab
+      loadAreas(); // Refresh areas ketika berpindah ke tab area
     }
   };
 
@@ -137,21 +137,21 @@ export default function AdminDashboard() {
         await fetchData();
         setSelectedFile(null);
         
-        // Show success message
-        alert(`File uploaded successfully! ${result.data.record_count} records processed.`);
+        // Menampilkan success message
+        alert(`File berhasil di upload! ${result.data.record_count} records processed.`);
       } else {
         alert(`Upload failed: ${result.error}`);
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Upload failed. Please try again.');
+      alert('Upload gagal. Silahkan coba kembali.');
     } finally {
       setIsUploading(false);
     }
   };
 
   const handleDelete = async (fileId: string) => {
-    if (!confirm('Are you sure you want to delete this file and all its records?')) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus file ini?')) return;
 
     try {
       const response = await fetch(`/api/files?id=${encodeURIComponent(fileId)}`, {
@@ -281,7 +281,7 @@ export default function AdminDashboard() {
         {activeTab === 'upload' && (
           <>
             {dbStats && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -303,7 +303,7 @@ export default function AdminDashboard() {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-600">Files Uploaded</p>
+                      <p className="text-sm text-gray-600">Total File di Upload</p>
                       <p className="text-2xl font-bold text-gray-900">{dbStats.total_files}</p>
                     </div>
                     <Upload className="h-8 w-8 text-purple-500" />
@@ -312,7 +312,7 @@ export default function AdminDashboard() {
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-600">Latest Upload</p>
+                      <p className="text-sm text-gray-600">Upload terbaru</p>
                       <p className="text-lg font-bold text-gray-900">
                         {dbStats.latest_upload ? new Date(dbStats.latest_upload).toLocaleDateString('id-ID') : 'No data'}
                       </p>

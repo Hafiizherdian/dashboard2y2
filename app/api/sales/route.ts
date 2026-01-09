@@ -10,20 +10,21 @@
  * - weekEnd2: Filter by second year week end (optional)
  * - product: Filter by product name (optional, ILIKE)
  * - city: Filter by area ID or specific city name (optional)
+ * - area: Filter by area ID (optional)
  * - limit: Limit results (default: 1000)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { Pool } from 'pg';
+import { pool } from '@/lib/db';
 
-// Database connection
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'dashboard_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'cakra123',
-});
+// // Database connection
+// const pool = new Pool({
+//   host: process.env.DB_HOST || 'localhost',
+//   port: parseInt(process.env.DB_PORT || '5432'),
+//   database: process.env.DB_NAME || 'dashboard_db',
+//   user: process.env.DB_USER || 'postgres',
+//   password: process.env.DB_PASSWORD || 'cakra123',
+// });
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,7 +37,13 @@ export async function GET(request: NextRequest) {
     const weekEnd2Param = searchParams.get('weekEnd2');
     const product = searchParams.get('product');
     const city = searchParams.get('city');
+    const area = searchParams.get('area');
     const limit = Math.min(parseInt(searchParams.get('limit') || '1000'), 1000000);
+
+    console.log('🎯 API Sales - Query params:', {
+      year1Param, year2Param, weekStart1Param, weekEnd1Param, 
+      weekStart2Param, weekEnd2Param, product, city, area, limit
+    });
 
     const year1 = year1Param ? parseInt(year1Param) : undefined;
     const year2 = year2Param ? parseInt(year2Param) : undefined;
@@ -125,14 +132,25 @@ export async function GET(request: NextRequest) {
       paramIndex++;
     }
 
-    query += ` ORDER BY date DESC, week DESC`;
+    if (area) {
+      // Filter by area ID
+      query += ` AND area = $${paramIndex}`;
+      params.push(area);
+      paramIndex++;
+    }
+
+    query += ` AND (area IS NOT NULL OR area IS NULL)`;
 
     if (Number.isFinite(limit) && limit > 0) {
       query += ` LIMIT $${paramIndex}`;
       params.push(limit);
     }
 
+    console.log('🔍 Final Query:', query);
+    console.log('🔍 Query Parameters:', params);
+
     const result = await pool.query(query, params);
+    console.log('📊 Query Result Count:', result.rows.length);
 
     return NextResponse.json({
       success: true,
@@ -143,7 +161,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching sales data:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch sales data' },
+      { success: false, error: 'Gagal untuk fetch sales data' },
       { status: 500 }
     );
   }
@@ -220,9 +238,9 @@ export async function POST(request: NextRequest) {
     }
 
   } catch (error) {
-    console.error('Error inserting sales data:', error);
+    console.error('Error untuk insert sales data:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to insert sales data' },
+      { success: false, error: 'Gagal untuk insert sales data' },
       { status: 500 }
     );
   }

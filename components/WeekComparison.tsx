@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { WeekComparison, ComparisonYears, ComparisonWeeks, WeekComparisonProductDetail } from '@/types/sales';
 import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } from 'recharts';
+import { ChevronUpIcon, ChevronDownIcon } from 'lucide-react';
 
 interface WeekComparisonProps {
   data: WeekComparison[];
@@ -36,8 +37,12 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
   const currentWeekRangeLabel = formatWeekRange(comparisonWeeks?.currentYear ?? undefined);
 
   const weekOptions = Array.from(new Set(data.map(item => item.week))).sort((a, b) => a - b);
-  const [selectedWeek, setSelectedWeek] = useState<number | null>(null); // Default to null for "All Weeks"
-  const [selectedUnit, setSelectedUnit] = useState<string>('omzet'); // Default to omzet
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null); // Default ke null untuk "All Weeks"
+  const [selectedUnit, setSelectedUnit] = useState<string>('omzet'); // Default ke omzet
+  const [sortConfig, setSortConfig] = useState<{
+    key: keyof WeekComparisonProductDetail | 'product';
+    direction: 'asc' | 'desc';
+  } | null>(null);
 
   const unitOptions = [
     { value: 'omzet', label: 'Omzet (Nett)' },
@@ -48,7 +53,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
   ];
 
   useEffect(() => {
-    setSelectedWeek(null); // Default to "All Weeks"
+    setSelectedWeek(null); // Default ke "All Weeks"
   }, [data.length]);
 
   const getUnitLabel = (unit: string) => {
@@ -63,36 +68,24 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
     return value.toLocaleString('id-ID');
   };
 
-  const selectedWeekData = selectedWeek !== null ? data.find(item => item.week === selectedWeek) : undefined;
+  const handleSort = (key: keyof WeekComparisonProductDetail | 'product') => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
-  // Menjumlah total product data untuk semua minggu ketika "All Weeks" di pilih
-  const allWeeksProductDetails: WeekComparisonProductDetail[] = useMemo(() => {
-    const productMap = new Map<string, { previous: number; current: number }>();
-    
-    // Aggregate data all weeks
-    data.forEach(weekData => {
-      if (weekData.details) {
-        weekData.details.forEach(detail => {
-          const existing = productMap.get(detail.product) || { previous: 0, current: 0 };
-          productMap.set(detail.product, {
-            previous: existing.previous + detail.previousYear,
-            current: existing.current + detail.currentYear
-          });
-        });
-      }
-    });
-    
-    return Array.from(productMap.entries())
-      .map(([product, totals]) => ({
-        product,
-        previousYear: totals.previous,
-        currentYear: totals.current,
-        variance: totals.current - totals.previous,
-        variancePercentage: totals.previous > 0 ? ((totals.current - totals.previous) / totals.previous) * 100 : 0
-      }))
-      .filter(detail => detail.previousYear > 0 || detail.currentYear > 0)
-      .sort((a, b) => (b.currentYear + b.previousYear) - (a.currentYear + a.previousYear));
-  }, [data]);
+  const getSortIcon = (key: keyof WeekComparisonProductDetail | 'product') => {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <ChevronUpIcon className="w-4 h-4 text-gray-400" />;
+    }
+    return sortConfig.direction === 'asc' 
+      ? <ChevronUpIcon className="w-4 h-4 text-blue-600" />
+      : <ChevronDownIcon className="w-4 h-4 text-blue-600" />;
+  };
+
+  const selectedWeekData = selectedWeek !== null ? data.find(item => item.week === selectedWeek) : undefined;
 
   // Get all unique products dari all weeks data
   const allProductsInData: WeekComparisonProductDetail[] = useMemo(() => {
@@ -195,7 +188,7 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
     }
 
     return selectedWeekData.details.map((detail) => {
-        // Menghitung unit-specific values untuk minggun ini
+        // Menghitung unit-specific values untuk minggunya
         let unitPrevious: number;
         let unitCurrent: number;
         
@@ -213,21 +206,45 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
           }
         }
         
-        const unitVariance = unitCurrent - unitPrevious;
-        const unitVariancePercentage = unitPrevious > 0 ? (unitVariance / unitPrevious) * 100 : 0;
+        const variance = unitCurrent - unitPrevious;
+        const variancePercentage = unitPrevious > 0 ? (variance / unitPrevious) * 100 : 0;
         
         return {
-          ...detail,
+          product: detail.product,
           previousYear: Math.round(unitPrevious * 100) / 100,
           currentYear: Math.round(unitCurrent * 100) / 100,
-          variance: Math.round(unitVariance * 100) / 100,
-          variancePercentage: Math.round(unitVariancePercentage * 10) / 10
+          variance: Math.round(variance * 100) / 100,
+          variancePercentage: Math.round(variancePercentage * 10) / 10,
         };
-      }).sort((a, b) => {
-        // Mengurutkann mulai dari value tahun sekarang: Tinggi to Rendah
-        return b.currentYear - a.currentYear;
       });
-  }, [selectedWeek, selectedWeekData?.details, allProductsInData]);
+  }, [selectedWeekData, selectedUnit, allProductsInData]);
+
+  const sortedProductDetails = useMemo(() => {
+    if (!sortConfig || !productDetails) return productDetails || [];
+
+    return [...productDetails].sort((a, b) => {
+      let aValue: number | string;
+      let bValue: number | string;
+
+      if (sortConfig.key === 'product') {
+        aValue = a.product.toLowerCase();
+        bValue = b.product.toLowerCase();
+      } else {
+        aValue = a[sortConfig.key] as number;
+        bValue = b[sortConfig.key] as number;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return sortConfig.direction === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      }
+
+      return sortConfig.direction === 'asc' 
+        ? (aValue as number) - (bValue as number)
+        : (bValue as number) - (aValue as number);
+    });
+  }, [productDetails, sortConfig]);
 
   // Transform data untuk chart Recharts
   const chartData = data.map(item => ({
@@ -281,7 +298,19 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         </div>
 
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-700">Varians Mingguan</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-700">Varians Mingguan</h3>
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-green-500 rounded"></div>
+                <span className="text-green-600">Positif (+)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded"></div>
+                <span className="text-red-600">Negatif (-)</span>
+              </div>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -291,11 +320,14 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
                 formatter={(value: number | undefined) => formatPercentage(value)}
                 labelFormatter={(label) => `Week ${label}`}
               />
-              <Bar 
-                dataKey="variancePercentage" 
-                fill="#10b981"
-                name="Variance %"
-              />
+              <Bar dataKey="variancePercentage" name="Variance %">
+                {chartData.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.variancePercentage < 0 ? "#ef4444" : "#10b981"} 
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -341,16 +373,66 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produk</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{previousYearLabel}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{currentYearLabel}</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Variance</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Variance %</th>
+                <th 
+                  className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${
+                    sortConfig?.key === 'product' ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => handleSort('product')}
+                >
+                  <div className="flex items-center gap-2">
+                    Produk
+                    {getSortIcon('product')}
+                  </div>
+                </th>
+                <th 
+                  className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${
+                    sortConfig?.key === 'previousYear' ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => handleSort('previousYear')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    {previousYearLabel}
+                    {getSortIcon('previousYear')}
+                  </div>
+                </th>
+                <th 
+                  className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${
+                    sortConfig?.key === 'currentYear' ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => handleSort('currentYear')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    {currentYearLabel}
+                    {getSortIcon('currentYear')}
+                  </div>
+                </th>
+                <th 
+                  className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${
+                    sortConfig?.key === 'variance' ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => handleSort('variance')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Variance
+                    {getSortIcon('variance')}
+                  </div>
+                </th>
+                <th 
+                  className={`px-6 py-3 text-right text-xs font-medium uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors ${
+                    sortConfig?.key === 'variancePercentage' ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => handleSort('variancePercentage')}
+                >
+                  <div className="flex items-center justify-end gap-2">
+                    Variance %
+                    {getSortIcon('variancePercentage')}
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {productDetails.length > 0 ? (
-                productDetails.map((detail) => (
+              {sortedProductDetails.length > 0 ? (
+                sortedProductDetails.map((detail) => (
                   <tr key={detail.product} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{detail.product}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatUnitValue(detail.previousYear, selectedUnit)}</td>
@@ -387,11 +469,11 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         </div>
         <p className="text-sm text-gray-500 mt-2">
             {selectedWeek === null 
-              ? (productDetails.length > 0
-                  ? `Menampilkan ${productDetails.length} produk untuk ${getUnitLabel(selectedUnit)} dari ${previousYearLabel} vs ${currentYearLabel} (semua minggu).`
+              ? (sortedProductDetails.length > 0
+                  ? `Menampilkan ${sortedProductDetails.length} produk untuk ${getUnitLabel(selectedUnit)} dari ${previousYearLabel} vs ${currentYearLabel} (semua minggu).`
                   : `Tidak ada data produk untuk ditampilkan.`)
-              : (productDetails.length > 0
-                  ? `Menampilkan ${productDetails.length} produk untuk ${getUnitLabel(selectedUnit)} di Week ${selectedWeek}.`
+              : (sortedProductDetails.length > 0
+                  ? `Menampilkan ${sortedProductDetails.length} produk untuk ${getUnitLabel(selectedUnit)} di Week ${selectedWeek}.`
                   : `Tidak ada data untuk ${getUnitLabel(selectedUnit)} di Week ${selectedWeek}.`)
             }
           </p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { formatPercentage } from '@/lib/utils';
 import { Store, TrendingUp, Filter } from 'lucide-react';
@@ -31,6 +31,25 @@ interface OutletContributionSectionProps {
  */
 export default function OutletContributionSection({ data }: OutletContributionSectionProps) {
   const [selectedOutletType, setSelectedOutletType] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedProduct, setSelectedProduct] = useState<string>('all');
+
+  // // Debug: Log data yang diterima
+  // console.log('OutletContributionSection: Data yang diterima:', data);
+  // console.log('OutletContributionSection: Panjang outletData:', data?.outletData?.length || 0);
+  // if (data && data.outletData && data.outletData.length > 0) {
+  //   console.log('OutletContributionSection: Sample outletData:', data.outletData[0]);
+  //   console.log('OutletContributionSection: Sample outletData dengan product:', data.outletData.find(item => item.product));
+  // }
+
+  // Reset product filter ketika kategori berubah
+  useEffect(() => {
+    // console.log('OutletContributionSection: Category changed to:', selectedCategory);
+    // if (selectedCategory !== 'all') {
+    //   console.log('OutletContributionSection: Resetting product filter to "all"');
+    //   setSelectedProduct('all');
+    // }
+  }, [selectedCategory]);
 
   /**
    * Menghasilkan data unik tipe outlet untuk filter
@@ -51,18 +70,97 @@ export default function OutletContributionSection({ data }: OutletContributionSe
   }, [data]);
 
   /**
-   * Memfilter data berdasarkan tipe outlet yang dipilih
+   * Menghasilkan data unik kategori produk untuk filter
    */
-  const filteredData = useMemo(() => {
+  const categories = useMemo(() => {
     if (!data || !data.outletData) {
+      // console.log('OutletContributionSection: Tidak ada data tersedia untuk kategori produk');
       return [];
     }
     
-    return data.outletData.filter((item: OutletSalesData) => {
-      if (selectedOutletType === 'all') return true;
-      return item.outletType === selectedOutletType;
+    // console.log('OutletContributionSection: Memproses category dari ', data.outletData.length, 'outletData items');
+    
+    const categorySet = new Set<string>();
+    data.outletData.forEach((item: OutletSalesData) => {
+      if (item.category) {
+        categorySet.add(item.category);
+        // console.log('Found category:', item.category);
+      }
     });
-  }, [data, selectedOutletType]);
+    
+    const result = Array.from(categorySet).sort();
+    // console.log('OutletContributionSection: Final categories:', result);
+    return result;
+  }, [data]);
+
+  /**
+   * Menghasilkan data unik produk untuk filter
+   */
+  const products = useMemo(() => {
+    // console.log('OutletContributionSection: Products useMemo dipanggil');
+    if (!data || !data.outletData) {
+      // console.log('OutletContributionSection: Tidak ada data tersedia untuk product');
+      return [];
+    }
+    
+    // console.log('OutletContributionSection: Memproses product dari', data.outletData.length, 'outletData items');
+    
+    const productSet = new Set<string>();
+    
+    // Filter data berdasarkan kategori yang dipilih
+    const filteredDataForProducts = data.outletData.filter((item: OutletSalesData) => {
+      return selectedCategory === 'all' || item.category === selectedCategory;
+    });
+    
+    // console.log('OutletContributionSection: Filtered data for products:', filteredDataForProducts.length, 'items');
+    
+    filteredDataForProducts.forEach((item: OutletSalesData) => {
+      if (item.product) {
+        productSet.add(item.product);
+        // console.log('Found product:', item.product);
+      }
+    });
+    
+    const result = Array.from(productSet).sort();
+    // console.log('OutletContributionSection: Final products:', result);
+    return result;
+  }, [data, selectedCategory]);
+
+  /**
+   * Memfilter data berdasarkan tipe outlet, kategori, dan produk yang dipilih
+   */
+  const filteredData = useMemo(() => {
+    // console.log('OutletContributionSection: FilteredData useMemo dipanggil', {
+    //   selectedOutletType,
+    //   selectedCategory,
+    //   selectedProduct,
+    //   dataLength: data?.outletData?.length
+    // });
+    
+    if (!data || !data.outletData) {
+      // console.log('OutletContributionSection: Tidak ada data untuk filtering');
+      return [];
+    }
+    
+    const filtered = data.outletData.filter((item: OutletSalesData) => {
+      const outletMatch = selectedOutletType === 'all' || item.outletType === selectedOutletType;
+      const categoryMatch = selectedCategory === 'all' || item.category === selectedCategory;
+      const productMatch = selectedProduct === 'all' || item.product === selectedProduct;
+      const result = outletMatch && categoryMatch && productMatch;
+      
+      if (!result && (selectedOutletType !== 'all' || selectedCategory !== 'all' || selectedProduct !== 'all')) {
+        // console.log('Filtered out item:', {
+        //   item: { outletType: item.outletType, category: item.category, product: item.product },
+        //   matches: { outletMatch, categoryMatch, productMatch }
+        // });
+      }
+      
+      return result;
+    });
+    
+    // console.log('OutletContributionSection: Jumlah data yang terfilter:', filtered.length);
+    return filtered;
+  }, [data, selectedOutletType, selectedCategory, selectedProduct]);
 
   /**
    * Menghitung total DOZ Net dan kontribusi per minggu
@@ -166,20 +264,76 @@ export default function OutletContributionSection({ data }: OutletContributionSe
 
       {/* Filter Section */}
       <div className="mb-6">
-        <div className="flex items-center space-x-3">
-          <Filter className="h-4 w-4 text-gray-600" />
-          <label className="text-sm font-medium text-gray-700">Tipe Outlet:</label>
-          <select
-            value={selectedOutletType}
-            onChange={(e) => setSelectedOutletType(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-          >
-            <option value="all">Semua Tipe</option>
-            {outletTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
+        <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-6">
+          {/* Filter Tipe Outlet */}
+          <div className="flex items-center space-x-3">
+            <Filter className="h-4 w-4 text-gray-600" />
+            <label className="text-sm font-medium text-gray-700">Tipe Outlet:</label>
+            <select
+              value={selectedOutletType}
+              onChange={(e) => setSelectedOutletType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            >
+              <option value="all">Semua Tipe</option>
+              {outletTypes.map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter Kategori Produk */}
+          <div className="flex items-center space-x-3">
+            <Filter className="h-4 w-4 text-gray-600" />
+            <label className="text-sm font-medium text-gray-700">Kategori Produk:</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            >
+              <option value="all">Semua Kategori</option>
+              {categories.map(category => (
+                <option key={category} value={category}>{category}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Filter Produk */}
+          <div className="flex items-center space-x-3">
+            <Filter className="h-4 w-4 text-gray-600" />
+            <label className="text-sm font-medium text-gray-700">Produk:</label>
+            <select
+              value={selectedProduct}
+              onChange={(e) => setSelectedProduct(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm min-w-48"
+            >
+              <option value="all">Semua Produk</option>
+              {products.map(product => (
+                <option key={product} value={product}>{product}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Active Filter Info */}
+        {(selectedOutletType !== 'all' || selectedCategory !== 'all' || selectedProduct !== 'all') && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {selectedOutletType !== 'all' && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm">
+                Tipe: {selectedOutletType}
+              </span>
+            )}
+            {selectedCategory !== 'all' && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm">
+                Kategori: {selectedCategory}
+              </span>
+            )}
+            {selectedProduct !== 'all' && (
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-sm">
+                Produk: {selectedProduct}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}

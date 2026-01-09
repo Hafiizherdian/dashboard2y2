@@ -34,6 +34,7 @@ export default function Dashboard() {
   const [selectedWeek2, setSelectedWeek2] = useState<number>(0);
   const [productFilter, setProductFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
+  const [areaFilter, setAreaFilter] = useState('');
   const [availableAreas, setAvailableAreas] = useState<AreaConfig[]>([]);
   const [isLoadingAreas, setIsLoadingAreas] = useState(false);
   
@@ -63,7 +64,7 @@ export default function Dashboard() {
       currentYear: null
     }
   });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   const formatWeekRange = (range?: { start: number; end: number } | null) => {
     if (!range) {
@@ -87,9 +88,8 @@ export default function Dashboard() {
     return `Minggu 1-${week}`;
   };
 
-  // Fetch data dari database saat component mount
+  // Fetch daftar area yang tersedia saat component mount (tapi tidak query data)
   useEffect(() => {
-    loadData();
     loadAvailableAreas();
   }, []);
 
@@ -105,8 +105,8 @@ export default function Dashboard() {
       setAvailableAreas(result.data?.areas || []);
       
       // Reset area filter jika area yang dipilih tidak ada di list baru
-      if (cityFilter && !result.data?.areas?.some((area: any) => area.id === cityFilter)) {
-        setCityFilter('');
+      if (areaFilter && !result.data?.areas?.some((area: any) => area.id === areaFilter)) {
+        setAreaFilter('');
       }
     } catch (error) {
       console.error('Error loading areas:', error);
@@ -116,12 +116,12 @@ export default function Dashboard() {
     }
   };
 
-  // Auto-apply filter saat area berubah
+  // Auto-apply filter saat area berubah (jika ada area yang dipilih)
   useEffect(() => {
-    if (availableAreas.length > 0) {
+    if (availableAreas.length > 0 && areaFilter) {
       applyFilter();
     }
-  }, [cityFilter]);
+  }, [areaFilter]);
 
   const syncSelectedFilters = (data: SalesData) => {
     if (data.comparisonYears.previousYear !== null) {
@@ -166,6 +166,7 @@ export default function Dashboard() {
       setFilteredData(data);
       setProductFilter('');
       setCityFilter('');
+      setAreaFilter('');
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -199,6 +200,9 @@ export default function Dashboard() {
     if (cityFilter.trim()) {
       filters.city = cityFilter.trim();
     }
+    if (areaFilter.trim()) {
+      filters.area = areaFilter.trim();
+    }
 
     return filters;
   };
@@ -209,7 +213,8 @@ export default function Dashboard() {
     try {
       const filters = buildFilters();
       const data = await fetchSalesData(filters);
-      syncSelectedFilters(data);
+      // Jangan syncSelectedFilters saat apply filter agar tidak overwrite pilihan user
+      // syncSelectedFilters(data);
       setFilteredData(data);
     } catch (error) {
       console.error('Error applying filter:', error);
@@ -224,17 +229,34 @@ export default function Dashboard() {
     setSelectedWeek2(0);
     setProductFilter('');
     setCityFilter('');
+    setAreaFilter('');
     
-    setIsLoading(true);
-    try {
-      const data = await fetchSalesData();
-      syncSelectedFilters(data);
-      setFilteredData(data);
-    } catch (error) {
-      console.error('Error resetting filter:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Reset ke empty state tanpa query data
+    setFilteredData({
+      weeklyData: [],
+      quarterlyData: [],
+      weekComparisons: [],
+      l4wc4wData: {
+        l4wAverage: 0,
+        c4wAverage: 0,
+        variance: 0,
+        variancePercentage: 0
+      },
+      yearOnYearGrowth: {
+        previousYearTotal: 0,
+        currentYearTotal: 0,
+        variance: 0,
+        variancePercentage: 0
+      },
+      comparisonYears: {
+        previousYear: null,
+        currentYear: null
+      },
+      comparisonWeeks: {
+        previousYear: null,
+        currentYear: null
+      }
+    });
   };
 
   // Konfigurasi tab navigasi dengan label dan icon
@@ -281,14 +303,32 @@ export default function Dashboard() {
         // Tampilan Overview dengan metrik utama dan ringkasan performa
         return (
           <div className="space-y-6">
-            {(() => {
-              const prevYearLabel = filteredData.comparisonYears.previousYear ?? selectedYear1;
-              const currentYearLabel = filteredData.comparisonYears.currentYear ?? selectedYear2;
-              const growthLabel = filteredData.comparisonYears.previousYear !== null && filteredData.comparisonYears.currentYear !== null
-                ? `${filteredData.comparisonYears.previousYear} vs ${filteredData.comparisonYears.currentYear}`
-                : 'YoY';
+            {filteredData.weekComparisons.length === 0 ? (
+              // Empty state saat belum ada data yang di-load
+              <div className="text-center py-12">
+                <div className="bg-gray-50 rounded-lg p-8">
+                  <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Belum Ada Data</h3>
+                  <p className="text-gray-600 mb-4">
+                    Silakan pilih area dan terapkan filter untuk melihat data analisis penjualan
+                  </p>
+                  <div className="text-sm text-gray-500">
+                    <p>• Pilih area dari dropdown di atas</p>
+                    <p>• Atur filter periode tahun dan minggu</p>
+                    <p>• Klik "Terapkan Filter" untuk memuat data</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              // Tampilan normal saat ada data
+              (() => {
+                const prevYearLabel = filteredData.comparisonYears.previousYear ?? selectedYear1;
+                const currentYearLabel = filteredData.comparisonYears.currentYear ?? selectedYear2;
+                const growthLabel = filteredData.comparisonYears.previousYear !== null && filteredData.comparisonYears.currentYear !== null
+                  ? `${filteredData.comparisonYears.previousYear} vs ${filteredData.comparisonYears.currentYear}`
+                  : 'YoY';
 
-              return (
+                return (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div className="flex items-center justify-between">
@@ -362,9 +402,12 @@ export default function Dashboard() {
                 </div>
               </div> */}
             </div>
-              );
-            })()}
+                );
+              })()
+            )}
 
+            {filteredData.weekComparisons.length > 0 && (
+              <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6 shadow-sm">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Statistik Cepat</h3>
@@ -421,6 +464,8 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+              </>
+            )}
           </div>
         );
     }
@@ -440,8 +485,8 @@ export default function Dashboard() {
               <div className="flex items-center space-x-2">
                 <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter Area:</label>
                 <select
-                  value={cityFilter}
-                  onChange={(e) => setCityFilter(e.target.value)}
+                  value={areaFilter}
+                  onChange={(e) => setAreaFilter(e.target.value)}
                   disabled={isLoadingAreas || availableAreas.length === 0}
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm min-w-40"
                 >
@@ -493,11 +538,11 @@ export default function Dashboard() {
               </span>
             </>
           )}
-          {cityFilter.trim() && (
+          {areaFilter.trim() && (
             <>
               <span className="text-gray-500 mx-1">•</span>
               <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-orange-100 text-orange-800 font-medium text-sm">
-                Area: {availableAreas.find(area => area.id === cityFilter)?.name || cityFilter}
+                Area: {availableAreas.find(area => area.id === areaFilter)?.name || areaFilter}
               </span>
             </>
           )}
@@ -518,6 +563,7 @@ export default function Dashboard() {
             <option value={2023}>2023</option>
             <option value={2024}>2024</option>
             <option value={2025}>2025</option>
+            <option value={2026}>2026</option>
           </select>
         </div>
 
@@ -547,6 +593,7 @@ export default function Dashboard() {
             <option value={2023}>2023</option>
             <option value={2024}>2024</option>
             <option value={2025}>2025</option>
+            <option value={2026}>2026</option>
           </select>
         </div>
 
@@ -571,7 +618,7 @@ export default function Dashboard() {
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-wrap items-center gap-3 space-x-3 sm:justify-end">
+      <div className="flex flex-wrap items-center gap-2 space-x-1 sm:justify-end">
         <button
           onClick={resetFilter}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 sm:px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -589,7 +636,7 @@ export default function Dashboard() {
   </div>
 </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-8">
         <div className="border-b border-gray-200 mb-8">
           <nav className="-mb-px flex space-x-2 sm:space-x-4 lg:space-x-8 overflow-x-auto">
             {tabs.map((tab) => {

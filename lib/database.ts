@@ -24,11 +24,29 @@ function getOmzetValue(record: any): number {
   return normalized;
 }
 
+function getDosNetValue(record: any): number {
+  if (!record) {
+    return 0;
+  }
+
+  if (typeof record.dosNetValue === 'number') {
+    return record.dosNetValue;
+  }
+
+  // Gunakan field units_dos yang ada di database
+  const raw = record.units_dos || 0;
+  const numeric = typeof raw === 'number' ? raw : parseFloat(raw ?? '0');
+  const normalized = Number.isFinite(numeric) ? numeric : 0;
+  record.dosNetValue = normalized;
+  return normalized;
+}
+
 interface FetchFilters {
   year1?: number;
   year2?: number;
   product?: string;
   city?: string;
+  area?: string;
   weekStart1?: number;
   weekEnd1?: number;
   weekStart2?: number;
@@ -40,6 +58,7 @@ interface FetchFilters {
  */
 export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData> {
   try {
+    console.log('🔍 fetchSalesData - Filters received:', filters);
 
     // Fetch raw data
     const params = new URLSearchParams();
@@ -68,27 +87,32 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
     if (filters?.city && filters.city.trim().length > 0) {
       params.append('city', filters.city.trim());
     }
+    if (filters?.area && filters.area.trim().length > 0) {
+      params.append('area', filters.area.trim());
+    }
 
     params.append('limit', '1000000');
+
+    console.log('📡 API Request URL:', '/api/sales?' + params.toString());
 
     const response = await fetch('/api/sales?' + params.toString());
 
     if (!response.ok) {
-      throw new Error('Failed to fetch sales data');
+      throw new Error('Gagal untuk fetch sales data');
     }
 
     const result = await response.json();
     const records = result.data || [];
 
     // Process data untuk dashboard components
-    const processedData = processSalesRecords(records, filters);
+    const processedData = await processSalesRecords(records, filters);
 
     return processedData;
 
   } catch (error) {
     console.error('Error fetching sales data:', error);
     
-    // Return empty data structure if database fails
+    // Return empty data structure jika database gagal
     return {
       weeklyData: [],
       quarterlyData: generateEmptyQuarterlyData(),
@@ -108,7 +132,9 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
 /**
  * Process raw sales records menjadi dashboard data
  */
-function processSalesRecords(records: any[], filters?: FetchFilters): SalesData {
+async function processSalesRecords(records: any[], filters?: FetchFilters): Promise<SalesData> {
+  const areaId = filters?.area;
+  
   if (records.length === 0) {
     return {
       weeklyData: [],
@@ -125,7 +151,7 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
     };
   }
 
-  // Group data by week and year
+  // Group data berdasarkan week dan year
   const weeklyMap = new Map<string, any[]>();
   const yearSet = new Set<number>();
   const weekSetByYear = new Map<number, Set<number>>();
@@ -195,11 +221,11 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
     currentYear: currentYearWeekRange
   };
 
-  // Generate weekly data
+  // Generate data mingguan
   const weeklyData: WeeklySales[] = [];
   const weekComparisons: WeekComparison[] = [];
 
-  // Get all unique products from both years
+  // Get all unique products dari kedua tahun
   const allProductsSet = new Set<string>();
   records.forEach(record => {
     if (record.product) {
@@ -207,7 +233,7 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
     }
   });
 
-  // Process weekly comparisons
+  // Process perbandingan mingguan
   const prevRange = comparisonWeeks.previousYear;
   const currRange = comparisonWeeks.currentYear;
 
@@ -227,7 +253,7 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
         units_dos: { previous: number; current: number };
       }>();
 
-    // Initialize all products with 0 values
+    // Initialize all products dengan 0 values
     allProductsSet.forEach(product => {
       productTotalsMap.set(product, { 
         previous: 0, 
@@ -316,7 +342,7 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
         } satisfies WeekComparisonProductDetail;
       })
       .sort((a, b) => {
-        // Sort by current year values: highest to lowest
+        // Sort berdasarkan tahun yang di pilih : tinggi ke rendah
         return b.currentYear - a.currentYear;
       });
 
@@ -331,7 +357,7 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
       });
     }
 
-    // Add weekly data
+    // Add data mingguan
     if (currYearSales > 0 && currentYear !== undefined && currYearInRange) {
       weeklyData.push({
         week,
@@ -350,8 +376,8 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
     }
   }
 
-  // Generate quarterly data
-  const quarterlyData = generateQuarterlyData(records, currentYear ?? sortedYears[sortedYears.length - 1]);
+  // Generate quarterly data dengan target dari area
+  const quarterlyData = await generateQuarterlyData(records, currentYear ?? sortedYears[sortedYears.length - 1], areaId);
 
   // Generate L4W vs C4W data
   const l4wc4wData = generateL4WC4WData(records, currentYear);
@@ -375,11 +401,28 @@ function processSalesRecords(records: any[], filters?: FetchFilters): SalesData 
 }
 
 /**
- * Generate quarterly data dari records
+ * Generate quarterly data dari records dengan target dari area
  */
-function generateQuarterlyData(records: any[], year: number): QuarterlyData[] {
+async function generateQuarterlyData(records: any[], year: number, areaId?: string): Promise<QuarterlyData[]> {
   const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
   const quarterlyData: QuarterlyData[] = [];
+
+  // Get area targets jika areaId disediakan
+  let areaTargets: { [key: string]: number } = {};
+  if (areaId) {
+    try {
+      const areasResponse = await fetch('/api/areas');
+      if (areasResponse.ok) {
+        const areasResult = await areasResponse.json();
+        const area = areasResult.data?.areas?.find((a: any) => a.id === areaId);
+        if (area?.quarterlyTargets) {
+          areaTargets = area.quarterlyTargets;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching area targets:', error);
+    }
+  }
 
   quarters.forEach((quarter, index) => {
     const startWeek = index * 13 + 1;
@@ -389,8 +432,9 @@ function generateQuarterlyData(records: any[], year: number): QuarterlyData[] {
       record.year === year && record.week >= startWeek && record.week <= endWeek
     );
 
-    const actual = quarterRecords.reduce((sum, record) => sum + getOmzetValue(record), 0);
-    const target = actual > 0 ? actual * 1.1 : 100000; // Estimated target
+    const actual = quarterRecords.reduce((sum, record) => sum + getDosNetValue(record), 0);
+    // Gunakan target dari area atau fallback ke estimasi
+    const target = areaTargets[quarter] || (actual > 0 ? actual * 1.1 : 1000);
     const variance = actual - target;
 
     quarterlyData.push({
@@ -515,45 +559,73 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
  * Generate outlet contribution data dari records
  */
 function generateOutletData(records: any[]): OutletSalesData[] {
-  const outletMap = new Map<string, Map<number, number>>(); // outletType -> (week -> dozNet)
+  // console.log('generateOutletData: Input records count:', records.length);
+  // console.log('generateOutletData: Sample record:', records[0]);
+  
+  const outletMap = new Map<string, Map<number, Map<string, Map<string, number>>>>(); // outletType -> (week -> (category -> (product -> dozNet)))
   
   records.forEach(record => {
     const outletType = record.customer_type || 'Unknown'; 
     const week = Number(record.week) || 0;
     const dozNet = Number(record.units_dos) || 0; // Menggunakan units_dos sebagai DOZ Net
+    const category = record.category || 'Unknown';
+    const product = record.product || 'Unknown';
     const year = record.year || new Date(record.date).getFullYear();
+    
+    // console.log(`Processing record: outletType=${outletType}, week=${week}, category=${category}, product=${product}, dozNet=${dozNet}`);
     
     if (!outletMap.has(outletType)) {
       outletMap.set(outletType, new Map());
     }
     
     const weekMap = outletMap.get(outletType)!;
-    const current = weekMap.get(week) || 0;
-    weekMap.set(week, current + dozNet);
+    if (!weekMap.has(week)) {
+      weekMap.set(week, new Map());
+    }
+    
+    const categoryMap = weekMap.get(week)!;
+    if (!categoryMap.has(category)) {
+      categoryMap.set(category, new Map());
+    }
+    
+    const productMap = categoryMap.get(category)!;
+    const current = productMap.get(product) || 0;
+    productMap.set(product, current + dozNet);
   });
   
   const outletData: OutletSalesData[] = [];
   
   outletMap.forEach((weekMap, outletType) => {
-    weekMap.forEach((dozNet, week) => {
-      // Get year from any record with this week (assuming same year for all records)
+    weekMap.forEach((categoryMap, week) => {
+      // Get year dari segala record dengan minggu yang dipilih
       const sampleRecord = records.find(r => Number(r.week) === week);
       const year = sampleRecord?.year || new Date().getFullYear();
       
-      outletData.push({
-        week,
-        year,
-        outletType,
-        dozNet
+      // Create entry untuk setiap kombinasi category dan product 
+      categoryMap.forEach((productMap, category) => {
+        productMap.forEach((dozNet, product) => {
+          // console.log(`Creating outletData: ${outletType}, ${category}, ${product}, W${week}, dozNet=${dozNet}`);
+          outletData.push({
+            week,
+            year,
+            outletType,
+            category,
+            product,
+            dozNet
+          });
+        });
       });
     });
   });
+  
+  // console.log('generateOutletData: Output outletData count:', outletData.length);
+  // console.log('generateOutletData: Sample outletData:', outletData[0]);
   
   return outletData;
 }
 
 /**
- * Generate year-on-year growth data
+ * Generate pertumbuhan data year-on-year
  */
 function generateYearOnYearGrowth(records: any[], previousYear: number, currentYear: number): YearOnYearGrowth {
   const previousYearRecords = records.filter(record => record.year === previousYear);

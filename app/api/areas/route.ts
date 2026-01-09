@@ -1,7 +1,7 @@
 /**
  * API route untuk mengambil daftar area yang tersedia
  * Endpoint: GET /api/areas, POST /api/areas
- * Returns: Array of area configurations
+ * Returns: Array dari konfigurasi area
  */
 
 import { NextRequest, NextResponse } from 'next/server';

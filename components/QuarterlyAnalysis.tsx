@@ -1,7 +1,7 @@
 'use client';
 
 import { QuarterlyData } from '@/types/sales';
-import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
+import { formatQuantity, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface QuarterlyAnalysisProps {
@@ -43,9 +43,9 @@ export default function QuarterlyAnalysisComponent({ data }: QuarterlyAnalysisPr
             <BarChart data={performanceData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="quarter" />
-              <YAxis tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
+              <YAxis tickFormatter={(value) => `${(value / 1000).toFixed(0)}K DOS`} />
               <Tooltip 
-                formatter={(value: number | undefined) => formatCurrency(value)}
+                formatter={(value: number | undefined) => formatQuantity(value)}
                 labelFormatter={(label) => `Quarter ${label}`}
               />
               <Bar dataKey="target" fill="#94a3b8" name="Target" />
@@ -72,7 +72,7 @@ export default function QuarterlyAnalysisComponent({ data }: QuarterlyAnalysisPr
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number | undefined) => formatCurrency(value)} />
+              <Tooltip formatter={(value: number | undefined) => formatQuantity(value)} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -88,18 +88,18 @@ export default function QuarterlyAnalysisComponent({ data }: QuarterlyAnalysisPr
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Target:</span>
-                  <span className="text-sm font-medium text-gray-800">{formatCurrency(quarter.target)}</span>
+                  <span className="text-sm font-medium text-gray-800">{formatQuantity(quarter.target)}</span>
                 </div>
                 
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Actual:</span>
-                  <span className="text-sm font-medium text-gray-800">{formatCurrency(quarter.actual)}</span>
+                  <span className="text-sm font-medium text-gray-800">{formatQuantity(quarter.actual)}</span>
                 </div>
                 
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">Variance:</span>
                   <span className={`text-sm font-medium ${getVarianceColor(quarter.variance)}`}>
-                    {formatCurrency(quarter.variance)}
+                    {formatQuantity(quarter.variance)}
                   </span>
                 </div>
                 
@@ -140,10 +140,10 @@ export default function QuarterlyAnalysisComponent({ data }: QuarterlyAnalysisPr
               {data.map((quarter) => (
                 <tr key={quarter.quarter} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{quarter.quarter}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(quarter.target)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(quarter.actual)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatQuantity(quarter.target)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatQuantity(quarter.actual)}</td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(quarter.variance)}`}>
-                    {formatCurrency(quarter.variance)}
+                    {formatQuantity(quarter.variance)}
                   </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(quarter.variancePercentage)}`}>
                     {formatPercentage(quarter.variancePercentage)}

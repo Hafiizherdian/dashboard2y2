@@ -156,7 +156,7 @@ export default function L4WC4WAnalysisComponent({ data }: L4WC4WAnalysisProps) {
           <p className="text-xs text-purple-600 mt-1">Selisih absolut</p>
         </div>
 
-        {/* Growth Rate Card - Dynamic styling based on performance */}
+        {/* Growth Rate Card - Dynamic styling berdarakan performa*/}
         <div className={`${data.variancePercentage >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} rounded-lg p-4 border`}>
           <h4 className={`text-sm font-medium ${data.variancePercentage >= 0 ? 'text-green-600' : 'text-red-600'} mb-2`}>
             Laju Pertumbuhan

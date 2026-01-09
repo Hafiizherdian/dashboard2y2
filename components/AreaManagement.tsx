@@ -14,7 +14,13 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
   const [newArea, setNewArea] = useState<Partial<AreaConfig>>({
     id: '',
     name: '',
-    description: ''
+    description: '',
+    quarterlyTargets: {
+      Q1: 0,
+      Q2: 0,
+      Q3: 0,
+      Q4: 0
+    }
   });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -28,7 +34,7 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
       const response = await fetch('/api/areas');
       console.log('AreaManagement: Areas response status:', response.status);
       if (!response.ok) {
-        throw new Error('Failed to fetch areas');
+        throw new Error('Gagal untuk fetch areas');
       }
       const result = await response.json();
       console.log('AreaManagement: Areas result:', result);
@@ -60,7 +66,7 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
         setAreas(result.data?.areas || []);
         setEditingArea(null);
         onAreasChange?.(result.data?.areas || []);
-        console.log('Area saved successfully');
+        console.log('Area berhasil disimpan');
       } else {
         alert(`Gagal menyimpan area: ${result.error}`);
       }
@@ -80,7 +86,13 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
     const areaToAdd: AreaConfig = {
       id: newArea.id!,
       name: newArea.name!,
-      description: newArea.description || ''
+      description: newArea.description || '',
+      quarterlyTargets: newArea.quarterlyTargets || {
+        Q1: 0,
+        Q2: 0,
+        Q3: 0,
+        Q4: 0
+      }
     };
 
     try {
@@ -105,9 +117,15 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
         setNewArea({
           id: '',
           name: '',
-          description: ''
+          description: '',
+          quarterlyTargets: {
+            Q1: 0,
+            Q2: 0,
+            Q3: 0,
+            Q4: 0
+          }
         });
-        console.log('Area added successfully');
+        console.log('Area berhasil ditambahkan');
       } else {
         alert(`Gagal menambah area: ${result.error}`);
       }
@@ -136,7 +154,7 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
         if (result.success) {
           setAreas(result.data?.areas || []);
           onAreasChange?.(result.data?.areas || []);
-          console.log('Area deleted successfully');
+          console.log('Area berhasil dihapus');
         } else {
           alert(`Gagal menghapus area: ${result.error}`);
         }
@@ -195,6 +213,39 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Target Kuartal (DOS)</label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {['Q1', 'Q2', 'Q3', 'Q4'].map((quarter, index) => {
+                      const currentValue = editingArea.quarterlyTargets?.[quarter as keyof typeof editingArea.quarterlyTargets] || 0;
+                      return (
+                        <div key={quarter}>
+                          <label className="block text-xs text-gray-600 mb-1">{quarter}</label>
+                          <input
+                            type="number"
+                            value={currentValue}
+                            onChange={(e) => {
+                              const newTargets = {
+                                Q1: editingArea.quarterlyTargets?.Q1 || 0,
+                                Q2: editingArea.quarterlyTargets?.Q2 || 0,
+                                Q3: editingArea.quarterlyTargets?.Q3 || 0,
+                                Q4: editingArea.quarterlyTargets?.Q4 || 0
+                              };
+                              newTargets[quarter as keyof typeof newTargets] = Number(e.target.value) || 0;
+                              setEditingArea({
+                                ...editingArea,
+                                quarterlyTargets: newTargets
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="0"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <button
                     onClick={() => handleSaveArea(editingArea)}
@@ -219,10 +270,30 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-800">{area.name}</h3>
                     <p className="text-sm text-gray-600">{area.description}</p>
+                    {area.quarterlyTargets && (
+                      <div className="mt-2">
+                        <p className="text-xs text-gray-500 font-medium mb-1">Target Kuartal:</p>
+                        <div className="flex gap-3 text-xs">
+                          {Object.entries(area.quarterlyTargets).map(([quarter, target]) => (
+                            <span key={quarter} className="bg-gray-100 px-2 py-1 rounded">
+                              {quarter}: {(target as number).toLocaleString('id-ID')} DOS
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setEditingArea(area)}
+                      onClick={() => setEditingArea({
+                        ...area,
+                        quarterlyTargets: area.quarterlyTargets || {
+                          Q1: 0,
+                          Q2: 0,
+                          Q3: 0,
+                          Q4: 0
+                        }
+                      })}
                       className="p-2 text-blue-600 hover:text-blue-800"
                     >
                       <Edit2 className="h-4 w-4" />
@@ -278,6 +349,39 @@ export default function AreaManagement({ onAreasChange }: AreaManagementProps) {
               placeholder="Deskripsi area (opsional)"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Target Kuartal (DOS)</label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {['Q1', 'Q2', 'Q3', 'Q4'].map((quarter, index) => {
+                const currentValue = newArea.quarterlyTargets?.[quarter as keyof typeof newArea.quarterlyTargets] || 0;
+                return (
+                  <div key={quarter}>
+                    <label className="block text-xs text-gray-600 mb-1">{quarter}</label>
+                    <input
+                      type="number"
+                      value={currentValue}
+                      onChange={(e) => {
+                        const newTargets = {
+                          Q1: newArea.quarterlyTargets?.Q1 || 0,
+                          Q2: newArea.quarterlyTargets?.Q2 || 0,
+                          Q3: newArea.quarterlyTargets?.Q3 || 0,
+                          Q4: newArea.quarterlyTargets?.Q4 || 0
+                        };
+                        newTargets[quarter as keyof typeof newTargets] = Number(e.target.value) || 0;
+                        setNewArea({
+                          ...newArea,
+                          quarterlyTargets: newTargets
+                        });
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <button

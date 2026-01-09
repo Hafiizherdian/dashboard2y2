@@ -28,7 +28,7 @@ export async function POST() {
       FROM sales_records
     `);
     
-    console.log('Current max values:', checkResult.rows[0]);
+    // console.log('Current max values:', checkResult.rows[0]);
     
     // jika data melebihi batas DECIMAL(10,3), gunakan DECIMAL(15,3)
     const maxValues = checkResult.rows[0];
@@ -39,7 +39,7 @@ export async function POST() {
       (maxValues.max_dos && maxValues.max_dos > 9999999.999);
     
     const precision = needsLargerPrecision ? 'DECIMAL(15,3)' : 'DECIMAL(10,3)';
-    console.log(`Using precision: ${precision}`);
+    // console.log(`Using precision: ${precision}`);
     
     // Ubah kolom unit untuk mendukung nilai desimal dengan presisi yang sesuai
     await client.query(`

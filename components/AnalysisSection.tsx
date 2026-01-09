@@ -79,10 +79,10 @@ export default function AnalysisSection({ data }: AnalysisSectionProps) {
         setSaveStatus('success');
         setTimeout(() => setSaveStatus('idle'), 3000);
       } else {
-        throw new Error('Failed to save analysis');
+        throw new Error('Gagal untuk save analysis');
       }
     } catch (error) {
-      console.error('Error saving analysis:', error);
+      console.error('Error menyimpan analysis:', error);
       setSaveStatus('error');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } finally {

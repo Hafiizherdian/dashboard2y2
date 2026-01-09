@@ -18,12 +18,12 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File;
     const selectedArea = formData.get('area') as string;
     
-    console.log('Upload request received:', {
-      fileName: file?.name,
-      fileSize: file?.size,
-      fileType: file?.type,
-      selectedArea: selectedArea
-    });
+    // console.log('Upload request received:', {
+    //   fileName: file?.name,
+    //   fileSize: file?.size,
+    //   fileType: file?.type,
+    //   selectedArea: selectedArea
+    // });
     
     if (!file) {
       return NextResponse.json(
@@ -39,15 +39,15 @@ export async function POST(request: NextRequest) {
       'text/csv'
     ];
 
-    console.log('File type validation:', {
-      fileType: file.type,
-      allowedTypes,
-      isValid: allowedTypes.includes(file.type)
-    });
+    // console.log('File type validation:', {
+    //   fileType: file.type,
+    //   allowedTypes,
+    //   isValid: allowedTypes.includes(file.type)
+    // });
 
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { success: false, error: `Invalid file type: ${file.type}. Only Excel and CSV files are allowed` },
+        { success: false, error: `Tipe file tidak valid:  ${file.type}. Hanya Excel dan CSV file yang diterima` },
         { status: 400 }
       );
     }
@@ -72,26 +72,26 @@ export async function POST(request: NextRequest) {
 
       // Memproses file berdasarkan tipe
       if (file.type === 'text/csv') {
-        console.log('Processing CSV file...');
+        // console.log('Processing CSV file...');
         data = await processCSVFile(tempPath);
       } else {
-        console.log('Processing Excel file...');
+        // console.log('Processing Excel file...');
         data = await processExcelFile(buffer);
       }
 
-      console.log('File processed successfully:', {
-        totalRows: data.length,
-        sampleRow: data[0]
-      });
+      // console.log('File processed successfully:', {
+      //   totalRows: data.length,
+      //   sampleRow: data[0]
+      // });
 
       // Data di proses dan di validasi
       const processedData = processSalesData(data, selectedArea);
       
-      console.log('Data validation completed:', {
-        totalRows: data.length,
-        validRows: processedData.length,
-        invalidRows: data.length - processedData.length
-      });
+      // console.log('Data validation completed:', {
+      //   totalRows: data.length,
+      //   validRows: processedData.length,
+      //   invalidRows: data.length - processedData.length
+      // });
       
       if (processedData.length === 0) {
         return NextResponse.json(
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
 }
 
 async function processExcelFile(buffer: Buffer): Promise<any[]> {
-  console.log('Memulai proses Excel dengan xlsx library dari buffer...');
+  // console.log('Memulai proses Excel dengan xlsx library dari buffer...');
   
   try {
     // membaca Excel file langsung dari buffer (no file path issues)
@@ -225,7 +225,7 @@ async function processExcelFile(buffer: Buffer): Promise<any[]> {
       blankrows: false
     });
     
-    console.log(`Excel processing completed: ${data.length} rows`);
+    // console.log(`Excel processing completed: ${data.length} rows`);
     return data;
     
   } catch (error) {
@@ -253,13 +253,13 @@ async function processCSVFile(filePath: string): Promise<any[]> {
 
         results.push(data);
         
-        // Log beberapa row awal untuk debugging
-        if (results.length <= 2) {
-          console.log(`Row ${results.length}:`, data);
-        }
+        // // Log beberapa row awal untuk debugging
+        // if (results.length <= 2) {
+        //   console.log(`Row ${results.length}:`, data);
+        // }
       })
       .on('end', () => {
-        console.log(`CSV processed: ${results.length} data rows found`);
+        // console.log(`CSV processed: ${results.length} data rows found`);
         resolve(results);
       })
       .on('error', (error) => reject(error));
@@ -284,13 +284,45 @@ const INDONESIAN_MONTH_TRANSLATIONS: Record<string, string> = {
 const INDONESIAN_DAY_PREFIX = /^(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)\s*,\s*/i;
 const MONTH_TRANSLATION_REGEX = new RegExp(`\\b(${Object.keys(INDONESIAN_MONTH_TRANSLATIONS).join('|')})\\b`, 'gi');
 
-function parseSalesDate(rawValue: string | Date): Date | null {
+// Fungsi untuk menentukan tahun yang benar berdasarkan minggu
+function getCorrectYearForWeek(week: number, parsedDate: Date): number {
+  const dateYear = parsedDate.getFullYear();
+  const dateMonth = parsedDate.getMonth(); // 0-11 (Jan-Dec)
+  const dateDay = parsedDate.getDate();
+  
+  // W52 (minggu 52) biasanya Desember - jika minggu 52 tapi bulan Januari, kemungkinan salah tahun
+  if (week === 52 && dateMonth === 0) { // Januari
+    return dateYear - 1; // Kembali ke tahun sebelumnya
+  }
+  
+  // W1 (minggu 1) bisa dimulai dari Desember tahun sebelumnya
+  // Jika W1 dan bulan Desember (11), kemungkinan ini adalah minggu pertama untuk tahun berikutnya
+  if (week === 1 && dateMonth === 11) { // Desember
+    // Jika tanggal akhir Desember (misal 28-31), ini kemungkinan W1 untuk tahun berikutnya
+    if (dateDay >= 28) {
+      return dateYear + 1; // Maju ke tahun berikutnya
+    }
+    // Jika tanggal awal Desember, ini mungkin W1 tahun yang sama (error data)
+    // Tapi untuk safety, kita asumsikan tahun berikutnya
+    return dateYear + 1;
+  }
+  
+  return dateYear;
+}
+
+function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
   if (!rawValue) {
     return null;
   }
 
   // Handle Date objects dari Excel
   if (rawValue instanceof Date) {
+    if (week !== undefined) {
+      const correctedYear = getCorrectYearForWeek(week, rawValue);
+      const correctedDate = new Date(rawValue);
+      correctedDate.setFullYear(correctedYear);
+      return correctedDate;
+    }
     return rawValue;
   }
 
@@ -316,6 +348,10 @@ function parseSalesDate(rawValue: string | Date): Date | null {
 
   let parsed = new Date(normalized);
   if (!isNaN(parsed.getTime())) {
+    if (week !== undefined) {
+      const correctedYear = getCorrectYearForWeek(week, parsed);
+      parsed.setFullYear(correctedYear);
+    }
     return parsed;
   }
 
@@ -327,7 +363,14 @@ function parseSalesDate(rawValue: string | Date): Date | null {
     const month = parseInt(monthStr, 10) - 1;
     const day = parseInt(dayStr, 10);
     parsed = new Date(year, month, day);
-    return isNaN(parsed.getTime()) ? null : parsed;
+    if (!isNaN(parsed.getTime())) {
+      if (week !== undefined) {
+        const correctedYear = getCorrectYearForWeek(week, parsed);
+        parsed.setFullYear(correctedYear);
+      }
+      return parsed;
+    }
+    return null;
   }
 
   // Try YYYY/MM/DD or YYYY-MM-DD formats
@@ -338,7 +381,14 @@ function parseSalesDate(rawValue: string | Date): Date | null {
     const month = parseInt(monthStr, 10) - 1;
     const day = parseInt(dayStr, 10);
     parsed = new Date(year, month, day);
-    return isNaN(parsed.getTime()) ? null : parsed;
+    if (!isNaN(parsed.getTime())) {
+      if (week !== undefined) {
+        const correctedYear = getCorrectYearForWeek(week, parsed);
+        parsed.setFullYear(correctedYear);
+      }
+      return parsed;
+    }
+    return null;
   }
 
   return null;
@@ -449,7 +499,7 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
       }
 
       const rawDate = row['Tanggal'] || row['Date'] || '';
-      const parsedDate = parseSalesDate(rawDate);
+      const parsedDate = parseSalesDate(rawDate, week);
       if (!parsedDate) {
         console.warn('Skipping row due to invalid date format:', {
           rawDate,
@@ -485,17 +535,34 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
       // Memvalidasi field yang diperlukan
       if (record.product && record.customer && Number.isFinite(record.omzet) && !isNaN(record.week)) {
         processed.push(record);
+        
+        // // Log untuk debugging cross-year corrections
+        // const originalDate = new Date(rawDate);
+        // if (originalDate.getFullYear() !== parsedDate.getFullYear()) {
+        //   console.log('Cross-year correction applied during upload:', {
+        //     week,
+        //     originalDate: originalDate.toISOString(),
+        //     correctedDate: parsedDate.toISOString(),
+        //     originalMonth: originalDate.getMonth() + 1,
+        //     originalDay: originalDate.getDate(),
+        //     correctedYear: parsedDate.getFullYear(),
+        //     product: record.product,
+        //     customer: record.customer,
+        //     reason: week === 1 && originalDate.getMonth() === 11 ? 'W1 starting in December' : 
+        //            week === 52 && originalDate.getMonth() === 0 ? 'W52 in January' : 'Other'
+        //   });
+        // }
       } else {
-        // Log kegagalan memvalidasi file untuk debug
-        if (record.product || record.customer || record.omzet !== 0) {
-          console.log('Validation failed for row:', {
-            product: record.product,
-            customer: record.customer,
-            omzet: record.omzet,
-            week: record.week,
-            area: record.area
-          });
-        }
+        // // Log kegagalan memvalidasi file untuk debug
+        // if (record.product || record.customer || record.omzet !== 0) {
+        //   console.log('Validation failed for row:', {
+        //     product: record.product,
+        //     customer: record.customer,
+        //     omzet: record.omzet,
+        //     week: record.week,
+        //     area: record.area
+        //   });
+        // }
       }
     } catch (error) {
       console.warn('Error processing row:', error);
@@ -503,9 +570,9 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
     }
   }
 
-  console.log(`Processed ${processed.length} valid records from ${data.length} total rows`);
-  if (selectedArea) {
-    console.log(`All records assigned to area: ${selectedArea}`);
-  }
+  // console.log(`Processed ${processed.length} valid records from ${data.length} total rows`);
+  // if (selectedArea) {
+  //   console.log(`All records assigned to area: ${selectedArea}`);
+  // }
   return processed;
 }

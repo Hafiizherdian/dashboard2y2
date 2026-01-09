@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching stats:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch statistics' },
+      { success: false, error: 'Gagal untuk fetch statistics' },
       { status: 500 }
     );
   }

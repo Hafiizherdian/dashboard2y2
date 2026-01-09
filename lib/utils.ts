@@ -41,6 +41,16 @@ export function formatNumber(value: number): string {
 }
 
 /**
+ * Format angka ke quantity dalam dozen
+ * @param value - Nilai yang akan diformat (bisa undefined)
+ * @returns {string} Format quantity dalam dozen
+ */
+export function formatQuantity(value: number | undefined): string {
+  if (value === undefined) return '0 DOS';
+  return `${formatNumber(value)} DOS`;
+}
+
+/**
  * Format angka ke persentase dengan tanda + untuk nilai positif
  * @param value - Nilai persentase (bisa undefined)
  * @returns {string} Format persentase dengan tanda +/- jika perlu
