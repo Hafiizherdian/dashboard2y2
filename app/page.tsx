@@ -21,6 +21,7 @@ import OutletContributionSection from '@/components/OutletContributionSection';
 import { fetchSalesData } from '@/lib/database';
 import { SalesData } from '@/types/sales';
 import { AreaConfig } from '@/lib/areaConfig';
+import { getVarianceColor } from '@/lib/utils';
 import { TrendingUp, Calendar, BarChart3, PieChart, Activity, FileText, Store } from 'lucide-react';
 
 export default function Dashboard() {
@@ -46,6 +47,7 @@ export default function Dashboard() {
     l4wc4wData: {
       l4wAverage: 0,
       c4wAverage: 0,
+      c1wValue: 0,
       variance: 0,
       variancePercentage: 0
     },
@@ -239,6 +241,7 @@ export default function Dashboard() {
       l4wc4wData: {
         l4wAverage: 0,
         c4wAverage: 0,
+        c1wValue:0,
         variance: 0,
         variancePercentage: 0
       },
@@ -372,7 +375,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-600 text-sm font-medium">Pertumbuhan YoY ({growthLabel})</p>
-                    <p className="text-2xl font-bold mt-1 text-gray-900">
+                    <p className={`text-2xl font-bold mt-1 ${getVarianceColor(filteredData.yearOnYearGrowth.variancePercentage)}`}>
                       {filteredData.yearOnYearGrowth.variancePercentage >= 0 ? '+' : ''}
                       {filteredData.yearOnYearGrowth.variancePercentage.toFixed(1)}%
                     </p>
@@ -414,11 +417,15 @@ export default function Dashboard() {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Minggu Dianalisis</span>
-                    <span className="text-sm font-medium text-gray-800">52 Minggu</span>
+                    <span className="text-sm font-medium text-gray-800">
+                      {filteredData.weekComparisons.length} Minggu
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Kuartal</span>
-                    <span className="text-sm font-medium text-gray-800">4 Kuartal</span>
+                    <span className="text-sm font-medium text-gray-800">
+                      {filteredData.quarterlyData.length} Kuartal
+                    </span>
                   </div>
                   <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                     <span className="text-sm text-gray-600">Tren Pertumbuhan</span>
@@ -430,7 +437,7 @@ export default function Dashboard() {
                     <span className="text-sm text-gray-600">Kuartal Terbaik</span>
                     <span className="text-sm font-medium text-gray-800">
                       {filteredData.quarterlyData.length > 0 
-                        ? filteredData.quarterlyData.reduce((max: any, q: any) => q.actual > max.actual ? q : max).quarter
+                        ? `Q${filteredData.quarterlyData.reduce((max: any, q: any) => q.actual > max.actual ? q : max).quarter}`
                         : 'N/A'
                       }
                     </span>
@@ -451,11 +458,6 @@ export default function Dashboard() {
                       <strong>Performa Kuartal:</strong> {filteredData.quarterlyData.filter((q: any) => q.actual >= q.target).length} dari {filteredData.quarterlyData.length} kuartal memenuhi atau melebihi target
                     </p>
                   </div>
-                  {/* <div className="p-3 bg-purple-50 rounded border border-purple-200">
-                    <p className="text-sm text-purple-800">
-                      <strong>Tren Terkini:</strong> Rata-rata C4W {filteredData.l4wc4wData.variancePercentage >= 0 ? 'lebih tinggi' : 'lebih rendah'} dari L4W sebesar {Math.abs(filteredData.l4wc4wData.variancePercentage).toFixed(1)}%
-                    </p>
-                  </div> */}
                   <div className="p-3 bg-orange-50 rounded border border-orange-200">
                     <p className="text-sm text-orange-800">
                       <strong>Pertumbuhan Tahunan:</strong> Performa tahun ke tahun {Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 10 ? 'Luar biasa' : Math.abs(filteredData.yearOnYearGrowth.variancePercentage) >= 5 ? 'Kuat' : 'Sedang'}

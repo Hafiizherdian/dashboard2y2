@@ -66,21 +66,36 @@ export interface WeekComparison {
 /**
  * Data L4W vs C4W
  */
+export interface ProductL4WC1WData {
+  product: string;
+  year: number;
+  l4wValue: number;
+  c1wValue: number;
+  variance: number;
+  variancePercentage: number;
+  units_bks?: { l4w: number; c1w: number };
+  units_slop?: { l4w: number; c1w: number };
+  units_bal?: { l4w: number; c1w: number };
+  units_dos?: { l4w: number; c1w: number };
+}
+
 export interface L4WC4WData {
   l4wAverage: number;              // Rata-rata Last 4 Weeks
   c4wAverage: number;              // Rata-rata Current 4 Weeks
+  c1wValue: number;                // Nilai Current 1 Week (minggu terakhir)
   variance: number;                 // Selisih C4W - L4W
   variancePercentage: number;      // Persentase variance
   weeklyTrendData?: WeeklyTrendData[]; // Data tren mingguan untuk line chart
+  productDetails?: ProductL4WC1WData[]; // Data detail per produk
 }
 
 /**
- * Data tren mingguan untuk line chart L4W vs C4W
+ * Data tren mingguan untuk line chart L4W vs C1W
  */
 export interface WeeklyTrendData {
-  week: string;    // Label minggu (W-4, W-3, ..., W+4)
+  week: string;    // Label minggu (W-4, W-3, ..., W+1)
   value: number;   // Nilai penjualan minggu tersebut
-  period: 'L4W' | 'C4W'; // Periode mana minggu ini termasuk
+  period: 'L4W' | 'C1W'; // Periode mana minggu ini termasuk
 }
 
 /**

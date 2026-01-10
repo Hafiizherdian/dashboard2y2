@@ -4,7 +4,7 @@
  */
 
 import { pool } from './db';
-import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail, WeeklyTrendData, OutletSalesData } from '@/types/sales';
+import { SalesData, WeeklySales, QuarterlyData, WeekComparison, L4WC4WData, YearOnYearGrowth, ComparisonWeeks, WeekComparisonProductDetail, WeeklyTrendData, OutletSalesData, ProductL4WC1WData } from '@/types/sales';
 
 const OMZET_SCALE = 1;
 
@@ -450,13 +450,17 @@ async function generateQuarterlyData(records: any[], year: number, areaId?: stri
 }
 
 /**
- * Generate L4W vs C4W data dengan data tren mingguan asli
+ * Generate L4W vs C1W data dengan data tren mingguan asli
  */
 function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
+  console.log('🔍 generateL4WC4WData - Input records:', records.length, 'currentYear:', currentYear);
+  
   if (records.length === 0) {
+    console.log('❌ No records found');
     return {
       l4wAverage: 0,
       c4wAverage: 0,
+      c1wValue: 0,
       variance: 0,
       variancePercentage: 0,
       weeklyTrendData: []
@@ -471,6 +475,7 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
     : records;
 
   const effectiveRecords = recordsForYear.length > 0 ? recordsForYear : records;
+  console.log('📊 Effective records:', effectiveRecords.length);
 
   const weeklyTotalsMap = new Map<string, { year: number; week: number; total: number; timestamp: number }>();
 
@@ -500,35 +505,64 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
   }
 
   const weeklyTotals = Array.from(weeklyTotalsMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+  console.log('📈 Weekly totals:', weeklyTotals.length, 'weeks');
+  console.log('📋 Weekly data:', weeklyTotals.map(w => ({ week: w.week, total: w.total })));
 
-  if (weeklyTotals.length < 4) {
+  // Cari minggu terakhir tahun sebelumnya (bukan minggu 1 tahun baru)
+  const lastWeekEntry = weeklyTotals[weeklyTotals.length - 1];
+  const lastWeekNumber = lastWeekEntry ? lastWeekEntry.week : 0;
+  
+  // Jika minggu terakhir adalah minggu 1, cari minggu terakhir tahun sebelumnya
+  let c1wEntry = lastWeekEntry;
+  if (lastWeekNumber === 1 && weeklyTotals.length > 1) {
+    // Cari minggu dengan nomor tertinggi (biasanya minggu 52)
+    c1wEntry = weeklyTotals.reduce((max, current) => 
+      current.week > max.week ? current : max
+    , weeklyTotals[0]);
+  }
+  
+  console.log('🗓️ Last week entry:', { week: lastWeekNumber, total: lastWeekEntry?.total, timestamp: lastWeekEntry?.timestamp });
+  console.log('🗓️ C1W entry (minggu terakhir tahun):', { week: c1wEntry?.week, total: c1wEntry?.total });
+
+  if (weeklyTotals.length < 5) {
+    const c1wValue = c1wEntry ? c1wEntry.total : 0;
+    console.log('⚠️ Not enough weeks (< 5), using fallback');
     return {
       l4wAverage: 0,
       c4wAverage: Math.round(
         weeklyTotals.reduce((sum, entry) => sum + entry.total, 0) /
           (weeklyTotals.length || 1)
       ),
+      c1wValue: Math.round(c1wValue),
       variance: 0,
       variancePercentage: 0,
       weeklyTrendData: []
     };
   }
 
-  const c4wWeeks = weeklyTotals.slice(-4);
-  const l4wWeeks = weeklyTotals.slice(-8, -4);
+  // C1W adalah minggu terakhir tahun (bukan minggu 1 tahun baru)
+  const c1wValue = c1wEntry ? c1wEntry.total : 0;
+  
+  // L4W adalah 4 minggu sebelum C1W
+  const c1wIndex = weeklyTotals.findIndex(entry => entry.week === c1wEntry?.week);
+  const l4wWeeks = c1wIndex > 0 ? weeklyTotals.slice(Math.max(0, c1wIndex - 4), c1wIndex) : [];
+  
+  console.log('📊 C1W (minggu terakhir tahun):', c1wEntry?.week);
+  console.log('📊 L4W weeks (4 minggu sebelum C1W):', l4wWeeks.map(w => w.week));
+  console.log('💰 C1W value:', c1wValue);
 
   const l4wAverageRaw = l4wWeeks.length > 0
     ? l4wWeeks.reduce((sum, entry) => sum + entry.total, 0) / l4wWeeks.length
     : 0;
-
-  const c4wAverageRaw = c4wWeeks.reduce((sum, entry) => sum + entry.total, 0) / c4wWeeks.length;
-
-  const variance = c4wAverageRaw - l4wAverageRaw;
+  
+  // C4W tidak digunakan lagi, set ke 0
+  const c4wAverageRaw = 0;
+  const variance = 0; // Tidak ada variance karena tidak ada perbandingan
 
   // Generate weekly trend data dari data asli
   const weeklyTrendData: WeeklyTrendData[] = [];
   
-  // Tambahkan data L4W (4 minggu terakhir sebelum C4W)
+  // Tambahkan data L4W (4 minggu sebelum C1W)
   l4wWeeks.forEach((entry, index) => {
     weeklyTrendData.push({
       week: `W-${l4wWeeks.length - index}`,
@@ -537,22 +571,119 @@ function generateL4WC4WData(records: any[], currentYear?: number): L4WC4WData {
     });
   });
 
-  // Tambahkan data C4W (4 minggu terakhir)
-  c4wWeeks.forEach((entry, index) => {
+  // Tambahkan data C1W (minggu terakhir)
+  if (c1wEntry) {
     weeklyTrendData.push({
-      week: `W+${index + 1}`,
-      value: Math.round(entry.total),
-      period: 'C4W'
+      week: 'W+1',
+      value: Math.round(c1wEntry.total),
+      period: 'C1W'
     });
-  });
+  }
 
-  return {
+  const result = {
     l4wAverage: Math.round(l4wAverageRaw),
-    c4wAverage: Math.round(c4wAverageRaw),
-    variance: Math.round(variance),
-    variancePercentage: l4wAverageRaw > 0 ? Math.round((variance / l4wAverageRaw) * 100 * 10) / 10 : 0,
-    weeklyTrendData
+    c4wAverage: Math.round(c4wAverageRaw), // 0
+    c1wValue: Math.round(c1wValue),
+    variance: Math.round(variance), // 0
+    variancePercentage: 0, // 0
+    weeklyTrendData,
+    productDetails: generateProductL4WC1WData(effectiveRecords, c1wEntry?.week || 0, l4wWeeks.map(w => w.week))
   };
+
+  console.log('✅ Final L4WC4W result:', result);
+  return result;
+}
+
+/**
+ * Generate product detail data untuk L4W vs C1W per produk
+ */
+function generateProductL4WC1WData(records: any[], c1wWeek: number, l4wWeeks: number[]): ProductL4WC1WData[] {
+  // Group records by product with unit data
+  const productMap = new Map<string, {
+    weekData: Map<number, { omzet: number; units_bks: number; units_slop: number; units_bal: number; units_dos: number }>;
+  }>();
+
+  for (const record of records) {
+    const product = record.product || 'Unknown';
+    const week = Number(record.week) || 0;
+    const omzet = getOmzetValue(record);
+    const units_bks = Number(record.units_bks) || 0;
+    const units_slop = Number(record.units_slop) || 0;
+    const units_bal = Number(record.units_bal) || 0;
+    const units_dos = Number(record.units_dos) || 0;
+
+    if (!productMap.has(product)) {
+      productMap.set(product, { weekData: new Map() });
+    }
+
+    const productData = productMap.get(product)!;
+    const existing = productData.weekData.get(week) || { omzet: 0, units_bks: 0, units_slop: 0, units_bal: 0, units_dos: 0 };
+    
+    productData.weekData.set(week, {
+      omzet: existing.omzet + omzet,
+      units_bks: existing.units_bks + units_bks,
+      units_slop: existing.units_slop + units_slop,
+      units_bal: existing.units_bal + units_bal,
+      units_dos: existing.units_dos + units_dos
+    });
+  }
+
+  const productData: ProductL4WC1WData[] = [];
+
+  for (const [product, productWeekData] of productMap.entries()) {
+    const weekData = productWeekData.weekData;
+    
+    // C1W data (minggu terakhir tahun)
+    const c1wData = weekData.get(c1wWeek) || { omzet: 0, units_bks: 0, units_slop: 0, units_bal: 0, units_dos: 0 };
+
+    // L4W data (rata-rata 4 minggu sebelum C1W)
+    const l4wDataList = l4wWeeks.map(week => weekData.get(week) || { omzet: 0, units_bks: 0, units_slop: 0, units_bal: 0, units_dos: 0 })
+      .filter(data => data.omzet > 0);
+    
+    const l4wData = l4wDataList.length > 0 ? {
+      omzet: l4wDataList.reduce((sum, data) => sum + data.omzet, 0) / l4wDataList.length,
+      units_bks: l4wDataList.reduce((sum, data) => sum + data.units_bks, 0) / l4wDataList.length,
+      units_slop: l4wDataList.reduce((sum, data) => sum + data.units_slop, 0) / l4wDataList.length,
+      units_bal: l4wDataList.reduce((sum, data) => sum + data.units_bal, 0) / l4wDataList.length,
+      units_dos: l4wDataList.reduce((sum, data) => sum + data.units_dos, 0) / l4wDataList.length
+    } : { omzet: 0, units_bks: 0, units_slop: 0, units_bal: 0, units_dos: 0 };
+
+    const variance = c1wData.omzet - l4wData.omzet;
+    const variancePercentage = l4wData.omzet > 0 ? (variance / l4wData.omzet) * 100 : 0;
+
+    // Get year from records (assume current year)
+    const year = records.length > 0 ? 
+      (records[0].year ?? new Date(records[0].date).getFullYear()) : 
+      new Date().getFullYear();
+
+    productData.push({
+      product,
+      year,
+      l4wValue: Math.round(l4wData.omzet),
+      c1wValue: Math.round(c1wData.omzet),
+      variance: Math.round(variance),
+      variancePercentage: Math.round(variancePercentage * 10) / 10,
+      units_bks: {
+        l4w: Math.round(l4wData.units_bks * 100) / 100,
+        c1w: Math.round(c1wData.units_bks * 100) / 100
+      },
+      units_slop: {
+        l4w: Math.round(l4wData.units_slop * 100) / 100,
+        c1w: Math.round(c1wData.units_slop * 100) / 100
+      },
+      units_bal: {
+        l4w: Math.round(l4wData.units_bal * 100) / 100,
+        c1w: Math.round(c1wData.units_bal * 100) / 100
+      },
+      units_dos: {
+        l4w: Math.round(l4wData.units_dos * 100) / 100,
+        c1w: Math.round(c1wData.units_dos * 100) / 100
+      }
+    });
+  }
+
+  // Sort by current value (descending)
+  return productData.sort((a, b) => b.c1wValue - a.c1wValue);
 }
 
 /**
@@ -658,6 +789,7 @@ function generateEmptyL4WC4WData(): L4WC4WData {
   return {
     l4wAverage: 0,
     c4wAverage: 0,
+    c1wValue: 0,
     variance: 0,
     variancePercentage: 0,
     weeklyTrendData: []

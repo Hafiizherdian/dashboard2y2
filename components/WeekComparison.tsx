@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { WeekComparison, ComparisonYears, ComparisonWeeks, WeekComparisonProductDetail } from '@/types/sales';
 import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, Legend } from 'recharts';
-import { ChevronUpIcon, ChevronDownIcon } from 'lucide-react';
+import { ChevronUpIcon, ChevronDownIcon, Maximize2, X } from 'lucide-react';
 
 interface WeekComparisonProps {
   data: WeekComparison[];
@@ -39,6 +39,12 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
   const weekOptions = Array.from(new Set(data.map(item => item.week))).sort((a, b) => a - b);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null); // Default ke null untuk "All Weeks"
   const [selectedUnit, setSelectedUnit] = useState<string>('omzet'); // Default ke omzet
+  const [expandedChart, setExpandedChart] = useState<'line' | 'bar' | null>(null);
+
+  // Debug state changes
+  useEffect(() => {
+    console.log('expandedChart changed:', expandedChart);
+  }, [expandedChart]);
   const [sortConfig, setSortConfig] = useState<{
     key: keyof WeekComparisonProductDetail | 'product';
     direction: 'asc' | 'desc';
@@ -269,7 +275,19 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-700">Tren Penjualan</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-700">Tren Penjualan</h3>
+            <button
+              onClick={() => {
+                console.log('Line chart expand clicked');
+                setExpandedChart('line');
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <Maximize2 className="w-4 h-4" />
+              Perbesar
+            </button>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -300,15 +318,27 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-700">Varians Mingguan</h3>
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-green-500 rounded"></div>
-                <span className="text-green-600">Positif (+)</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded"></div>
+                  <span className="text-green-600">Positif (+)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-red-500 rounded"></div>
+                  <span className="text-red-600">Negatif (-)</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-red-500 rounded"></div>
-                <span className="text-red-600">Negatif (-)</span>
-              </div>
+              <button
+                onClick={() => {
+                  console.log('Bar chart expand clicked');
+                  setExpandedChart('bar');
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+              >
+                <Maximize2 className="w-4 h-4" />
+                Perbesar
+              </button>
             </div>
           </div>
           <ResponsiveContainer width="100%" height={300}>
@@ -478,6 +508,108 @@ export default function WeekComparisonComponent({ data, comparisonYears, compari
             }
           </p>
       </div>
+
+      {/* Modal untuk Grafik Diperbesar */}
+      {expandedChart && (
+        <div 
+          className="fixed inset-0 bg-red-500 flex items-center justify-center z-[9999] p-4 border-8 border-yellow-400"
+          onClick={() => setExpandedChart(null)}
+        >
+          <div 
+            className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {expandedChart === 'line' ? 'Tren Penjualan' : 'Varians Mingguan'} - Tampilan Diperbesar
+              </h3>
+              <button
+                onClick={() => setExpandedChart(null)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+              {expandedChart === 'line' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-blue-500"></div>
+                      <span className="text-gray-600">{previousYearLabel}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-1 bg-green-500"></div>
+                      <span className="text-gray-600">{currentYearLabel}</span>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={500}>
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="week" />
+                      <YAxis tickFormatter={(value) => `${(value / 1000).toFixed(0)}K`} />
+                      <Tooltip 
+                        formatter={(value: number | undefined) => formatUnitValue(value || 0, selectedUnit)}
+                        labelFormatter={(label) => `Week ${label}`}
+                      />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="previousYear" 
+                        stroke="#3b82f6" 
+                        strokeWidth={3}
+                        name={previousYearLabel.toString()}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="currentYear" 
+                        stroke="#10b981" 
+                        strokeWidth={3}
+                        name={currentYearLabel.toString()}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-green-500 rounded"></div>
+                      <span className="text-green-600">Positif (+)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 bg-red-500 rounded"></div>
+                      <span className="text-red-600">Negatif (-)</span>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={500}>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="week" />
+                      <YAxis tickFormatter={(value) => `${value}%`} />
+                      <Tooltip 
+                        formatter={(value: number | undefined) => formatPercentage(value)}
+                        labelFormatter={(label) => `Week ${label}`}
+                      />
+                      <Legend />
+                      <Bar dataKey="variancePercentage" name="Variance %">
+                        {chartData.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={entry.variancePercentage < 0 ? "#ef4444" : "#10b981"} 
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        
+      )}
     </div>
   );
 }
+

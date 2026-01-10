@@ -107,13 +107,13 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears }: Yea
         <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
           <h4 className="text-sm font-medium text-blue-600 mb-2">Total {previousYearLabel}</h4>
           <p className="text-2xl font-bold text-blue-800">{formatCurrency(data.previousYearTotal)}</p>
-          <p className="text-xs text-blue-600 mt-1">Penjualan tahun sebelumnya</p>
+          <p className="text-xs text-blue-600 mt-1">Penjualan (omzet)</p>
         </div>
 
         <div className="bg-green-50 rounded-lg p-4 border border-green-200">
           <h4 className="text-sm font-medium text-green-600 mb-2">Total {currentYearLabel}</h4>
           <p className="text-2xl font-bold text-green-800">{formatCurrency(data.currentYearTotal)}</p>
-          <p className="text-xs text-green-600 mt-1">Penjualan tahun sekarang</p>
+          <p className="text-xs text-green-600 mt-1">Penjualan (omzet)</p>
         </div>
 
         <div className={`${isPositiveGrowth ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} rounded-lg p-4 border`}>
@@ -179,8 +179,8 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears }: Yea
                     <div className={`w-2 h-2 rounded-full mt-1.5 ${isPositiveGrowth ? 'bg-green-500' : 'bg-red-500'}`}></div>
                     <p className="text-sm text-gray-600">
                       {isPositiveGrowth 
-                        ? `Pertumbuhan positif kuat ${formatPercentage(data.variancePercentage)} tahun ke tahun`
-                        : `Penurunan ${formatPercentage(Math.abs(data.variancePercentage))} tahun ke tahun`
+                        ? `Pertumbuhan positif sebesar ${formatPercentage(data.variancePercentage)} dari ${previousYearLabel} ke ${currentYearLabel}`
+                        : `Penurunan sebesar ${formatPercentage(Math.abs(data.variancePercentage))} dari ${previousYearLabel} ke ${currentYearLabel}`
                       }
                     </p>
                   </div>
@@ -188,18 +188,25 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears }: Yea
                     <div className="w-2 h-2 rounded-full mt-1.5 bg-blue-500"></div>
                     <p className="text-sm text-gray-600">
                       {isPositiveGrowth 
-                        ? `2024 melebihi performa 2023 sebesar ${formatCurrency(data.variance)}`
-                        : `2024 kurang dari 2023 sebesar ${formatCurrency(Math.abs(data.variance))}`
+                        ? `${currentYearLabel} melebihi ${previousYearLabel} sebesar ${formatCurrency(data.variance)}`
+                        : `${currentYearLabel} kurang dari ${previousYearLabel} sebesar ${formatCurrency(Math.abs(data.variance))}`
                       }
                     </p>
                   </div>
                   <div className="flex items-start space-x-2">
                     <div className="w-2 h-2 rounded-full mt-1.5 bg-purple-500"></div>
                     <p className="text-sm text-gray-600">
-                      {Math.abs(growthRate) >= 10 ? 'Performa luar biasa' :
-                       Math.abs(growthRate) >= 5 ? 'Performa kuat' :
-                       Math.abs(growthRate) >= 2 ? 'Performa sedang' :
-                       Math.abs(growthRate) >= 0 ? 'Performa stabil' : 'Perlu peningkatan'}
+                      {Math.abs(growthRate) >= 15 ? 'Pertumbuhan luar biasa (>15%)' :
+                       Math.abs(growthRate) >= 10 ? 'Pertumbuhan sangat kuat (10-15%)' :
+                       Math.abs(growthRate) >= 5 ? 'Pertumbuhan kuat (5-10%)' :
+                       Math.abs(growthRate) >= 2 ? 'Pertumbuhan sedang (2-5%)' :
+                       Math.abs(growthRate) >= 0 ? 'Pertumbuhan stabil (0-2%)' : 'Perlu evaluasi (<0%)'}
+                    </p>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <div className="w-2 h-2 rounded-full mt-1.5 bg-orange-500"></div>
+                    <p className="text-sm text-gray-600">
+                      Rata-rata penjualan tahunan: {formatCurrency((data.previousYearTotal + data.currentYearTotal) / 2)}
                     </p>
                   </div>
                 </div>
@@ -215,9 +222,9 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears }: Yea
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metrik</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">2023</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">2024</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Variance</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{previousYearLabel}</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{currentYearLabel}</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Varians</th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Pertumbuhan %</th>
                 </tr>
               </thead>
@@ -231,6 +238,27 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears }: Yea
                   </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(data.variancePercentage)}`}>
                     {formatPercentage(data.variancePercentage)}
+                  </td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Rata-rata Tahunan</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500" colSpan={2}>
+                    {formatCurrency((data.previousYearTotal + data.currentYearTotal) / 2)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-400" colSpan={2}>
+                    -
+                  </td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Kontribusi {previousYearLabel}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    {((data.previousYearTotal / (data.previousYearTotal + data.currentYearTotal)) * 100).toFixed(1)}%
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                    {((data.currentYearTotal / (data.previousYearTotal + data.currentYearTotal)) * 100).toFixed(1)}%
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-400" colSpan={2}>
+                    -
                   </td>
                 </tr>
               </tbody>
