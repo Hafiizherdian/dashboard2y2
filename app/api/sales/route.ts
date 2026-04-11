@@ -16,6 +16,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db';
+import { withAuth } from '@/lib/auth/session';
+import { canAccessArea } from '@/lib/auth/types';
 
 // // Database connection
 // const pool = new Pool({
@@ -27,26 +29,29 @@ import { pool } from '@/lib/db';
 // });
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const year1Param = searchParams.get('year1');
-    const year2Param = searchParams.get('year2');
-    const weekStart1Param = searchParams.get('weekStart1');
-    const weekEnd1Param = searchParams.get('weekEnd1');
-    const weekStart2Param = searchParams.get('weekStart2');
-    const weekEnd2Param = searchParams.get('weekEnd2');
-    const product = searchParams.get('product');
-    const city = searchParams.get('city');
-    const area = searchParams.get('area');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '1000'), 1000000);
+  return withAuth(request, 'view_stats', async (user) => {
+    try {
+      const { searchParams } = new URL(request.url);
+      const year1Param = searchParams.get('year1');
+      const year2Param = searchParams.get('year2');
+      const weekStart1Param = searchParams.get('weekStart1');
+      const weekEnd1Param = searchParams.get('weekEnd1');
+      const weekStart2Param = searchParams.get('weekStart2');
+      const weekEnd2Param = searchParams.get('weekEnd2');
+      const product = searchParams.get('product');
+      const city = searchParams.get('city');
+      const area = searchParams.get('area');
+      const limit = Math.min(parseInt(searchParams.get('limit') || '2000'), 500000);
 
-    console.log('🎯 API Sales - Query params:', {
-      year1Param, year2Param, weekStart1Param, weekEnd1Param, 
-      weekStart2Param, weekEnd2Param, product, city, area, limit
-    });
+      console.log('🎯 API Sales - Query params:', {
+        year1Param, year2Param, weekStart1Param, weekEnd1Param, 
+        weekStart2Param, weekEnd2Param, product, city, area, limit,
+        userRole: user.role,
+        userAreas: user.allowed_areas
+      });
 
-    const year1 = year1Param ? parseInt(year1Param) : undefined;
-    const year2 = year2Param ? parseInt(year2Param) : undefined;
+      const year1 = year1Param ? parseInt(year1Param) : undefined;
+      const year2 = year2Param ? parseInt(year2Param) : undefined;
 
     const normalizeWeekRange = (start?: string | null, end?: string | null) => {
       const startNum = start ? parseInt(start) : undefined;
@@ -133,10 +138,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (area) {
-      // Filter by area ID
+      // Filter by area ID - validate user access first
+      if (!canAccessArea(user, area)) {
+        return NextResponse.json(
+          { success: false, error: 'Anda tidak memiliki akses ke area ini' },
+          { status: 403 }
+        );
+      }
       query += ` AND area = $${paramIndex}`;
       params.push(area);
       paramIndex++;
+    } else {
+      // If no specific area filter, apply user's allowed areas
+      if (user.role !== 'root' && user.allowed_areas.length > 0) {
+        query += ` AND area = ANY($${paramIndex})`;
+        params.push(user.allowed_areas);
+        paramIndex++;
+      }
     }
 
     query += ` AND (area IS NOT NULL OR area IS NULL)`;
@@ -147,8 +165,8 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('🔍 Final Query:', query);
-    console.log('🔍 Query Parameters:', params);
-
+    console.log('🔍 Params:', params);
+    
     const result = await pool.query(query, params);
     console.log('📊 Query Result Count:', result.rows.length);
 
@@ -165,6 +183,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }
 
 export async function POST(request: NextRequest) {

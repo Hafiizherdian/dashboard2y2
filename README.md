@@ -40,7 +40,7 @@ Sales analysis dashboard dengan PostgreSQL database integration untuk upload Exc
 
 ### **Frontend**
 - **Next.js 16.1.1** - React framework dengan App Router
-- **TypeScript** - Type safety dan better development experience
+- **TypeScript** - Type safety
 - **TailwindCSS** - Utility-first CSS framework
 - **Lucide React** - Modern icon library
 
@@ -243,23 +243,34 @@ dashboard2y2/
 │   │   ├── upload/        # File upload
 │   │   ├── files/         # File management
 │   │   ├── areas/         # Area management
-│   │   └── migrate/       # Database migrations
-│   ├── admin/             # Admin panel
-│   └── page.tsx           # Main dashboard
+│   │   ├── cities/        # City metadata
+│   │   ├── products/      # Product metadata and categories
+│   │   ├── stats/         # System statistics
+│   │   ├── users/         # User-related endpoints
+│   │   ├── migrate/       # Database migrations
+│   │   └── ...            # Additional API route groups
+│   ├── admin/             # Admin panel pages
+│   └── page.tsx           # Main dashboard page
 ├── components/            # React components
 │   ├── OutletContributionSection.tsx
 │   ├── WeekComparison.tsx
 │   └── ...
-├── lib/                   # Utilities
+├── lib/                   # Utilities and helpers
 │   ├── database.ts        # Data processing
+│   ├── db.ts              # Database connection
 │   ├── areaConfig.ts      # Area configuration
-│   └── db.ts             # Database connection
+│   ├── productCategories.ts
+│   └── utils.ts
 ├── types/                 # TypeScript types
 │   └── sales.ts
 ├── data/                  # Persistent data
 │   └── areas.json         # Custom areas
-└── database/              # SQL schemas
-    └── schema.sql
+├── database/              # SQL schemas
+│   └── schema.sql
+├── migrations/            # DB migration scripts
+├── public/                # Static assets
+├── scripts/               # Utility and maintenance scripts
+└── README.md              # Project documentation
 ```
 
 ## Deployment

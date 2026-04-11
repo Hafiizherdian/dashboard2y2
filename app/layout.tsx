@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "YOY Dashboard",
-  description: "Year On Year SalesDashboard",
+  description: "Year On Year Sales Dashboard",
 };
 
 export const viewport = {
@@ -24,19 +24,11 @@ export const viewport = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background text-foreground`}
-      >
-        <div className="w-full max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12">
-          <div className="w-full">
-            {children}
-          </div>
-        </div>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        {children}
       </body>
     </html>
   );

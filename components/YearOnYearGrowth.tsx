@@ -1,271 +1,789 @@
-/**
- * Komponen Analisis Tahun ke Tahun
- * 
- * Menampilkan analisis pertumbuhan penjualan tahun ke tahun (2023 vs 2024)
- * Fitur:
- * - Bar chart perbandingan penjualan tahunan
- * - Pie chart distribusi penjualan
- * - Kartu metrik kunci (2023, 2024, Variance, Growth Rate)
- * - Analisis performa dan perbandingan detail
- * 
- * Berdasarkan data penjualan Malang 2024 dengan tren realistis
- */
-
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { YearOnYearGrowth, ComparisonYears } from '@/types/sales';
-import { formatCurrency, formatPercentage, getVarianceColor, getVarianceBgColor } from '@/lib/utils';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import {  formatPercentage } from '@/lib/utils';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  ReferenceLine,
+} from 'recharts';
+import {
+  Maximize2, X, TrendingUp, TrendingDown, Minus,
+  ArrowUpRight, ArrowDownRight, BarChart2, PieChart as PieIcon,
+  Info, ChevronDown, ChevronUp,
+} from 'lucide-react';
 
+// ─── Theme tokens — identik dengan page.tsx ───────────────────────────────────
+type Theme = 'dark' | 'light';
+
+const TK = {
+  dark: {
+    cardBg:        '#111318',
+    border:        'rgba(255,255,255,0.06)',
+    borderCard:    'rgba(255,255,255,0.07)',
+    tableHeadBg:   '#0c0e14',
+    tableHeadText: 'rgba(255,255,255,0.3)',
+    rowHover:      'rgba(255,255,255,0.04)',
+    rowAlt:        'rgba(255,255,255,0.015)',
+    text:          'rgba(255,255,255,0.9)',
+    textSub:       'rgba(255,255,255,0.55)',
+    textMuted:     'rgba(255,255,255,0.3)',
+    textFaint:     'rgba(255,255,255,0.18)',
+    inputBg:       'rgba(255,255,255,0.03)',
+    inputBorder:   'rgba(255,255,255,0.08)',
+    infoBg:        'rgba(16,185,129,0.07)',
+    infoBorder:    'rgba(16,185,129,0.25)',
+    infoText:      '#6ee7b7',
+    btnBg:         'rgba(37,99,235,0.12)',
+    btnBorder:     'rgba(59,130,246,0.3)',
+    btnText:       '#93c5fd',
+    modalBg:       '#0f1117',
+    gridStroke:    'rgba(255,255,255,0.06)',
+    axisColor:     'rgba(255,255,255,0.28)',
+    tooltipBg:     '#1a1e2c',
+    tooltipBorder: 'rgba(255,255,255,0.12)',
+    card1Bg: '#0f1724', card1Border: '#1e3a5f', card1Text: '#93c5fd',
+    card2Bg: '#0f1f17', card2Border: '#1a4731', card2Text: '#6ee7b7',
+    posBg: 'rgba(16,185,129,0.1)', posBorder: 'rgba(16,185,129,0.25)', posText: '#6ee7b7',
+    negBg: 'rgba(239,68,68,0.1)',  negBorder: 'rgba(239,68,68,0.22)',  negText: '#fca5a5',
+    summaryBg:     '#0c0e14',
+    summaryBorder: 'rgba(255,255,255,0.05)',
+    bullet1: '#3b82f6', bullet2: '#10b981', bullet3: '#8b5cf6', bullet4: '#f59e0b',
+    shadow:  'none',
+    divider: 'rgba(255,255,255,0.04)',
+    trackBg: 'rgba(255,255,255,0.06)',
+  },
+  light: {
+    cardBg:        '#ffffff',
+    border:        'rgba(0,0,0,0.07)',
+    borderCard:    'rgba(0,0,0,0.08)',
+    tableHeadBg:   '#f8fafc',
+    tableHeadText: '#94a3b8',
+    rowHover:      'rgba(0,0,0,0.035)',
+    rowAlt:        'rgba(0,0,0,0.018)',
+    text:          '#0f172a',
+    textSub:       '#475569',
+    textMuted:     '#94a3b8',
+    textFaint:     '#cbd5e1',
+    inputBg:       'rgba(0,0,0,0.03)',
+    inputBorder:   'rgba(0,0,0,0.1)',
+    infoBg:        'rgba(22,163,74,0.07)',
+    infoBorder:    'rgba(22,163,74,0.25)',
+    infoText:      '#15803d',
+    btnBg:         'rgba(37,99,235,0.08)',
+    btnBorder:     'rgba(37,99,235,0.25)',
+    btnText:       '#1d4ed8',
+    modalBg:       '#ffffff',
+    gridStroke:    'rgba(0,0,0,0.07)',
+    axisColor:     '#94a3b8',
+    tooltipBg:     '#ffffff',
+    tooltipBorder: 'rgba(0,0,0,0.1)',
+    card1Bg: '#eff6ff', card1Border: '#bfdbfe', card1Text: '#1d4ed8',
+    card2Bg: '#f0fdf4', card2Border: '#bbf7d0', card2Text: '#15803d',
+    posBg: 'rgba(16,185,129,0.08)', posBorder: 'rgba(22,163,74,0.25)', posText: '#15803d',
+    negBg: 'rgba(220,38,38,0.08)',  negBorder: 'rgba(220,38,38,0.2)',   negText: '#dc2626',
+    summaryBg:     '#f8fafc',
+    summaryBorder: 'rgba(0,0,0,0.06)',
+    bullet1: '#3b82f6', bullet2: '#10b981', bullet3: '#8b5cf6', bullet4: '#f59e0b',
+    shadow:  '0 1px 8px rgba(0,0,0,0.07)',
+    divider: 'rgba(0,0,0,0.04)',
+    trackBg: 'rgba(0,0,0,0.06)',
+  },
+} as const;
+
+// Chart colors — vivid, accessible
+const COLOR_PREV = '#3b82f6';
+const COLOR_CURR = '#10b981';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function useBreakpoint() {
+  const [width, setWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024);
+  useEffect(() => {
+    const h = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', h);
+    return () => window.removeEventListener('resize', h);
+  }, []);
+  return { isMobile: width < 640 };
+}
+
+// ─── ExpandBtn ────────────────────────────────────────────────────────────────
+function ExpandBtn({ onClick, theme }: { onClick: () => void; theme: Theme }) {
+  const t = TK[theme];
+  return (
+    <button
+      onClick={onClick}
+      title="Perbesar chart"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4,
+        padding: '4px 10px', borderRadius: 6,
+        background: t.inputBg, border: `1px solid ${t.inputBorder}`,
+        color: t.textMuted, cursor: 'pointer',
+        fontSize: 10, fontWeight: 500,
+        fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0,
+        transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.background = t.btnBg;
+        (e.currentTarget as HTMLElement).style.color = t.btnText;
+        (e.currentTarget as HTMLElement).style.borderColor = t.btnBorder;
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.background = t.inputBg;
+        (e.currentTarget as HTMLElement).style.color = t.textMuted;
+        (e.currentTarget as HTMLElement).style.borderColor = t.inputBorder;
+      }}
+    >
+      <Maximize2 size={10} /> Perbesar
+    </button>
+  );
+}
+
+// ─── ChartTooltip ─────────────────────────────────────────────────────────────
+function ChartTooltip({ active, payload, label, formatter, labelPrefix, theme }: any) {
+  const t = TK[theme as Theme];
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`,
+      borderRadius: 10, padding: '10px 14px',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+      fontFamily: 'IBM Plex Mono, monospace',
+    }}>
+      <div style={{ fontSize: 10, color: t.textMuted, marginBottom: 8, fontWeight: 600 }}>
+        {labelPrefix ?? ''}{label}
+      </div>
+      {payload.map((p: any, i: number) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < payload.length - 1 ? 5 : 0 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.fill ?? p.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: t.textSub }}>{p.name}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: t.text, marginLeft: 'auto' }}>
+            {formatter ? formatter(p.value) : p.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({ title, onClose, theme, children }: {
+  title: string; onClose: () => void; theme: Theme; children: React.ReactNode;
+}) {
+  const t = TK[theme];
+
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', fn);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', fn); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        animation: 'yoyFadeIn 0.15s ease',
+      }}
+      onClick={onClose}
+    >
+      <style>{`
+        @keyframes yoyFadeIn  { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes yoySlideUp { from { transform: translateY(14px); opacity: 0.6 } to { transform: translateY(0); opacity: 1 } }
+      `}</style>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: t.modalBg, border: `1px solid ${t.borderCard}`,
+          borderRadius: 16, width: '100%', maxWidth: 1100,
+          height: '86vh', display: 'flex', flexDirection: 'column',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.45)',
+          animation: 'yoySlideUp 0.2s ease',
+        }}
+      >
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 18px', borderBottom: `1px solid ${t.border}`,
+          background: t.tableHeadBg, flexShrink: 0,
+          borderRadius: '16px 16px 0 0',
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Sans, sans-serif' }}>
+            {title}
+          </span>
+          <button
+            onClick={onClose}
+            title="Tutup (Esc)"
+            style={{
+              background: t.inputBg, border: `1px solid ${t.inputBorder}`,
+              cursor: 'pointer', color: t.textMuted,
+              padding: '5px 6px', borderRadius: 8,
+              display: 'flex', alignItems: 'center',
+              transition: 'background 0.15s',
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: t.cardBg, borderRadius: '0 0 16px 16px' }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GrowthBadge ─────────────────────────────────────────────────────────────
+function GrowthBadge({ value, theme, size = 'md' }: { value: number; theme: Theme; size?: 'sm' | 'md' | 'lg' }) {
+  const t = TK[theme];
+  const isPos = value > 0;
+  const isNeg = value < 0;
+  const style = isPos ? t.posBg : isNeg ? t.negBg : t.inputBg;
+  const border = isPos ? t.posBorder : isNeg ? t.negBorder : t.inputBorder;
+  const color  = isPos ? t.posText : isNeg ? t.negText : t.textMuted;
+  const Icon   = isPos ? ArrowUpRight : isNeg ? ArrowDownRight : Minus;
+  const fs = size === 'lg' ? 15 : size === 'md' ? 12 : 10;
+  const pad = size === 'lg' ? '5px 12px' : size === 'md' ? '3px 9px' : '2px 7px';
+
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: pad, borderRadius: 20,
+      fontSize: fs, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace',
+      background: style, color, border: `1px solid ${border}`,
+    }}>
+      <Icon size={fs - 2} />
+      {isPos ? '+' : ''}{formatPercentage(value)}
+    </span>
+  );
+}
+
+// ─── StatPill ─────────────────────────────────────────────────────────────────
+function StatPill({ label, value, color, theme }: { label: string; value: string; color: string; theme: Theme }) {
+  const t = TK[theme];
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 3,
+      padding: '10px 14px', borderRadius: 9,
+      background: t.inputBg, border: `1px solid ${t.border}`,
+      borderLeft: `3px solid ${color}`,
+    }}>
+      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>
+        {label}
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'IBM Plex Mono, monospace', color: t.text, letterSpacing: '-0.01em' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+// ─── Bullet ───────────────────────────────────────────────────────────────────
+function Bullet({ color, theme, children }: { color: string; theme: Theme; children: React.ReactNode }) {
+  const t = TK[theme];
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+      <span style={{
+        width: 6, height: 6, borderRadius: '50%', background: color,
+        flexShrink: 0, marginTop: 6,
+      }} />
+      <p style={{ margin: 0, fontSize: 13, color: t.textSub, fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.65 }}>
+        {children}
+      </p>
+    </div>
+  );
+}
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 interface YearOnYearGrowthProps {
   data: YearOnYearGrowth;
   comparisonYears?: ComparisonYears;
+  theme?: Theme;
 }
 
-const COLORS = ['#3b82f6', '#10b981'];
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function YearOnYearGrowthComponent({ data, comparisonYears, theme: themeProp }: YearOnYearGrowthProps) {
+  const theme: Theme = themeProp ?? 'light';
+  const t = TK[theme];
+  const { isMobile } = useBreakpoint();
 
-export default function YearOnYearGrowthComponent({ data, comparisonYears }: YearOnYearGrowthProps) {
-  const previousYearLabel = comparisonYears?.previousYear ?? 'Previous Year';
-  const currentYearLabel = comparisonYears?.currentYear ?? 'Current Year';
+  const [expanded, setExpanded] = useState<'bar' | 'pie' | null>(null);
+  const [detailOpen, setDetailOpen] = useState(true);
+  const [insightOpen, setInsightOpen] = useState(true);
 
-  const chartData = [
-    {
-      year: previousYearLabel.toString(),
-      sales: data.previousYearTotal,
-      fill: '#3b82f6'
-    },
-    {
-      year: currentYearLabel.toString(),
-      sales: data.currentYearTotal,
-      fill: '#10b981'
-    }
-  ];
+  const prevLabel = comparisonYears?.previousYear ?? 'Tahun Sebelumnya';
+  const currLabel = comparisonYears?.currentYear  ?? 'Tahun Sekarang';
+  const isPos     = data.variancePercentage >= 0;
+  const isNeg     = data.variancePercentage < 0;
+  const growthAbs = Math.abs(data.variancePercentage);
 
-  const pieData = [
-    { name: previousYearLabel.toString(), value: data.previousYearTotal },
-    { name: currentYearLabel.toString(), value: data.currentYearTotal }
-  ];
+  const growthLabel =
+    growthAbs >= 15 ? 'Luar biasa · pertumbuhan >15%' :
+    growthAbs >= 10 ? 'Sangat kuat · 10–15%' :
+    growthAbs >= 5  ? 'Kuat · 5–10%' :
+    growthAbs >= 2  ? 'Sedang · 2–5%' :
+    growthAbs >= 0  ? 'Stabil · 0–2%' : 'Perlu evaluasi · pertumbuhan negatif';
 
-  const growthRate = data.variancePercentage;
-  const isPositiveGrowth = growthRate >= 0;
+  // Delta labels
+  const deltaColor = isPos ? '#10b981' : '#ef4444';
 
+  // ── Chart data ─────────────────────────────────────────────────────────────
+  const barData = useMemo(() => [
+    { year: String(prevLabel), sales: data.previousYearTotal },
+    { year: String(currLabel), sales: data.currentYearTotal  },
+  ], [data, prevLabel, currLabel]);
+
+  const pieData = useMemo(() => [
+    { name: String(prevLabel), value: data.previousYearTotal },
+    { name: String(currLabel), value: data.currentYearTotal  },
+  ], [data, prevLabel, currLabel]);
+
+  // contribution %
+  const totalBoth = data.previousYearTotal + data.currentYearTotal;
+  const pctPrev = totalBoth > 0 ? (data.previousYearTotal / totalBoth) * 100 : 0;
+  const pctCurr = totalBoth > 0 ? (data.currentYearTotal  / totalBoth) * 100 : 0;
+
+  // ── axis props ─────────────────────────────────────────────────────────────
+  const axisProps = {
+    tick:     { fill: t.axisColor, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' },
+    axisLine: false as const,
+    tickLine: false as const,
+  };
+
+  // card style helper
+  const card = (extra: React.CSSProperties = {}): React.CSSProperties => ({
+    background:   t.cardBg,
+    border:       `1px solid ${t.borderCard}`,
+    borderRadius: 12,
+    boxShadow:    t.shadow,
+    transition:   'background 0.3s, border-color 0.3s',
+    ...extra,
+  });
+
+  // ── Chart renderers ────────────────────────────────────────────────────────
+  const barChart = (h: number | string) => (
+    <div style={{ height: h, width: '100%' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={barData} margin={{ top: 8, right: 12, bottom: 4, left: 8 }} barGap={20}>
+          <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} vertical={false} />
+          <XAxis dataKey="year" {...axisProps} />
+          <YAxis
+            tickFormatter={v => `${(v / 1_000_000).toFixed(1)}M`}
+            {...axisProps}
+            width={52}
+          />
+          <Tooltip
+            content={<ChartTooltip labelPrefix="Tahun: " theme={theme} />}
+            cursor={{ fill: t.divider, radius: 4 }}
+          />
+          <Bar dataKey="sales" name="Total Penjualan" radius={[5, 5, 0, 0]} maxBarSize={90}>
+            {barData.map((entry, i) => (
+              <Cell key={i} fill={i === 0 ? COLOR_PREV : COLOR_CURR} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+
+  const pieChart = (h: number | string) => (
+    <div style={{ height: h, width: '100%' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={pieData} cx="50%" cy="46%"
+            innerRadius="30%" outerRadius="58%"
+            labelLine={false}
+            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
+              if (!percent || percent < 0.05) return null;
+              const r = innerRadius + (outerRadius - innerRadius) * 1.55;
+              const x = cx + r * Math.cos(-midAngle * Math.PI / 180);
+              const y = cy + r * Math.sin(-midAngle * Math.PI / 180);
+              return (
+                <text x={x} y={y} fill={t.textSub} textAnchor="middle" dominantBaseline="central"
+                  fontSize={10} fontFamily="IBM Plex Mono, monospace" fontWeight={600}>
+                  {`${(percent * 100).toFixed(1)}%`}
+                </text>
+              );
+            }}
+            dataKey="value"
+          >
+            {pieData.map((_, i) => (
+              <Cell key={i} fill={i === 0 ? COLOR_PREV : COLOR_CURR} stroke="transparent" />
+            ))}
+          </Pie>
+          <Tooltip
+            content={<ChartTooltip theme={theme} />}
+          />
+          <Legend
+            iconSize={8} iconType="circle"
+            wrapperStyle={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, paddingTop: 10 }}
+            formatter={(v: string) => <span style={{ color: t.textSub }}>{v}</span>}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+
+  const tdBase: React.CSSProperties = {
+    padding: '11px 16px', fontSize: 12,
+    fontFamily: 'IBM Plex Mono, monospace',
+    borderBottom: `1px solid ${t.border}`,
+    color: t.textSub,
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Growth Year-on-Year dengan Variance & Persentase</h2>
-      
-      <div className="mb-4 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-        <p className="text-sm text-emerald-800">
-          <strong>{previousYearLabel}:</strong> {formatCurrency(data.previousYearTotal)} | 
-          <strong>{currentYearLabel}:</strong> {formatCurrency(data.currentYearTotal)} | 
-          <strong>Variance:</strong> {formatCurrency(data.variance)} | 
-          <strong>Growth %:</strong> {formatPercentage(data.variancePercentage)}
-        </p>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-700">Perbandingan Penjualan Tahunan</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="year" />
-              <YAxis tickFormatter={(value) => `${(value / 1000000).toFixed(1)}M`} />
-              <Tooltip 
-                formatter={(value: number | undefined) => formatCurrency(value)}
-                labelFormatter={(label) => `Tahun ${label}`}
-              />
-              <Bar dataKey="sales" name="Total Penjualan" />
-            </BarChart>
-          </ResponsiveContainer>
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 18,
+      fontFamily: 'IBM Plex Sans, sans-serif',
+    }}>
+
+      {/* ── Hero summary banner — lebih visual daripada satu baris teks ── */}
+      <div style={{
+        ...card({ padding: 0 }),
+        overflow: 'hidden',
+        borderLeft: `3px solid ${deltaColor}`,
+      }}>
+        {/* Top strip */}
+        <div style={{
+          padding: '12px 18px',
+          background: isPos ? 'rgba(16,185,129,0.05)' : 'rgba(239,68,68,0.05)',
+          borderBottom: `1px solid ${t.border}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: 8,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {isPos
+              ? <TrendingUp size={16} color="#10b981" />
+              : <TrendingDown size={16} color="#ef4444" />}
+            <span style={{ fontSize: 13, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Sans, sans-serif' }}>
+              Perbandingan Tahun {String(prevLabel)} vs {String(currLabel)}
+            </span>
+          </div>
+          <GrowthBadge value={data.variancePercentage} theme={theme} size="md" />
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-gray-700">Distribusi Penjualan</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(1)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {pieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number | undefined) => formatCurrency(value)} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-          <h4 className="text-sm font-medium text-blue-600 mb-2">Total {previousYearLabel}</h4>
-          <p className="text-2xl font-bold text-blue-800">{formatCurrency(data.previousYearTotal)}</p>
-          <p className="text-xs text-blue-600 mt-1">Penjualan (omzet)</p>
-        </div>
-
-        <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-          <h4 className="text-sm font-medium text-green-600 mb-2">Total {currentYearLabel}</h4>
-          <p className="text-2xl font-bold text-green-800">{formatCurrency(data.currentYearTotal)}</p>
-          <p className="text-xs text-green-600 mt-1">Penjualan (omzet)</p>
-        </div>
-
-        <div className={`${isPositiveGrowth ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} rounded-lg p-4 border`}>
-          <h4 className={`text-sm font-medium ${isPositiveGrowth ? 'text-green-600' : 'text-red-600'} mb-2`}>
-            Variance
-          </h4>
-          <p className={`text-2xl font-bold ${getVarianceColor(data.variance)}`}>
-            {formatCurrency(data.variance)}
-          </p>
-          <p className={`text-xs ${isPositiveGrowth ? 'text-green-600' : 'text-red-600'} mt-1`}>
-            Selisih absolut
-          </p>
-        </div>
-
-        <div className={`${isPositiveGrowth ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'} rounded-lg p-4 border`}>
-          <h4 className={`text-sm font-medium ${isPositiveGrowth ? 'text-emerald-600' : 'text-red-600'} mb-2`}>
-            Laju Pertumbuhan
-          </h4>
-          <p className={`text-2xl font-bold ${getVarianceColor(data.variancePercentage)}`}>
-            {formatPercentage(data.variancePercentage)}
-          </p>
-          <p className={`text-xs ${isPositiveGrowth ? 'text-emerald-600' : 'text-red-600'} mt-1`}>
-            Pertumbuhan tahun ke tahun
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-6">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Ringkasan Performa</h3>
-          <div className="bg-gray-50 rounded-lg p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-700 mb-3">Metrik Kunci</h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Tahun Sebelumnya ({previousYearLabel}):</span>
-                    <span className="text-sm font-medium text-gray-800">{formatCurrency(data.previousYearTotal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Tahun Sekarang ({currentYearLabel}):</span>
-                    <span className="text-sm font-medium text-gray-800">{formatCurrency(data.currentYearTotal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Varians Absolut:</span>
-                    <span className={`text-sm font-medium ${getVarianceColor(data.variance)}`}>
-                      {formatCurrency(data.variance)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Laju Pertumbuhan:</span>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getVarianceBgColor(data.variancePercentage)}`}>
-                      {formatPercentage(data.variancePercentage)}
+        {/* Stat pills */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, 1fr)',
+          gap: 0,
+          padding: '14px 18px',
+          gap2: 10,
+        } as React.CSSProperties}>
+          {[
+            { label: String(prevLabel), value: (data.previousYearTotal), color: COLOR_PREV },
+            { label: String(currLabel), value: (data.currentYearTotal),  color: COLOR_CURR },
+            { label: 'Selisih Absolut', value: `${isPos ? '+' : ''}${(data.variance)}`, color: deltaColor },
+            { label: 'YoY Growth',      value: `${isPos ? '+' : ''}${formatPercentage(data.variancePercentage)}`, color: deltaColor },
+          ].map((item, i) => (
+            <div key={i} style={{
+              padding: '12px 16px',
+              borderRight: i < 3 && !isMobile ? `1px solid ${t.border}` : 'none',
+              borderBottom: isMobile && i < 2 ? `1px solid ${t.border}` : 'none',
+            }}>
+              <div style={{
+                fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.07em', color: t.textMuted,
+                fontFamily: 'IBM Plex Mono, monospace', marginBottom: 5,
+              }}>{item.label}</div>
+              <div style={{
+                fontSize: isMobile ? 14 : 17, fontWeight: 800,
+                fontFamily: 'IBM Plex Mono, monospace',
+                color: i >= 2 ? item.color : t.text,
+                letterSpacing: '-0.01em',
+              }}>{item.value}</div>
+              {i < 2 && (
+                <div style={{ marginTop: 6 }}>
+                  {/* Mini contribution bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ flex: 1, height: 3, background: t.trackBg, borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: 2,
+                        width: `${i === 0 ? pctPrev : pctCurr}%`,
+                        background: item.color, transition: 'width 0.5s ease',
+                      }} />
+                    </div>
+                    <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0 }}>
+                      {(i === 0 ? pctPrev : pctCurr).toFixed(0)}%
                     </span>
                   </div>
                 </div>
-              </div>
-
-              <div>
-                <h4 className="font-medium text-gray-700 mb-3">Analisis Pertumbuhan</h4>
-                <div className="space-y-3">
-                  <div className="flex items-start space-x-2">
-                    <div className={`w-2 h-2 rounded-full mt-1.5 ${isPositiveGrowth ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    <p className="text-sm text-gray-600">
-                      {isPositiveGrowth 
-                        ? `Pertumbuhan positif sebesar ${formatPercentage(data.variancePercentage)} dari ${previousYearLabel} ke ${currentYearLabel}`
-                        : `Penurunan sebesar ${formatPercentage(Math.abs(data.variancePercentage))} dari ${previousYearLabel} ke ${currentYearLabel}`
-                      }
-                    </p>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <div className="w-2 h-2 rounded-full mt-1.5 bg-blue-500"></div>
-                    <p className="text-sm text-gray-600">
-                      {isPositiveGrowth 
-                        ? `${currentYearLabel} melebihi ${previousYearLabel} sebesar ${formatCurrency(data.variance)}`
-                        : `${currentYearLabel} kurang dari ${previousYearLabel} sebesar ${formatCurrency(Math.abs(data.variance))}`
-                      }
-                    </p>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <div className="w-2 h-2 rounded-full mt-1.5 bg-purple-500"></div>
-                    <p className="text-sm text-gray-600">
-                      {Math.abs(growthRate) >= 15 ? 'Pertumbuhan luar biasa (>15%)' :
-                       Math.abs(growthRate) >= 10 ? 'Pertumbuhan sangat kuat (10-15%)' :
-                       Math.abs(growthRate) >= 5 ? 'Pertumbuhan kuat (5-10%)' :
-                       Math.abs(growthRate) >= 2 ? 'Pertumbuhan sedang (2-5%)' :
-                       Math.abs(growthRate) >= 0 ? 'Pertumbuhan stabil (0-2%)' : 'Perlu evaluasi (<0%)'}
-                    </p>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <div className="w-2 h-2 rounded-full mt-1.5 bg-orange-500"></div>
-                    <p className="text-sm text-gray-600">
-                      Rata-rata penjualan tahunan: {formatCurrency((data.previousYearTotal + data.currentYearTotal) / 2)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── KPI Cards — 4 kolom, lebih impactful ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+        {/* Prev */}
+        <div style={{ background: t.card1Bg, border: `1px solid ${t.card1Border}`, borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, right: 0, width: 50, height: 50, background: `radial-gradient(circle at top right, ${COLOR_PREV}20, transparent 70%)`, pointerEvents: 'none' }} />
+          <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.card1Text, marginBottom: 6 }}>
+            Total {String(prevLabel)}
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
+            {(data.previousYearTotal)}
+          </div>
+          <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Penjualan omzet</div>
+        </div>
+
+        {/* Curr */}
+        <div style={{ background: t.card2Bg, border: `1px solid ${t.card2Border}`, borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, right: 0, width: 50, height: 50, background: `radial-gradient(circle at top right, ${COLOR_CURR}20, transparent 70%)`, pointerEvents: 'none' }} />
+          <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.card2Text, marginBottom: 6 }}>
+            Total {String(currLabel)}
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
+            {(data.currentYearTotal)}
+          </div>
+          <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Penjualan omzet</div>
+        </div>
+
+        {/* Variance */}
+        <div style={{
+          background: isPos ? t.posBg : t.negBg,
+          border: `1px solid ${isPos ? t.posBorder : t.negBorder}`,
+          borderRadius: 12, padding: 18,
+        }}>
+          <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: isPos ? t.posText : t.negText, marginBottom: 6 }}>
+            Selisih
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: deltaColor, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
+            {isPos ? '+' : ''}{(data.variance)}
+          </div>
+          <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Selisih absolut</div>
+        </div>
+
+        {/* Growth */}
+        <div style={{
+          background: isPos ? t.posBg : t.negBg,
+          border: `1px solid ${isPos ? t.posBorder : t.negBorder}`,
+          borderLeft: `3px solid ${deltaColor}`,
+          borderRadius: 12, padding: 18,
+        }}>
+          <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: isPos ? t.posText : t.negText, marginBottom: 6 }}>
+            Laju Pertumbuhan
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: deltaColor, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 6 }}>
+            {isPos ? '+' : ''}{formatPercentage(data.variancePercentage)}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            {isPos ? <TrendingUp size={12} color="#10b981" /> : <TrendingDown size={12} color="#ef4444" />}
+            <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>YoY growth</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Charts — bar + donut sejajar ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 12 }}>
+
+        {/* Bar chart */}
+        <div style={card({ padding: '16px 16px 14px' })}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <BarChart2 size={13} color={t.textMuted} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Sans, sans-serif' }}>
+                Perbandingan Tahunan
+              </span>
+            </div>
+            <ExpandBtn onClick={() => setExpanded('bar')} theme={theme} />
+          </div>
+          {/* Legend pills */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+            {[{ color: COLOR_PREV, label: String(prevLabel) }, { color: COLOR_CURR, label: String(currLabel) }].map((item, i) => (
+              <span key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontSize: 11, color: t.textSub, fontFamily: 'IBM Plex Mono, monospace',
+                padding: '3px 8px', borderRadius: 6,
+                background: t.inputBg, border: `1px solid ${t.border}`,
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+          <div style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 4px 4px' }}>
+            {barChart(240)}
           </div>
         </div>
 
-        <div>
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Perbandingan Detail</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+        {/* Donut chart — lebih modern dari solid pie */}
+        <div style={card({ padding: '16px 16px 14px' })}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <PieIcon size={13} color={t.textMuted} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Sans, sans-serif' }}>
+                Distribusi Penjualan
+              </span>
+            </div>
+            <ExpandBtn onClick={() => setExpanded('pie')} theme={theme} />
+          </div>
+          {/* Contribution bars */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+            {[
+              { label: String(prevLabel), pct: pctPrev, val: data.previousYearTotal, color: COLOR_PREV },
+              { label: String(currLabel), pct: pctCurr, val: data.currentYearTotal,  color: COLOR_CURR },
+            ].map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', width: 80, flexShrink: 0 }}>{item.label}</span>
+                <div style={{ flex: 1, height: 5, background: t.trackBg, borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${item.pct}%`, background: item.color, borderRadius: 3, transition: 'width 0.6s ease' }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: t.textSub, fontFamily: 'IBM Plex Mono, monospace', width: 36, textAlign: 'right', flexShrink: 0 }}>
+                  {item.pct.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '6px 4px 4px' }}>
+            {pieChart(220)}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Ringkasan Performa — collapsible ── */}
+      
+
+      {/* ── Detail Table — collapsible ── */}
+      <div style={card()}>
+        <div
+          onClick={() => setDetailOpen(p => !p)}
+          style={{
+            padding: '14px 18px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer',
+            borderBottom: detailOpen ? `1px solid ${t.border}` : 'none',
+          }}
+        >
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: t.textMuted,
+            fontFamily: 'IBM Plex Mono, monospace',
+            textTransform: 'uppercase', letterSpacing: '0.08em',
+          }}>
+            Perbandingan Detail
+          </span>
+          {detailOpen ? <ChevronUp size={14} color={t.textMuted} /> : <ChevronDown size={14} color={t.textMuted} />}
+        </div>
+
+        {detailOpen && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Metrik</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{previousYearLabel}</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{currentYearLabel}</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Varians</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Pertumbuhan %</th>
+                  {['Metrik', String(prevLabel), String(currLabel), 'Varians', 'Growth %'].map((h, i) => (
+                    <th key={h} style={{
+                      padding: '9px 16px',
+                      textAlign: i === 0 ? 'left' : 'right',
+                      fontSize: 9, fontFamily: 'IBM Plex Mono, monospace',
+                      textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                      color: t.tableHeadText, background: t.tableHeadBg,
+                      borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap',
+                    }}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                <tr className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Total Penjualan</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(data.previousYearTotal)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{formatCurrency(data.currentYearTotal)}</td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(data.variance)}`}>
-                    {formatCurrency(data.variance)}
+              <tbody>
+                {/* Row 1 — Total */}
+                <tr
+                  style={{ background: t.rowAlt, transition: 'background 0.12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                  onMouseLeave={e => (e.currentTarget.style.background = t.rowAlt)}
+                >
+                  <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', fontSize: 13 }}>
+                    Total Penjualan
                   </td>
-                  <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${getVarianceColor(data.variancePercentage)}`}>
-                    {formatPercentage(data.variancePercentage)}
+                  <td style={{ ...tdBase, textAlign: 'right' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                      {(data.previousYearTotal)}
+                      <div style={{ width: 48, height: 3, background: t.trackBg, borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pctPrev}%`, background: COLOR_PREV, borderRadius: 2 }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                      {(data.currentYearTotal)}
+                      <div style={{ width: 48, height: 3, background: t.trackBg, borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${pctCurr}%`, background: COLOR_CURR, borderRadius: 2 }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ ...tdBase, textAlign: 'right', color: deltaColor, fontWeight: 700 }}>
+                    {isPos ? '+' : ''}{(data.variance)}
+                  </td>
+                  <td style={{ ...tdBase, textAlign: 'right' }}>
+                    <GrowthBadge value={data.variancePercentage} theme={theme} size="sm" />
                   </td>
                 </tr>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Rata-rata Tahunan</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500" colSpan={2}>
-                    {formatCurrency((data.previousYearTotal + data.currentYearTotal) / 2)}
+
+                {/* Row 2 — Rata-rata */}
+                <tr
+                  style={{ transition: 'background 0.12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', fontSize: 13 }}>Rata-rata Tahunan</td>
+                  <td colSpan={2} style={{ ...tdBase, textAlign: 'right' }}>
+                    {((data.previousYearTotal + data.currentYearTotal) / 2)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-400" colSpan={2}>
-                    -
-                  </td>
+                  <td colSpan={2} style={{ ...tdBase, textAlign: 'right', color: t.textFaint }}>—</td>
                 </tr>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Kontribusi {previousYearLabel}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                    {((data.previousYearTotal / (data.previousYearTotal + data.currentYearTotal)) * 100).toFixed(1)}%
+
+                {/* Row 3 — Kontribusi */}
+                <tr
+                  style={{ background: t.rowAlt, transition: 'background 0.12s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                  onMouseLeave={e => (e.currentTarget.style.background = t.rowAlt)}
+                >
+                  <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', fontSize: 13, borderBottom: 'none' }}>
+                    Kontribusi
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                    {((data.currentYearTotal / (data.previousYearTotal + data.currentYearTotal)) * 100).toFixed(1)}%
+                  <td style={{ ...tdBase, textAlign: 'right', borderBottom: 'none' }}>
+                    {pctPrev.toFixed(1)}%
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-400" colSpan={2}>
-                    -
+                  <td style={{ ...tdBase, textAlign: 'right', borderBottom: 'none', color: t.text, fontWeight: 700 }}>
+                    {pctCurr.toFixed(1)}%
                   </td>
+                  <td colSpan={2} style={{ ...tdBase, textAlign: 'right', color: t.textFaint, borderBottom: 'none' }}>—</td>
                 </tr>
               </tbody>
             </table>
           </div>
-        </div>
+        )}
       </div>
+
+      {/* ── Modals ── */}
+      {expanded === 'bar' && (
+        <Modal title={`Perbandingan Penjualan — ${String(prevLabel)} vs ${String(currLabel)}`} onClose={() => setExpanded(null)} theme={theme}>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+            {[{ color: COLOR_PREV, label: String(prevLabel) }, { color: COLOR_CURR, label: String(currLabel) }].map((item, i) => (
+              <span key={i} style={{
+                display: 'flex', alignItems: 'center', gap: 5, fontSize: 12,
+                color: t.textSub, fontFamily: 'IBM Plex Mono, monospace',
+                padding: '4px 10px', borderRadius: 6,
+                background: t.inputBg, border: `1px solid ${t.border}`,
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.color }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+          {barChart('calc(86vh - 180px)')}
+        </Modal>
+      )}
+
+      {expanded === 'pie' && (
+        <Modal title={`Distribusi Penjualan — ${String(prevLabel)} vs ${String(currLabel)}`} onClose={() => setExpanded(null)} theme={theme}>
+          {pieChart('calc(86vh - 160px)')}
+        </Modal>
+      )}
     </div>
   );
 }

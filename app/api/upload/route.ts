@@ -11,260 +11,248 @@ import { join } from 'path';
 import csv from 'csv-parser';
 import { createReadStream } from 'fs';
 import * as XLSX from 'xlsx';
+import { withAuth } from '@/lib/auth/session';
 
 export async function POST(request: NextRequest) {
-  try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const selectedArea = formData.get('area') as string;
-    
-    // console.log('Upload request received:', {
-    //   fileName: file?.name,
-    //   fileSize: file?.size,
-    //   fileType: file?.type,
-    //   selectedArea: selectedArea
-    // });
-    
-    if (!file) {
-      return NextResponse.json(
-        { success: false, error: 'No file provided' },
-        { status: 400 }
-      );
-    }
-
-    // Memvalidasi tipe file
-    const allowedTypes = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-      'text/csv'
-    ];
-
-    // console.log('File type validation:', {
-    //   fileType: file.type,
-    //   allowedTypes,
-    //   isValid: allowedTypes.includes(file.type)
-    // });
-
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json(
-        { success: false, error: `Tipe file tidak valid:  ${file.type}. Hanya Excel dan CSV file yang diterima` },
-        { status: 400 }
-      );
-    }
-
-    // Create temp directory if it doesn't exist
-    const tempDir = join(process.cwd(), 'temp');
+  return withAuth(request, 'upload_file', async (session) => {
     try {
-      await mkdir(tempDir, { recursive: true });
-    } catch (error) {
-      // Directory already exists or created
-    }
+      const formData = await request.formData();
+      const file = formData.get('file') as File;
+      let selectedArea = formData.get('area') as string;
 
-    // Save file temporarily
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const tempPath = join(tempDir, file.name);
-    
-    await writeFile(tempPath, buffer);
-
-    try {
-      let data: any[] = [];
-
-      // Memproses file berdasarkan tipe
-      if (file.type === 'text/csv') {
-        // console.log('Processing CSV file...');
-        data = await processCSVFile(tempPath);
-      } else {
-        // console.log('Processing Excel file...');
-        data = await processExcelFile(buffer);
+      // Auto-determine area for non-root users
+      if (session.role !== 'root') {
+        const userAreas = session.allowed_areas || [];
+        
+        // If no area provided and user has single area, auto-assign
+        if (!selectedArea && userAreas.length === 1) {
+          selectedArea = userAreas[0];
+          console.log(`[API/upload] Auto-assigned area ${selectedArea} for user ${session.username}`);
+        }
+        
+        // Validate area access
+        if (selectedArea && !userAreas.includes(selectedArea)) {
+          return NextResponse.json(
+            { success: false, error: `Anda tidak memiliki akses ke area: ${selectedArea}` },
+            { status: 403 }
+          );
+        }
       }
 
-      // console.log('File processed successfully:', {
-      //   totalRows: data.length,
-      //   sampleRow: data[0]
-      // });
-
-      // Data di proses dan di validasi
-      const processedData = processSalesData(data, selectedArea);
-      
-      // console.log('Data validation completed:', {
-      //   totalRows: data.length,
-      //   validRows: processedData.length,
-      //   invalidRows: data.length - processedData.length
-      // });
-      
-      if (processedData.length === 0) {
+      if (!file) {
         return NextResponse.json(
-          { success: false, error: 'Data tidak valid. Cek kembali kolom yang diperlukan: Grand Total, Minggu, Tanggal, Produk, Customer, Omzet (Nett)' },
+          { success: false, error: 'No file provided' },
           { status: 400 }
         );
       }
 
-      // Menyimpan ke database
-      const client = await pool.connect();
-      
+      // Memvalidasi tipe file
+      const allowedTypes = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'text/csv',
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Tipe file tidak valid: ${file.type}. Hanya Excel dan CSV file yang diterima`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Create temp directory if it doesn't exist
+      const tempDir = join(process.cwd(), 'temp');
       try {
-        await client.query('BEGIN');
+        await mkdir(tempDir, { recursive: true });
+      } catch {
+        // Directory already exists or created
+      }
 
-        // Menyimpan record file
-        const fileQuery = `
-          INSERT INTO uploaded_files (
-            filename, original_name, file_size, record_count, total_omzet, 
-            status, uploaded_by
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-          RETURNING id
-        `;
+      // Save file temporarily
+      const bytes = await file.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const tempPath = join(tempDir, file.name);
 
-        const totalOmzet = processedData.reduce((sum, record) => sum + record.omzet, 0);
-        
-        const fileResult = await client.query(fileQuery, [
-          `upload_${Date.now()}.xlsx`,
-          file.name,
-          file.size,
-          processedData.length,
-          totalOmzet,
-          'processing',
-          'admin' // TODO: Get from auth
-        ]);
+      await writeFile(tempPath, buffer);
 
-        const fileId = fileResult.rows[0].id;
+      try {
+        let data: any[] = [];
 
-        // Menyimpan record penjualan
-        const salesQuery = `
-          INSERT INTO sales_records (
-            file_id, grand_total, week, date, product, category, customer_no, customer,
-            customer_type, salesman, village, district, city, area, units_bks, units_slop,
-            units_bal, units_dos, omzet
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
-        `;
-
-        for (const record of processedData) {
-          await client.query(salesQuery, [
-            fileId,
-            record.grand_total,
-            record.week,
-            record.date,
-            record.product,
-            record.category,
-            record.customer_no,
-            record.customer,
-            record.customer_type,
-            record.salesman,
-            record.village,
-            record.district,
-            record.city,
-            record.area,
-            record.units_bks,
-            record.units_slop,
-            record.units_bal,
-            record.units_dos,
-            record.omzet
-          ]);
+        // Memproses file berdasarkan tipe
+        if (file.type === 'text/csv') {
+          console.log('Processing CSV file...');
+          data = await processCSVFile(tempPath);
+        } else {
+          console.log('Processing Excel file...');
+          data = await processExcelFile(buffer);
         }
 
-        // Update file status ke selesai
-        await client.query(
-          'UPDATE uploaded_files SET status = $1 WHERE id = $2',
-          ['completed', fileId]
-        );
+        // Data di proses dan di validasi
+        const processedData = processSalesData(data, selectedArea);
 
-        await client.query('COMMIT');
+        if (processedData.length === 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                'Data tidak valid. Cek kembali kolom yang diperlukan: Grand Total, Minggu, Tanggal, Produk, Customer, Omzet (Nett)',
+            },
+            { status: 400 }
+          );
+        }
 
-        return NextResponse.json({
-          success: true,
-          data: {
-            file_id: fileId,
-            filename: file.name,
-            record_count: processedData.length,
-            total_omzet: totalOmzet,
-            preview: processedData.slice(0, 5) // Mengembalikan 5 records awal sebagai preview
+        // Menyimpan ke database
+        const client = await pool.connect();
+
+        try {
+          await client.query('BEGIN');
+
+          // Menyimpan record file
+          const fileQuery = `
+            INSERT INTO uploaded_files (
+              filename, original_name, file_size, record_count, total_omzet,
+              status, uploaded_by
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+          `;
+
+          const totalOmzet = processedData.reduce((sum, record) => sum + record.omzet, 0);
+
+          const fileResult = await client.query(fileQuery, [
+            `upload_${Date.now()}.xlsx`,
+            file.name,
+            file.size,
+            processedData.length,
+            totalOmzet,
+            'processing',
+            'admin', // TODO: Get from auth
+          ]);
+
+          const fileId = fileResult.rows[0].id;
+
+          // Menyimpan record penjualan
+          const salesQuery = `
+            INSERT INTO sales_records (
+              file_id, grand_total, week, date, product, category, customer_no, customer,
+              customer_type, salesman, village, district, city, area, units_bks, units_slop,
+              units_bal, units_dos, omzet
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          `;
+
+          for (const record of processedData) {
+            await client.query(salesQuery, [
+              fileId,
+              record.grand_total,
+              record.week,
+              record.date,
+              record.product,
+              record.category,
+              record.customer_no,
+              record.customer,
+              record.customer_type,
+              record.salesman,
+              record.village,
+              record.district,
+              record.city,
+              record.area,
+              record.units_bks,
+              record.units_slop,
+              record.units_bal,
+              record.units_dos,
+              record.omzet,
+            ]);
           }
-        });
 
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
+          // Update file status ke selesai
+          await client.query('UPDATE uploaded_files SET status = $1 WHERE id = $2', [
+            'completed',
+            fileId,
+          ]);
+
+          await client.query('COMMIT');
+
+          return NextResponse.json({
+            success: true,
+            data: {
+              file_id: fileId,
+              filename: file.name,
+              record_count: processedData.length,
+              total_omzet: totalOmzet,
+              preview: processedData.slice(0, 5),
+            },
+          });
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        } finally {
+          client.release();
+        }
       } finally {
-        client.release();
+        // Clean up temp file
+        try {
+          await unlink(tempPath);
+        } catch {
+          // File might not exist, ignore error
+        }
       }
-
-    } finally {
-      // Clean up temp file
-      try {
-        await unlink(tempPath);
-      } catch (error) {
-        // File might not exist, ignore error
-      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      return NextResponse.json(
+        { success: false, error: 'Failed to process file upload' },
+        { status: 500 }
+      );
     }
-
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to process file upload' },
-      { status: 500 }
-    );
-  }
+  });
 }
 
+// ─── Helper: Process Excel ────────────────────────────────────────────────────
+
 async function processExcelFile(buffer: Buffer): Promise<any[]> {
-  // console.log('Memulai proses Excel dengan xlsx library dari buffer...');
-  
   try {
-    // membaca Excel file langsung dari buffer (no file path issues)
     const workbook = XLSX.read(buffer, {
       type: 'buffer',
       cellDates: true,
       cellNF: false,
-      cellText: false
+      cellText: false,
     });
     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-    
-    // Convert ke JSON with options (object-based like CSV)
+
     const data = XLSX.utils.sheet_to_json(worksheet, {
       defval: '',
-      blankrows: false
+      blankrows: false,
     });
-    
-    // console.log(`Excel processing completed: ${data.length} rows`);
+
     return data;
-    
   } catch (error) {
     console.error('Error processing Excel file:', error);
-    throw new Error(`Gagal untuk process Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Gagal untuk process Excel file: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
   }
 }
+
+// ─── Helper: Process CSV ──────────────────────────────────────────────────────
 
 async function processCSVFile(filePath: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const results: any[] = [];
-    
+
     createReadStream(filePath)
-      .pipe(csv()) // Let csv-parser handle quoted fields automatically
+      .pipe(csv())
       .on('data', (data) => {
-        // Skip empty rows
-        if (!data || Object.keys(data).length === 0) {
-          return;
-        }
-
-        // Skip Grand Total row
-        if (data['Grand Total'] !== undefined && Object.keys(data).length === 1) {
-          return;
-        }
-
+        if (!data || Object.keys(data).length === 0) return;
+        if (data['Grand Total'] !== undefined && Object.keys(data).length === 1) return;
         results.push(data);
-        
-        // // Log beberapa row awal untuk debugging
-        // if (results.length <= 2) {
-        //   console.log(`Row ${results.length}:`, data);
-        // }
       })
-      .on('end', () => {
-        // console.log(`CSV processed: ${results.length} data rows found`);
-        resolve(results);
-      })
+      .on('end', () => resolve(results))
       .on('error', (error) => reject(error));
   });
 }
+
+// ─── Date Parsing ─────────────────────────────────────────────────────────────
 
 const INDONESIAN_MONTH_TRANSLATIONS: Record<string, string> = {
   januari: 'january', jan: 'jan',
@@ -278,44 +266,34 @@ const INDONESIAN_MONTH_TRANSLATIONS: Record<string, string> = {
   september: 'september', sep: 'sep', sept: 'sep',
   oktober: 'october', okt: 'oct', oct: 'oct',
   november: 'november', nov: 'nov',
-  desember: 'december', des: 'dec', dec: 'dec'
+  desember: 'december', des: 'dec', dec: 'dec',
 };
 
-const INDONESIAN_DAY_PREFIX = /^(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)\s*,\s*/i;
-const MONTH_TRANSLATION_REGEX = new RegExp(`\\b(${Object.keys(INDONESIAN_MONTH_TRANSLATIONS).join('|')})\\b`, 'gi');
+const INDONESIAN_DAY_PREFIX =
+  /^(senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu)\s*,\s*/i;
+const MONTH_TRANSLATION_REGEX = new RegExp(
+  `\\b(${Object.keys(INDONESIAN_MONTH_TRANSLATIONS).join('|')})\\b`,
+  'gi'
+);
 
-// Fungsi untuk menentukan tahun yang benar berdasarkan minggu
 function getCorrectYearForWeek(week: number, parsedDate: Date): number {
   const dateYear = parsedDate.getFullYear();
-  const dateMonth = parsedDate.getMonth(); // 0-11 (Jan-Dec)
+  const dateMonth = parsedDate.getMonth();
   const dateDay = parsedDate.getDate();
-  
-  // W52 (minggu 52) biasanya Desember - jika minggu 52 tapi bulan Januari, kemungkinan salah tahun
-  if (week === 52 && dateMonth === 0) { // Januari
-    return dateYear - 1; // Kembali ke tahun sebelumnya
-  }
-  
-  // W1 (minggu 1) bisa dimulai dari Desember tahun sebelumnya
-  // Jika W1 dan bulan Desember (11), kemungkinan ini adalah minggu pertama untuk tahun berikutnya
-  if (week === 1 && dateMonth === 11) { // Desember
-    // Jika tanggal akhir Desember (misal 28-31), ini kemungkinan W1 untuk tahun berikutnya
-    if (dateDay >= 28) {
-      return dateYear + 1; // Maju ke tahun berikutnya
-    }
-    // Jika tanggal awal Desember, ini mungkin W1 tahun yang sama (error data)
-    // Tapi untuk safety, kita asumsikan tahun berikutnya
+
+  if (week === 52 && dateMonth === 0) return dateYear - 1;
+
+  if (week === 1 && dateMonth === 11) {
+    if (dateDay >= 28) return dateYear + 1;
     return dateYear + 1;
   }
-  
+
   return dateYear;
 }
 
 function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
-  if (!rawValue) {
-    return null;
-  }
+  if (!rawValue) return null;
 
-  // Handle Date objects dari Excel
   if (rawValue instanceof Date) {
     if (week !== undefined) {
       const correctedYear = getCorrectYearForWeek(week, rawValue);
@@ -326,24 +304,15 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
     return rawValue;
   }
 
-  // Handle string dates dari CSV
-  if (typeof rawValue !== 'string') {
-    return null;
-  }
+  if (typeof rawValue !== 'string') return null;
 
   let normalized = rawValue.replace(/^"|"$/g, '').trim();
-  if (!normalized) {
-    return null;
-  }
+  if (!normalized) return null;
 
-  // Hapus format hari dalam bahasa Indonesia dengan prefix seperti "Kamis,"
   normalized = normalized.replace(INDONESIAN_DAY_PREFIX, '').trim();
   normalized = normalized.replace(/\s+/g, ' ');
-
-  // Menterjemahkan bulan ke bahasa Inggris
   normalized = normalized.replace(MONTH_TRANSLATION_REGEX, (match) => {
-    const translated = INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()];
-    return translated ?? match;
+    return INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()] ?? match;
   });
 
   let parsed = new Date(normalized);
@@ -355,7 +324,6 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
     return parsed;
   }
 
-  // Try DD/MM/YYYY or DD-MM-YYYY formats
   const dmyMatch = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (dmyMatch) {
     const [, dayStr, monthStr, yearStr] = dmyMatch;
@@ -365,15 +333,13 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
     parsed = new Date(year, month, day);
     if (!isNaN(parsed.getTime())) {
       if (week !== undefined) {
-        const correctedYear = getCorrectYearForWeek(week, parsed);
-        parsed.setFullYear(correctedYear);
+        parsed.setFullYear(getCorrectYearForWeek(week, parsed));
       }
       return parsed;
     }
     return null;
   }
 
-  // Try YYYY/MM/DD or YYYY-MM-DD formats
   const ymdMatch = normalized.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
   if (ymdMatch) {
     const [, yearStr, monthStr, dayStr] = ymdMatch;
@@ -383,8 +349,7 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
     parsed = new Date(year, month, day);
     if (!isNaN(parsed.getTime())) {
       if (week !== undefined) {
-        const correctedYear = getCorrectYearForWeek(week, parsed);
-        parsed.setFullYear(correctedYear);
+        parsed.setFullYear(getCorrectYearForWeek(week, parsed));
       }
       return parsed;
     }
@@ -394,35 +359,20 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
   return null;
 }
 
-function parseNumericValue(raw: unknown): number {
-  if (typeof raw === 'number' && Number.isFinite(raw)) {
-    return raw;
-  }
+// ─── Numeric Parsing ──────────────────────────────────────────────────────────
 
-  if (typeof raw !== 'string') {
-    return 0;
-  }
+function parseNumericValue(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw !== 'string') return 0;
 
   const trimmed = raw.trim();
-  if (!trimmed) {
-    return 0;
-  }
+  if (!trimmed) return 0;
 
-  // untuk unit values, kita perlu untuk memisahkan desimal dengan benar
-  // Format: 1.234,56 atau 1,234.56
-  // Contoh: 1.234,56 -> 1234.56, 1,234.56 -> 1234.56
-  // Kita akan mendeteksi format berdasarkan penggunaan titik dan koma
-  // Jika ada titik dan koma, kita asumsikan titik adalah pemisah ribuan dan koma adalah desimal
-  // Jika hanya ada satu tanda baca, kita asumsikan itu adalah desimal
-  // Jika tidak ada tanda baca sama sekali, kita asumsikan format English (desimal dengan titik)
   const simpleDecimal = trimmed.match(/^[\d.]+$/);
   if (simpleDecimal) {
     const parsed = parseFloat(trimmed);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
+    if (Number.isFinite(parsed)) return parsed;
   }
-
 
   const sanitized = trimmed.replace(/[^0-9.,\-]/g, '');
   const negative = sanitized.includes('-');
@@ -434,62 +384,49 @@ function parseNumericValue(raw: unknown): number {
   let normalized: string;
 
   if (hasComma && hasDot) {
-    // Both separators present - determine which is decimal
-    // Kita akan mendeteksi format berdasarkan posisi separator
     const lastComma = unsigned.lastIndexOf(',');
     const lastDot = unsigned.lastIndexOf('.');
     const commaAfterDot = lastComma > lastDot;
-    
+
     if (commaAfterDot) {
-      // Format: 1.234,56 (Indonesian)
       const parts = unsigned.split(',');
       const integerPart = parts[0].replace(/\./g, '') || '0';
       const fractionalPart = parts.slice(1).join('');
       normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
     } else {
-      // Format: 1,234.56 (English)
       const parts = unsigned.split('.');
       const integerPart = parts[0].replace(/,/g, '') || '0';
       const fractionalPart = parts.slice(1).join('');
       normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
     }
   } else if (hasComma) {
-    // Only comma - could be decimal (Indonesian) or thousand separator (English)
     const parts = unsigned.split(',');
     if (parts.length === 2 && parts[1].length <= 2) {
-      // Likely decimal: 1234,56
       normalized = `${parts[0]}.${parts[1]}`;
     } else {
-      // Likely thousand separator: 1,234,567
       normalized = parts.join('');
     }
   } else if (hasDot) {
-    // Only dot - treat as decimal (most common for unit values)
     normalized = unsigned;
   } else {
-    // No separators - pure integer
     normalized = unsigned;
   }
 
   const parsed = Number.parseFloat(normalized);
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
+  if (!Number.isFinite(parsed)) return 0;
 
   return negative ? -parsed : parsed;
 }
+
+// ─── Sales Data Processing ────────────────────────────────────────────────────
 
 function processSalesData(data: any[], selectedArea?: string): any[] {
   const processed = [];
 
   for (const row of data) {
     try {
-      // Skip empty rows
-      if (!row || Object.keys(row).length === 0) {
-        continue;
-      }
+      if (!row || Object.keys(row).length === 0) continue;
 
-      // Mengambil nomor minggu dari "W1", "W2", etc.
       let week = 1;
       const weekStr = row['Minggu'] || '';
       if (weekStr.startsWith('W')) {
@@ -500,69 +437,45 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
 
       const rawDate = row['Tanggal'] || row['Date'] || '';
       const parsedDate = parseSalesDate(rawDate, week);
+
       if (!parsedDate) {
         console.warn('Skipping row due to invalid date format:', {
           rawDate,
           product: row['Produk'] || row['Product'],
-          customer: row['Customer']
+          customer: row['Customer'],
         });
         continue;
       }
 
-      // Memetakan data dari CSV ke database
       const city = row['Kota'] || row['City'] || '';
       const record = {
-        grand_total: parseNumericValue(row['Grand Total']),
-        week: parseNumericValue(row['Minggu']),
-        date: parsedDate,
-        product: row['Produk'] || row['Product'] || '',
-        category: row['Kategori'] || row['Category'] || '',
-        customer_no: row['No. Customer'] || row['Customer No'] || '',
-        customer: row['Customer'] || '',
-        customer_type: row['Tipe Customer'] || row['Customer Type'] || '',
-        salesman: row['Salesman'] || '',
-        village: row['Desa'] || row['Village'] || '',
-        district: row['Kecamatan'] || row['District'] || '',
-        city: city,
-        area: selectedArea || null,
-        units_bks: parseNumericValue(row['Jual (Bks Net)']),
-        units_slop: parseNumericValue(row['Jual (Slop Net)']),
-        units_bal: parseNumericValue(row['Jual (Bal Net)']),
-        units_dos: parseNumericValue(row['Jual (Dos Net)']),
-        omzet: parseNumericValue(row['Omzet (Nett)'])
+        grand_total:   parseNumericValue(row['Grand Total']),
+        week:          parseNumericValue(row['Minggu']),
+        date:          parsedDate,
+        product:       row['Produk']          || row['Product']       || '',
+        category:      row['Kategori']        || row['Category']      || '',
+        customer_no:   row['No. Customer']    || row['Customer No']   || '',
+        customer:      row['Customer']        || '',
+        customer_type: row['Tipe Customer']   || row['Customer Type'] || '',
+        salesman:      row['Salesman']        || '',
+        village:       row['Desa']            || row['Village']       || '',
+        district:      row['Kecamatan']       || row['District']      || '',
+        city,
+        area:          selectedArea           || null,
+        units_bks:     parseNumericValue(row['Jual (Bks Net)']),
+        units_slop:    parseNumericValue(row['Jual (Slop Net)']),
+        units_bal:     parseNumericValue(row['Jual (Bal Net)']),
+        units_dos:     parseNumericValue(row['Jual (Dos Net)']),
+        omzet:         parseNumericValue(row['Omzet (Nett)']),
       };
 
-      // Memvalidasi field yang diperlukan
-      if (record.product && record.customer && Number.isFinite(record.omzet) && !isNaN(record.week)) {
+      if (
+        record.product &&
+        record.customer &&
+        Number.isFinite(record.omzet) &&
+        !isNaN(record.week)
+      ) {
         processed.push(record);
-        
-        // // Log untuk debugging cross-year corrections
-        // const originalDate = new Date(rawDate);
-        // if (originalDate.getFullYear() !== parsedDate.getFullYear()) {
-        //   console.log('Cross-year correction applied during upload:', {
-        //     week,
-        //     originalDate: originalDate.toISOString(),
-        //     correctedDate: parsedDate.toISOString(),
-        //     originalMonth: originalDate.getMonth() + 1,
-        //     originalDay: originalDate.getDate(),
-        //     correctedYear: parsedDate.getFullYear(),
-        //     product: record.product,
-        //     customer: record.customer,
-        //     reason: week === 1 && originalDate.getMonth() === 11 ? 'W1 starting in December' : 
-        //            week === 52 && originalDate.getMonth() === 0 ? 'W52 in January' : 'Other'
-        //   });
-        // }
-      } else {
-        // // Log kegagalan memvalidasi file untuk debug
-        // if (record.product || record.customer || record.omzet !== 0) {
-        //   console.log('Validation failed for row:', {
-        //     product: record.product,
-        //     customer: record.customer,
-        //     omzet: record.omzet,
-        //     week: record.week,
-        //     area: record.area
-        //   });
-        // }
       }
     } catch (error) {
       console.warn('Error processing row:', error);
@@ -570,9 +483,10 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
     }
   }
 
-  // console.log(`Processed ${processed.length} valid records from ${data.length} total rows`);
-  // if (selectedArea) {
-  //   console.log(`All records assigned to area: ${selectedArea}`);
-  // }
+  console.log(`Processed ${processed.length} valid records from ${data.length} total rows`);
+  if (selectedArea) {
+    console.log(`All records assigned to area: ${selectedArea}`);
+  }
+
   return processed;
 }

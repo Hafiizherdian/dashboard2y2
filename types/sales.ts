@@ -26,17 +26,69 @@ export interface OutletSalesData {
   dozNet: number;        // DOZ Net (dozen netto)
   sales?: number;         // Total penjualan (opsional)
   target?: number;        // Target penjualan (opsional)
+  city?: string;          // Kota/kabupaten
+  district?: string;      // Kecamatan
+  village?: string;       // Desa/kelurahan
+  customer?: string;      // Nama customer
+  salesman?: string;      // Nama salesman
 }
 
 /**
  * Data kuartal dengan target dan actual
  */
+export interface QuarterlyProductDetail {
+  product: string;
+  productCategory: string;
+  target: number;
+  actual: number;
+  variance: number;
+  variancePercentage: number;
+  units_bks?:  { target: number; actual: number };
+  units_slop?: { target: number; actual: number };
+  units_bal?:  { target: number; actual: number };
+  units_dos?:  { target: number; actual: number };
+}
+
+// ─── QuarterlyData — versi baru dengan field details ──────────────────────────
+export interface WeeklyBreakdown {
+  week: number;
+  target: number;
+  actual: number;
+  variance: number;
+  variancePercentage: number;
+  achievement: number;
+  // New fields for unit-specific data
+  units_bks?: { target: number; actual: number };
+  units_slop?: { target: number; actual: number };
+  units_bal?: { target: number; actual: number };
+  units_dos?: { target: number; actual: number };
+}
+
+export interface MonthlyBreakdown {
+  month: string;
+  target: number;
+  actual: number;
+  variance: number;
+  variancePercentage: number;
+  achievement: number;
+  // New fields for unit-specific data
+  units_bks?: { target: number; actual: number };
+  units_slop?: { target: number; actual: number };
+  units_bal?: { target: number; actual: number };
+  units_dos?: { target: number; actual: number };
+}
+
 export interface QuarterlyData {
   quarter: string;              // Kuartal (Q1, Q2, Q3, Q4)
-  target: number;               // Target penjualan
-  actual: number;               // Actual penjualan
+  target: number;               // Target penjualan (omzet agregat)
+  actual: number;               // Actual penjualan (omzet agregat)
   variance: number;             // Selisih actual - target
   variancePercentage: number;   // Persentase variance
+  details?: QuarterlyProductDetail[]; // Detail per produk (opsional, untuk filter)
+  
+  // New fields for detailed analysis
+  weeklyBreakdown?: WeeklyBreakdown[];
+  monthlyBreakdown?: MonthlyBreakdown[];
 }
 
 /**
@@ -73,10 +125,11 @@ export interface ProductL4WC1WData {
   c1wValue: number;
   variance: number;
   variancePercentage: number;
-  units_bks?: { l4w: number; c1w: number };
-  units_slop?: { l4w: number; c1w: number };
-  units_bal?: { l4w: number; c1w: number };
-  units_dos?: { l4w: number; c1w: number };
+  // Tambah l4wTotal ke tiap unit field
+units_bks:  { l4w: number; c1w: number; l4wTotal?: number };
+units_slop: { l4w: number; c1w: number; l4wTotal?: number };
+units_bal:  { l4w: number; c1w: number; l4wTotal?: number };
+units_dos:  { l4w: number; c1w: number; l4wTotal?: number };
 }
 
 export interface L4WC4WData {
@@ -87,6 +140,8 @@ export interface L4WC4WData {
   variancePercentage: number;      // Persentase variance
   weeklyTrendData?: WeeklyTrendData[]; // Data tren mingguan untuk line chart
   productDetails?: ProductL4WC1WData[]; // Data detail per produk
+  l4wWeekRange?: string;           // Rentang minggu untuk L4W (contoh: "Week 45-48")
+  c1wWeekNumber?: number;         // Nomor minggu untuk C1W (contoh: 49)
 }
 
 /**

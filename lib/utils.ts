@@ -21,15 +21,15 @@ export function cn(...inputs: ClassValue[]) {
  * @param value - Nilai yang akan diformat (bisa undefined)
  * @returns {string} Format mata uang IDR
  */
-export function formatCurrency(value: number | undefined): string {
-  if (value === undefined) return 'Rp 0';
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+// export function formatCurrency(value: number | undefined): string {
+//   if (value === undefined) return 'Rp 0';
+//   return new Intl.NumberFormat('id-ID', {
+//     style: 'currency',
+//     currency: 'IDR',
+//     minimumFractionDigits: 0,
+//     maximumFractionDigits: 0,
+//   }).format(value);
+// }
 
 /**
  * Format angka ke format numerik Indonesia
@@ -47,7 +47,7 @@ export function formatNumber(value: number): string {
  */
 export function formatQuantity(value: number | undefined): string {
   if (value === undefined) return '0 DOS';
-  return `${formatNumber(value)} DOS`;
+  return `${formatNumber(value)} `;
 }
 
 /**
