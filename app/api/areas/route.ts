@@ -1,100 +1,136 @@
 /**
- * API route untuk mengambil daftar area yang tersedia
- * Endpoint: GET /api/areas, POST /api/areas
- * Returns: Array dari konfigurasi area
+ * app/api/areas/route.ts
+ * Sumber data: area_overrides (nama resmi) + dim_filters (list lengkap)
+ * Bukan lagi dari hardcode defaultAreas atau data/areas.json
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { defaultAreas } from '@/lib/areaConfig';
-import { writeFile, readFile } from 'fs/promises';
-import { join } from 'path';
-
-// File untuk menyimpan custom areas
-const AREAS_FILE = join(process.cwd(), 'data', 'areas.json');
-
-// Helper untuk membaca areas dari file
-async function getStoredAreas(): Promise<any[]> {
-  try {
-    const data = await readFile(AREAS_FILE, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    // Jika file tidak ada, return default areas
-    return defaultAreas;
-  }
-}
-
-// Helper untuk menyimpan areas ke file
-async function saveAreasToFile(areas: any[]): Promise<void> {
-  try {
-    await writeFile(AREAS_FILE, JSON.stringify(areas, null, 2));
-  } catch (error) {
-    console.error('Error saving areas:', error);
-  }
-}
+import { pool } from '@/lib/db';
+import { withAuth } from '@/lib/auth/session';
+import { canAccessArea } from '@/lib/auth/types';
 
 export async function GET(request: NextRequest) {
-  try {
-    // Ambil areas dari file atau default
-    const areas = await getStoredAreas();
-    
-    return NextResponse.json({
-      success: true,
-      data: {
-        areas: areas
-      },
-      count: areas.length
-    });
+  return withAuth(request, 'view_areas', async (session) => {
+    try {
+      // Ambil semua area dari area_overrides (ada nama resminya)
+      // LEFT JOIN ke dim_filters untuk area yang ada di data tapi belum di area_overrides
+      const result = await pool.query(`
+        SELECT
+          ao.area_id                          AS id,
+          ao.area_name                        AS name,
+          COUNT(DISTINCT ao.city_name)        AS city_count
+        FROM area_overrides ao
+        GROUP BY ao.area_id, ao.area_name
+        ORDER BY ao.area_name ASC
+      `);
 
-  } catch (error) {
-    console.error('Error fetching areas:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch areas' },
-      { status: 500 }
-    );
-  }
+      // Jika area_overrides kosong, fallback ke DISTINCT area dari sales_records
+      let areas = result.rows;
+
+      if (!areas.length) {
+        const fallback = await pool.query(`
+          SELECT
+            area       AS id,
+            initcap(replace(replace(area, 'area_', ''), '_', ' ')) AS name,
+            COUNT(*)   AS record_count
+          FROM sales_records
+          WHERE area IS NOT NULL
+          GROUP BY area
+          ORDER BY name ASC
+        `);
+        areas = fallback.rows;
+      }
+
+      // Filter berdasarkan allowed_areas user (root dapat semua)
+      if (session.role !== 'root') {
+        areas = areas.filter(a => canAccessArea(session, a.id));
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: { areas },
+        count: areas.length,
+      });
+
+    } catch (error) {
+      console.error('[api/areas GET]', error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal mengambil data area' },
+        { status: 500 }
+      );
+    }
+  });
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { area, action } = body;
+  return withAuth(request, 'manage_areas', async (session) => {
+    try {
+      const body = await request.json();
+      const { action, area } = body;
 
-    let areas = await getStoredAreas();
-
-    if (action === 'add') {
-      // Tambah area baru
-      const exists = areas.some((a: any) => a.id === area.id);
-      if (exists) {
+      if (!action || !area) {
         return NextResponse.json(
-          { success: false, error: 'Area dengan ID ini sudah ada' },
+          { success: false, error: 'action dan area wajib diisi' },
           { status: 400 }
         );
       }
-      areas = [...areas, area];
-    } else if (action === 'update') {
-      // Update area existing
-      areas = areas.map((a: any) => a.id === area.id ? area : a);
-    } else if (action === 'delete') {
-      // Hapus area
-      areas = areas.filter((a: any) => a.id !== area.id);
+
+      if (action === 'add') {
+        // Tambah area baru — minimal satu entry di area_overrides
+        await pool.query(`
+          INSERT INTO area_overrides (city_name, area_id, area_name, city_type)
+          VALUES ($1, $2, $3, 'kota')
+          ON CONFLICT (city_name) DO NOTHING
+        `, [area.name, area.id, area.name]);
+
+      } else if (action === 'update') {
+        // Update nama area di semua baris area_overrides yang punya area_id ini
+        await pool.query(`
+          UPDATE area_overrides SET area_name = $1, updated_at = now()
+          WHERE area_id = $2
+        `, [area.name, area.id]);
+
+      } else if (action === 'delete') {
+        // Hanya root boleh delete area
+        if (session.role !== 'root') {
+          return NextResponse.json(
+            { success: false, error: 'Hanya root yang bisa menghapus area' },
+            { status: 403 }
+          );
+        }
+        await pool.query(
+          'DELETE FROM area_overrides WHERE area_id = $1',
+          [area.id]
+        );
+
+      } else {
+        return NextResponse.json(
+          { success: false, error: `Action tidak dikenal: ${action}` },
+          { status: 400 }
+        );
+      }
+
+      // Kembalikan list area terbaru
+      const updated = await pool.query(`
+        SELECT area_id AS id, area_name AS name,
+               COUNT(DISTINCT city_name) AS city_count
+        FROM area_overrides
+        GROUP BY area_id, area_name
+        ORDER BY area_name ASC
+      `);
+
+      return NextResponse.json({
+        success: true,
+        data: { areas: updated.rows },
+        count: updated.rows.length,
+      });
+
+    } catch (error) {
+      console.error('[api/areas POST]', error);
+      return NextResponse.json(
+        { success: false, error: 'Gagal mengelola area' },
+        { status: 500 }
+      );
     }
-
-    // Simpan ke file
-    await saveAreasToFile(areas);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        areas: areas
-      },
-      count: areas.length
-    });
-
-  } catch (error) {
-    console.error('Error managing areas:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to manage areas' },
-      { status: 500 }
-    );
-  }
+  });
 }
