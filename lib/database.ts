@@ -1182,12 +1182,16 @@ function generateL4WC4WData(records: any[], currentYear?: number, filters?: Fetc
 
   const weeklyTrendData: WeeklyTrendData[] = [
     ...l4wWeeks.map((entry, index): WeeklyTrendData => ({
-      week:   `W-${l4wWeeks.length - index}`,
-      value:  Math.round(entry.total),
-      period: 'L4W',
-    })),
-    { week: 'W+1', value: Math.round(c1wValue), period: 'C1W' },
-  ];
+      week:   `W${entry.week.toString().padStart(2, '0')}`,   // ← Week asli
+    value:  Math.round(entry.total),
+    period: 'L4W',
+  })),
+  { 
+    week: `W${c1wEntry.week.toString().padStart(2, '0')}`, 
+    value: Math.round(c1wValue), 
+    period: 'C1W' 
+  },
+];
 
   return {
     l4wAverage:      Math.round(l4wAverageRaw),

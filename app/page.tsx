@@ -695,7 +695,17 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             <ComposedChart data={lData} margin={{top:2,right:4,left:0,bottom:0}}>
               <defs><linearGradient id="gLwM" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={lc} stopOpacity={0.25}/><stop offset="95%" stopColor={lc} stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
-              <XAxis dataKey="w" tick={ts} axisLine={false} tickLine={false}/>
+              <XAxis 
+  dataKey="week"           // pastikan ini sesuai dengan key di data
+  tick={ts} 
+  axisLine={false} 
+  tickLine={false}
+  interval={0}
+  angle={-45}
+  textAnchor="end"
+  height={55}
+  dy={12}
+/>
               <YAxis tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false} width={32}/>
               <Tooltip content={<CT theme={theme}/>}/>
               <Area type="monotone" dataKey="v" name={`${unitLabel} ${cL}`} fill="url(#gLwM)" stroke={lc} strokeWidth={2} dot={{fill:lc,r:2.5,strokeWidth:0}}/>
@@ -1135,8 +1145,8 @@ function DashboardInner() {
   const {isMobile,isTablet} = useBreakpoint();
   const {user} = useAuth();
 
-  const [y1, sY1] = useState(2024);
-  const [y2, sY2] = useState(2025);
+  const [y1, sY1] = useState(2025);
+  const [y2, sY2] = useState(2026);
   const [w1, sW1] = useState(0);
   const [w2, sW2] = useState(0);
   const [af, sAf] = useState('');
