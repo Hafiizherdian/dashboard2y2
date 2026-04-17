@@ -355,6 +355,13 @@ function DesktopFilterBar({ y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onR
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
   const Sep=()=><div style={{width:1,height:12,background:t.border,margin:'0 1px',flexShrink:0}}/>;
   const Lbl=({c}:{c:string})=><span style={{fontSize:8,fontWeight:700,color:t.textFaint,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.1em',flexShrink:0}}>{c}</span>;
+  const [dotStep, setDotStep] = useState(0);
+  useEffect(() => {
+    if (loading) {
+      const t = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
+      return () => clearInterval(t);
+    }
+  }, [loading]);
   return (
     <div style={{flexShrink:0,background:t.filterbg,borderBottom:`1px solid ${t.border}`}}>
       <div style={{display:'flex',alignItems:'center',padding:'0 14px',height:36,gap:4}}>
@@ -368,7 +375,21 @@ function DesktopFilterBar({ y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onR
         <Sep/>
         <Sel value={af} onChange={v=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:106}}/>
         <div style={{flex:1}}/>
-        {loading&&<svg style={{animation:'spin 0.7s linear infinite',width:11,height:11,color:'#4ade80',flexShrink:0}} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.2"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" fill="none"/></svg>}
+        {loading && (
+  <>
+    <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
+      {[0,1,2].map(i=>(
+        <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
+          transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
+      ))}
+    </div>
+    <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
+      background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
+      borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
+      mengambil data
+    </div>
+  </>
+)}
         {dirty&&<button onClick={onReset} style={{height:22,padding:'0 7px',borderRadius:4,fontSize:10,fontFamily:'monospace',background:'transparent',border:`1px solid ${t.borderInput}`,color:t.textMuted,cursor:'pointer'}}>Reset</button>}
         <button onClick={onApply} disabled={loading}
           style={{height:22,padding:'0 11px',borderRadius:4,fontSize:10,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',background:'#1c9706',border:'none',color:'#fff',cursor:loading?'not-allowed':'pointer',opacity:loading?0.5:1,flexShrink:0,boxShadow:'0 1px 4px rgba(28,151,6,0.3)'}}>
