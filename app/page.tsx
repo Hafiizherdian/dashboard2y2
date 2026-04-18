@@ -400,25 +400,86 @@ function DesktopFilterBar({ y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onR
   );
 }
 
-function MobileFilterBar({ y1,w1,y2,w2,af,areas,onOpen,loading,theme }:{ y1:number;w1:number;y2:number;w2:number;af:string;areas:AreaConfig[];onOpen:()=>void;loading:boolean;theme:Theme }) {
+function MobileFilterBar({ y1,w1,y2,w2,af,areas,onOpen,loading,theme }:{ 
+  y1:number;w1:number;y2:number;w2:number;af:string;
+  areas:AreaConfig[];onOpen:()=>void;loading:boolean;theme:Theme 
+}) {
   const t=tk[theme];
+  const [dotStep, setDotStep] = useState(0);
+
+  useEffect(() => {
+    if (loading) {
+      const id = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
+      return () => clearInterval(id);
+    }
+  }, [loading]);
+
   type CV='blue'|'slate'|'orange';
   const Chip=({v,ch}:{v:string;ch:CV})=>{
     const key=`chip${ch.charAt(0).toUpperCase()+ch.slice(1)}` as keyof typeof t;
     const c=t[key] as {bg:string;text:string;border:string};
-    return <span style={{padding:'1px 5px',borderRadius:4,fontSize:9,fontWeight:600,fontFamily:'IBM Plex Mono,monospace',background:c.bg,color:c.text,border:`1px solid ${c.border}`,whiteSpace:'nowrap'}}>{v}</span>;
+    return (
+      <span style={{
+        padding:'1px 5px',borderRadius:4,fontSize:9,fontWeight:600,
+        fontFamily:'IBM Plex Mono,monospace',background:c.bg,color:c.text,
+        border:`1px solid ${c.border}`,whiteSpace:'nowrap'
+      }}>{v}</span>
+    );
   };
+
   const aName=areas.find(a=>a.id===af)?.name;
+
   return (
-    <div style={{background:t.filterbg,borderBottom:`1px solid ${t.border}`,height:32,display:'flex',alignItems:'center',padding:'0 10px',gap:6}}>
-      <button onClick={onOpen} style={{display:'flex',alignItems:'center',gap:4,height:20,padding:'0 7px',borderRadius:4,background:t.inputBg,border:`1px solid ${t.borderInput}`,color:t.textSub,fontSize:9,fontFamily:'monospace',cursor:'pointer',flexShrink:0}}><Filter size={8}/>Filter</button>
-      <div style={{display:'flex',gap:4,flex:1,overflowX:'auto',alignItems:'center',scrollbarWidth:'none'}}>
+    <div style={{
+      background:t.filterbg,borderBottom:`1px solid ${t.border}`,
+      height:32,display:'flex',alignItems:'center',padding:'0 10px',gap:6
+    }}>
+      {/* Tombol buka filter */}
+      <button
+        onClick={onOpen}
+        style={{
+          display:'flex',alignItems:'center',gap:4,height:20,padding:'0 7px',
+          borderRadius:4,background:t.inputBg,border:`1px solid ${t.borderInput}`,
+          color:t.textSub,fontSize:9,fontFamily:'monospace',cursor:'pointer',flexShrink:0
+        }}
+      >
+        <Filter size={8}/>Filter
+      </button>
+
+      {/* Chips periode & area */}
+      <div style={{
+        display:'flex',gap:4,flex:1,overflowX:'auto',alignItems:'center',scrollbarWidth:'none'
+      }}>
         <Chip v={`${y1}${w1>0?` W${w1}`:''}`} ch="blue"/>
         <span style={{fontSize:8,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>vs</span>
         <Chip v={`${y2}${w2>0?` W${w2}`:''}`} ch="slate"/>
         {aName&&<Chip v={aName} ch="orange"/>}
       </div>
-      {loading&&<svg style={{animation:'spin 0.7s linear infinite',width:10,height:10,color:'#4ade80',flexShrink:0}} viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.2"/><path d="M4 12a8 8 0 018-8" stroke="currentColor" strokeWidth="3" fill="none"/></svg>}
+
+      {/* Loading — sama persis dengan desktop */}
+      {loading && (
+        <>
+          <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
+            {[0,1,2].map(i=>(
+              <div
+                key={i}
+                style={{
+                  width:4,height:4,borderRadius:'50%',background:'#4ade80',
+                  transition:'opacity 0.2s',opacity:i===dotStep?1:0.25
+                }}
+              />
+            ))}
+          </div>
+          <div style={{
+            fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
+            background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
+            borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center',
+            flexShrink:0
+          }}>
+            mengambil data
+          </div>
+        </>
+      )}
     </div>
   );
 }
