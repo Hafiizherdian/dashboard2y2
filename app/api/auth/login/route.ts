@@ -29,19 +29,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Debug: Log user found
-    console.log('[DEBUG] User found:', {
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      is_active: user.is_active,
-      password_hash_length: user.password_hash?.length
-    });
+    // console.log('[DEBUG] User found:', {
+    //   id: user.id,
+    //   username: user.username,
+    //   role: user.role,
+    //   is_active: user.is_active,
+    //   password_hash_length: user.password_hash?.length
+    // });
 
     const valid = await compare(password, user.password_hash);
-    console.log('[DEBUG] Password comparison:', {
-      input_password: password,
-      hash_matches: valid
-    });
+    // console.log('[DEBUG] Password comparison:', {
+    //   input_password: password,
+    //   hash_matches: valid
+    // });
     
     if (!valid) {
       return NextResponse.json({ error: 'Username atau password salah' }, { status: 401 });
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     res.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
-      secure:   process.env.NODE_ENV === 'production',
+      secure:   process.env.NODE_ENV === 'development', //buat vps sementara ganti ke development
       sameSite: 'lax',
       maxAge:   8 * 60 * 60, // 8 jam
       path:     '/',

@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetch('/api/auth/me')
       .then(r => r.ok ? r.json() : null)
       .then(d => {
-        console.log('[AuthContext] User data from API:', d?.data);
+        // console.log('[AuthContext] User data from API:', d?.data);
         setUser(d?.data ?? null);
       })
       .catch(() => setUser(null))
@@ -50,13 +50,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAreaAccess = useCallback(
     (area: string) => {
       const hasAccess = user ? canAccessArea(user, area) : false;
-      console.log('[AuthContext] Area access check:', { 
-        user: user?.username, 
-        role: user?.role, 
-        userAreas: user?.allowed_areas, 
-        requestedArea: area, 
-        hasAccess 
-      });
+      // console.log('[AuthContext] Area access check:', { 
+      //   user: user?.username, 
+      //   role: user?.role, 
+      //   userAreas: user?.allowed_areas, 
+      //   requestedArea: area, 
+      //   hasAccess 
+      // });
       return hasAccess;
     },
     [user]
