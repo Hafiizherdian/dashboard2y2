@@ -60,7 +60,6 @@ const TK = {
     negGrowth: { bg: 'rgba(239,68,68,0.1)',   text: '#fca5a5', border: 'rgba(239,68,68,0.2)'  },
     neuGrowth: { bg: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.4)', border: 'rgba(255,255,255,0.1)' },
     divider:   'rgba(255,255,255,0.04)',
-    // FIX: chart background tokens
     chartAreaBg: 'rgba(255,255,255,0.03)',
     chartAreaBorder: 'rgba(255,255,255,0.06)',
   },
@@ -107,7 +106,6 @@ const TK = {
     negGrowth: { bg: 'rgba(220,38,38,0.08)',  text: '#b91c1c', border: 'rgba(220,38,38,0.15)' },
     neuGrowth: { bg: 'rgba(0,0,0,0.04)',       text: '#94a3b8', border: 'rgba(0,0,0,0.08)'     },
     divider:   'rgba(0,0,0,0.04)',
-    // FIX: chart background tokens
     chartAreaBg: 'rgba(0,0,0,0.02)',
     chartAreaBorder: 'rgba(0,0,0,0.06)',
   },
@@ -319,7 +317,7 @@ function ChartTooltip({ active, payload, label, theme, prefix = '' }: any) {
   );
 }
 
-// ─── FIX: ChartBox — pakai t.cardBg & t.contentBg konsisten ─────────────────
+// ─── ChartBox ────────────────────────────────────────────────────────────────
 function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compact, children, badge }: {
   title: string; chartKey: string; height?: number;
   onExpand: (chartKey: string, year: number) => void;
@@ -330,7 +328,6 @@ function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compac
   const { isMobile } = useBreakpoint();
 
   return (
-    // FIX: background pakai t.cardBg bukan t.contentBg (contentBg terlalu gelap di dark mode)
     <div style={{
       background: t.cardBg,
       border: `1px solid ${t.borderCard}`,
@@ -354,7 +351,6 @@ function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compac
             display: 'flex', alignItems: 'center', gap: 4,
             padding: '4px 10px', borderRadius: 6,
             fontSize: 10, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace',
-            // FIX: tombol pakai token
             background: t.inputBg, color: t.textMuted,
             border: `1px solid ${t.borderInput}`, cursor: 'pointer', flexShrink: 0,
             transition: 'background 0.15s, color 0.15s',
@@ -363,7 +359,6 @@ function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compac
           <Maximize2 size={9} /> Perbesar
         </button>
       </div>
-      {/* FIX: chart area pakai chartAreaBg & chartAreaBorder token */}
       <div style={{
         height,
         background: t.chartAreaBg,
@@ -398,7 +393,6 @@ function ExpandModal({ title, onClose, children, theme }: {
             <X size={16} />
           </button>
         </div>
-        {/* FIX: modal content bg pakai t.cardBg */}
         <div style={{ flex: 1, overflow: 'auto', padding: '16px 18px', background: t.cardBg, borderRadius: '0 0 16px 16px' }}>
           {children}
         </div>
@@ -423,7 +417,6 @@ function SortTh({ label, sortKey, sortState, onSort, theme, align = 'left' }: {
         padding: '8px 14px', textAlign: align,
         fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em',
         color: active ? t.textSub : t.tableHeadText,
-        // FIX: background pakai t.tableHeadBg
         background: active ? t.divider : t.tableHeadBg,
         borderBottom: `1px solid ${t.border}`,
         cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap',
@@ -442,19 +435,20 @@ function SortTh({ label, sortKey, sortState, onSort, theme, align = 'left' }: {
 }
 
 // ─── YearPanel ────────────────────────────────────────────────────────────────
-function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal }: {
+function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal, weekRange }: {
   year: number; isA: boolean; data: OutletSalesData[];
   theme: Theme; onExpand: (chartKey: string, year: number) => void;
   compact?: boolean; otherTotal?: number;
+  // Opsi B: range minggu shared dari parent (min/max gabungan kedua tahun)
+  weekRange: { min: number; max: number };
 }) {
   const t = TK[theme];
   const { isMobile } = useBreakpoint();
   const palette    = isA ? PALETTE_A : PALETTE_B;
   const piePalette = isA ? PIE_PALETTE_A : PIE_PALETTE_B;
-  // FIX: yc sekarang benar-benar pakai isA untuk memilih yearA atau yearB
   const yc = isA ? TK[theme].yearA : TK[theme].yearB;
 
-  const [sortState,    setSortState]    = useState<{ key: string; dir: SortDir }>({ key: 'week', dir: 'asc' });
+  const [sortState,     setSortState]    = useState<{ key: string; dir: SortDir }>({ key: 'week', dir: 'asc' });
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
 
   const handleExpand = (chartKey: string, _year: number) => setExpandedChart(chartKey);
@@ -473,13 +467,26 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
     return Array.from(s).sort();
   }, [rows]);
 
+  // ─── OPSI B: weeklyData pakai range shared dari parent ───────────────────
+  // Semua minggu dari weekRange.min sampai weekRange.max dimunculkan,
+  // minggu tanpa data → dozNet = 0
   const weeklyData = useMemo(() => {
     const m = new Map<number, number>();
-    rows.forEach(r => { m.set(r.week, (m.get(r.week) || 0) + (r.dozNet || 0)); });
-    return Array.from(m.entries()).sort((a, b) => a[0] - b[0]).map(([wk, dozNet]) => ({ week: `W${wk}`, wkNum: wk, dozNet }));
-  }, [rows]);
+    rows.forEach(r => {
+      if (r.week != null) {
+        m.set(r.week, (m.get(r.week) ?? 0) + (r.dozNet ?? 0));
+      }
+    });
 
-  const totalDoz = useMemo(() => weeklyData.reduce((s, w) => s + w.dozNet, 0), [weeklyData]);
+    const { min, max } = weekRange;
+    const result: { week: string; wkNum: number; dozNet: number }[] = [];
+    for (let wk = min; wk <= max; wk++) {
+      result.push({ week: `W${wk}`, wkNum: wk, dozNet: m.get(wk) ?? 0 });
+    }
+    return result;
+  }, [rows, weekRange]);
+
+  const totalDoz = useMemo(() => rows.reduce((s, r) => s + (r.dozNet ?? 0), 0), [rows]);
 
   const weeklyChart = useMemo(
     () => weeklyData.map(w => ({ ...w, pct: totalDoz > 0 ? (w.dozNet / totalDoz) * 100 : 0 })),
@@ -525,12 +532,21 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
   const barCustomer = useMemo(() => makeBarDist(r => r.customer || 'Unknown', 'customer'), [makeBarDist]);
 
   const metrics = useMemo(() => {
-    const weeks = weeklyData.length;
-    const avg   = weeks ? totalDoz / weeks : 0;
-    const best  = weeklyData.reduce((m, c) => c.dozNet > m.dozNet ? c : m, { dozNet: 0, week: '—', wkNum: 0 });
-    const worst = weeklyData.length > 0 ? weeklyData.reduce((m, c) => c.dozNet < m.dozNet ? c : m, weeklyData[0]) : { dozNet: 0, week: '—', wkNum: 0 };
+    // Total minggu dalam range (termasuk yang kosong) — untuk avg dan label
+    const totalWeeksInRange = weeklyData.length;
+    // Rata-rata dibagi seluruh minggu dalam range (termasuk kosong)
+    const avg = totalWeeksInRange > 0 ? totalDoz / totalWeeksInRange : 0;
+    // Terbaik: dari seluruh range termasuk yang 0
+    const best = weeklyData.length > 0
+      ? weeklyData.reduce((m, c) => c.dozNet > m.dozNet ? c : m, weeklyData[0])
+      : { dozNet: 0, week: '—', wkNum: 0 };
+    // Terendah: hanya dari minggu yang ada datanya (dozNet > 0), bukan yang kosong
+    const withData = weeklyData.filter(w => w.dozNet > 0);
+    const worst = withData.length > 0
+      ? withData.reduce((m, c) => c.dozNet < m.dozNet ? c : m, withData[0])
+      : { dozNet: 0, week: '—', wkNum: 0 };
     const yoyTrend = otherTotal != null && otherTotal > 0 ? ((totalDoz - otherTotal) / otherTotal) * 100 : undefined;
-    return { weeks, avg, best, worst, yoyTrend };
+    return { weeks: totalWeeksInRange, avg, best, worst, yoyTrend };
   }, [weeklyData, totalDoz, otherTotal]);
 
   const sortedTable = useMemo(() => {
@@ -538,9 +554,9 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
     if (!sortState.dir) return arr;
     return arr.sort((a, b) => {
       let va: any, vb: any;
-      if (sortState.key === 'week')   { va = a.wkNum;  vb = b.wkNum;  }
+      if (sortState.key === 'week')        { va = a.wkNum;  vb = b.wkNum;  }
       else if (sortState.key === 'dozNet') { va = a.dozNet; vb = b.dozNet; }
-      else if (sortState.key === 'pct')   { va = a.pct;    vb = b.pct;    }
+      else if (sortState.key === 'pct')    { va = a.pct;    vb = b.pct;    }
       else return 0;
       return sortState.dir === 'asc' ? va - vb : vb - va;
     });
@@ -611,7 +627,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
           <Tooltip content={<PieTooltip />} />
           <Legend
             iconSize={7} iconType="circle"
-            // FIX: legend wrapperStyle pakai t.textSub
             wrapperStyle={{ fontSize: isMobile || (compact && !expandedMode) ? 9 : 10, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub }}
           />
         </PieChart>
@@ -626,7 +641,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
         <XAxis
           dataKey={xKey} angle={-35} textAnchor="end"
           height={isMobile || compact ? 50 : 65}
-          // FIX: tick fill pakai t.textMuted
           tick={{ fontSize: axisFs, fill: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}
           interval={0} axisLine={false} tickLine={false}
         />
@@ -694,7 +708,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
       </ResponsiveContainer>
     );
 
-    // FIX: modal chart area pakai t.chartAreaBg & t.chartAreaBorder
     const wrapModal = (el: React.ReactNode) => (
       <div style={{ height: MODAL_H, background: t.chartAreaBg, border: `1px solid ${t.chartAreaBorder}`, borderRadius: 8, padding: '8px 4px 4px' }}>
         {el}
@@ -716,10 +729,10 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {/* Metric cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 10 }}>
-        <MetricCard label="Total DOZ Net" value={totalDoz.toLocaleString('id-ID')} sub={`${metrics.weeks} minggu`}
+        <MetricCard label="Total DOZ Net" value={totalDoz.toLocaleString('id-ID')} sub={`${metrics.weeks} minggu (W${weekRange.min}–W${weekRange.max})`}
           cardKey={isA ? 'card1' : 'card2'} icon={Store} theme={theme} compact={isMobile || compact}
           trend={metrics.yoyTrend !== undefined ? { value: metrics.yoyTrend, label: 'YoY' } : undefined} />
-        <MetricCard label="Rata-rata/Minggu" value={Math.round(metrics.avg).toLocaleString('id-ID')} sub="DOZ per minggu"
+        <MetricCard label="Rata-rata/Minggu" value={Math.round(metrics.avg).toLocaleString('id-ID')} sub={`DOZ ÷ ${metrics.weeks} minggu`}
           cardKey={isA ? 'card1' : 'card2'} icon={TrendingUp} theme={theme} compact={isMobile || compact} />
         <MetricCard label="Minggu Terbaik" value={metrics.best.week} sub={`${metrics.best.dozNet.toLocaleString('id-ID')} DOZ`}
           cardKey="card3" icon={ArrowUp} theme={theme} compact={isMobile || compact} />
@@ -770,7 +783,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
       <ChartBox title="per Customer (Top 10)"   chartKey="customer" height={barDistH} onExpand={handleExpand} year={year} theme={theme} compact={isMobile || compact}>{renderBar(barCustomer, 'customer', 'Customer: ')}</ChartBox>
 
       {/* Detail table */}
-      {/* FIX: table container pakai t.cardBg */}
       <div style={{ background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 10, overflow: 'hidden', boxShadow: t.shadow }}>
         <div style={{ padding: isMobile || compact ? '8px 12px' : '11px 16px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ fontSize: isMobile || compact ? 11 : 12, fontWeight: 700, fontFamily: 'IBM Plex Sans, sans-serif', color: t.text }}>Detail Mingguan</span>
@@ -779,7 +791,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: isMobile || compact ? 11 : 12, fontFamily: 'IBM Plex Mono, monospace' }}>
             <thead>
-              {/* FIX: thead background eksplisit t.tableHeadBg */}
               <tr style={{ background: t.tableHeadBg }}>
                 <SortTh label="Minggu"  sortKey="week"   sortState={sortState} onSort={handleSort} theme={theme} />
                 <SortTh label="DOZ Net" sortKey="dozNet" sortState={sortState} onSort={handleSort} theme={theme} align="right" />
@@ -794,12 +805,16 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
                 </tr>
               ) : sortedTable.map((w, idx) => {
                 const aboveAvg = w.dozNet >= avgLine;
-                const st = w.pct >= 5
-                  ? { label: 'Tinggi', ...TK[theme].green  }
+                // Minggu dengan dozNet = 0 → status "Kosong"
+                const st = w.dozNet === 0
+                  ? { label: 'Kosong', ...TK[theme].neuGrowth, border: TK[theme].neuGrowth.border }
+                  : w.pct >= 5
+                  ? { label: 'Tinggi',  ...TK[theme].green  }
                   : w.pct >= 2
-                  ? { label: 'Sedang', ...TK[theme].orange }
-                  : { label: 'Rendah', ...TK[theme].red    };
-                const barPct = totalDoz > 0 ? (w.dozNet / (Math.max(...weeklyChart.map(w => w.dozNet)) || 1)) * 100 : 0;
+                  ? { label: 'Sedang',  ...TK[theme].orange }
+                  : { label: 'Rendah',  ...TK[theme].red    };
+                const maxDoz = Math.max(...weeklyChart.map(w => w.dozNet), 1);
+                const barPct = totalDoz > 0 ? (w.dozNet / maxDoz) * 100 : 0;
                 return (
                   <tr key={w.week}
                     style={{ background: idx % 2 === 1 ? t.tableAlt : t.cardBg, transition: 'background 0.1s' }}
@@ -812,10 +827,14 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
                         <div style={{ width: 40, height: 4, background: t.border, borderRadius: 2, flexShrink: 0, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${barPct}%`, background: aboveAvg ? yc.accent : `${yc.accent}60`, borderRadius: 2 }} />
                         </div>
-                        <span style={{ color: t.textSub }}>{w.dozNet.toLocaleString('id-ID')}</span>
+                        <span style={{ color: w.dozNet === 0 ? t.textMuted : t.textSub }}>
+                          {w.dozNet.toLocaleString('id-ID')}
+                        </span>
                       </div>
                     </td>
-                    <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', color: t.textMuted, textAlign: 'right' }}>{w.pct.toFixed(2)}%</td>
+                    <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', color: t.textMuted, textAlign: 'right' }}>
+                      {w.dozNet === 0 ? '—' : `${w.pct.toFixed(2)}%`}
+                    </td>
                     <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px' }}>
                       <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 20, fontSize: 9, fontWeight: 700, background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>
                         {st.label}
@@ -827,7 +846,6 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
             </tbody>
             {sortedTable.length > 0 && (
               <tfoot>
-                {/* FIX: tfoot pakai t.tableHeadBg */}
                 <tr style={{ background: t.tableHeadBg, borderTop: `1px solid ${t.border}` }}>
                   <td style={{ padding: '8px 14px', fontSize: 10, fontWeight: 700, color: t.textSub }}>Total</td>
                   <td style={{ padding: '8px 14px', textAlign: 'right', fontSize: 11, fontWeight: 800, color: t.text }}>{totalDoz.toLocaleString('id-ID')}</td>
@@ -917,6 +935,20 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
   const totalA = useMemo(() => dataA.reduce((s, r) => s + (r.dozNet || 0), 0), [dataA]);
   const totalB = useMemo(() => dataB.reduce((s, r) => s + (r.dozNet || 0), 0), [dataB]);
 
+  // ─── OPSI B: hitung shared week range dari gabungan kedua tahun ──────────
+  // Ini memastikan kedua YearPanel punya axis minggu yang identik
+  const sharedWeekRange = useMemo(() => {
+    const allWeeks: number[] = [];
+    [...dataA, ...dataB].forEach(r => {
+      if (r.week != null) allWeeks.push(r.week);
+    });
+    if (allWeeks.length === 0) return { min: 1, max: 52 };
+    return {
+      min: Math.min(...allWeeks),
+      max: Math.max(...allWeeks),
+    };
+  }, [dataA, dataB]);
+
   const hasFilter = [selOutlet, selCat, selProduct, selCity, selDistrict, selCustomer].some(v => v !== 'all');
   const activeFilterCount = [selOutlet, selCat, selProduct, selCity, selDistrict, selCustomer].filter(v => v !== 'all').length;
 
@@ -950,6 +982,7 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
         <p style={{ margin: 0, fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
           DOZ Net · {(dataA.length + dataB.length).toLocaleString()} records
           {hasFilter && ` · ${activeFilterCount} filter aktif`}
+          {` · W${sharedWeekRange.min}–W${sharedWeekRange.max}`}
         </p>
         <div style={{ display: 'flex', gap: 6 }}>
           {yearA != null && (
@@ -1022,7 +1055,11 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
 
       {/* Year panels */}
       {availableYears.length < 2 ? (
-        <YearPanel year={yearA!} isA={true} data={dataA} theme={theme} onExpand={() => {}} otherTotal={undefined} />
+        <YearPanel
+          year={yearA!} isA={true} data={dataA} theme={theme}
+          onExpand={() => {}} otherTotal={undefined}
+          weekRange={sharedWeekRange}
+        />
       ) : isMobile ? (
         <div>
           <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${t.borderCard}`, marginBottom: 14, background: t.inputBg }}>
@@ -1044,8 +1081,20 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
               </button>
             ))}
           </div>
-          {activeTab === 'A' && yearA != null && <YearPanel year={yearA} isA={true}  data={dataA} theme={theme} onExpand={() => {}} otherTotal={totalB} />}
-          {activeTab === 'B' && yearB != null && <YearPanel year={yearB} isA={false} data={dataB} theme={theme} onExpand={() => {}} otherTotal={totalA} />}
+          {activeTab === 'A' && yearA != null && (
+            <YearPanel
+              year={yearA} isA={true} data={dataA} theme={theme}
+              onExpand={() => {}} otherTotal={totalB}
+              weekRange={sharedWeekRange}
+            />
+          )}
+          {activeTab === 'B' && yearB != null && (
+            <YearPanel
+              year={yearB} isA={false} data={dataB} theme={theme}
+              onExpand={() => {}} otherTotal={totalA}
+              weekRange={sharedWeekRange}
+            />
+          )}
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isTablet ? 14 : 20, alignItems: 'start' }}>
@@ -1060,7 +1109,11 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
                 <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: yc.label }}>Tahun {year}</span>
                 <span style={{ fontSize: 10, color: yc.label, opacity: 0.55, fontFamily: 'IBM Plex Mono, monospace', marginLeft: 'auto' }}>{rowData.length.toLocaleString()} records</span>
               </div>
-              <YearPanel year={year} isA={isA} data={rowData} theme={theme} onExpand={() => {}} compact={isTablet} otherTotal={other} />
+              <YearPanel
+                year={year} isA={isA} data={rowData} theme={theme}
+                onExpand={() => {}} compact={isTablet} otherTotal={other}
+                weekRange={sharedWeekRange}
+              />
             </div>
           ))}
         </div>
