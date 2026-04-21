@@ -30,7 +30,7 @@ jobs:
             git pull origin master
 
             echo "=== Install dependencies ==="
-            npm ci --omit=dev
+            npm ci 
 
             echo "=== Build Next.js ==="
             npm run build
