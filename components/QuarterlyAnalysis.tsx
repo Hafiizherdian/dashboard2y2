@@ -1012,15 +1012,7 @@ export default function QuarterlyAnalysisComponent({ data, theme: themeProp, sel
               <option value="all" style={{ background: t.selectBg }}>Semua Kuartal</option>
               {quarterOptions.map(q => <option key={q} value={q} style={{ background: t.selectBg }}>{q}</option>)}
             </FilterSelect>
-          </div>
-        </div>
-      </div>
-
-      {/* View Mode */}
-      <div style={card()}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mode Tampilan</span>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
               { value: 'overview', label: 'Overview',        color: '#3b82f6' },
               { value: 'weekly',   label: 'Detail Mingguan', color: '#10b981' },
@@ -1032,8 +1024,17 @@ export default function QuarterlyAnalysisComponent({ data, theme: themeProp, sel
               </button>
             ))}
           </div>
+          </div>
         </div>
       </div>
+
+      {/* View Mode */}
+      {/* <div style={card()}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mode Tampilan</span>
+          
+        </div>
+      </div> */}
 
       {/* ── Overview ── */}
       {viewMode === 'overview' && (
