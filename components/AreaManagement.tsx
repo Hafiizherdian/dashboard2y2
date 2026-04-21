@@ -137,16 +137,12 @@ const MWG: Record<Quarter, MonthWeekGroup[]> = {
 };
 const getMWG = (q:Quarter) => MWG[q];
 
-/**
- * Konversi (quarter index, weekOffset) → global week number 1–52.
- * Q1 wo=0 → W1, Q1 wo=12 → W13, Q2 wo=0 → W14, dst.
- */
 const globalWeek = (qNum:number, wo:number): number => (qNum - 1) * 13 + wo + 1;
 
 // ─── API types ─────────────────────────────────────────────────────
 interface AreaTargetProduct {
   product: string;
-  weeks: Record<number, number>; // { 1: 7.5, 2: 7.5, ..., 52: 6.0 }
+  weeks: Record<number, number>;
 }
 interface AreaTargetResponse {
   success: boolean;
@@ -157,7 +153,7 @@ interface AreaTargetResponse {
   };
   error?: string;
 }
-type WeekValues  = Record<string,number>; // key = "Q1_W0" … "Q4_W12"
+type WeekValues  = Record<string,number>;
 type ProdWeekMap = Record<string,WeekValues>;
 interface AreaConfig { id:string; name?:string; description?:string; }
 
@@ -188,18 +184,13 @@ function dkBd(dk:DerivedKey, t:Tok) {
   return dk==='bal'?t.balBd:dk==='slop'?t.slopBd:dk==='bks'?t.bksBd:t.stickBd;
 }
 
-/**
- * ★ FIX UTAMA ★
- * Konversi response API (per minggu global) → ProdWeekMap (key = "Q1_W0" … "Q4_W12").
- * Setiap minggu punya nilai sendiri — TIDAK dirata-rata.
- */
 function apiToWeekMap(products: AreaTargetProduct[]): ProdWeekMap {
   const res: ProdWeekMap = {};
   for (const p of products) {
     res[p.product] = {};
     QUARTERS.forEach((q, qi) => {
       getMWG(q).flatMap(g => g.weekOffsets).forEach(wo => {
-        const gw = globalWeek(qi + 1, wo); // 1–52
+        const gw = globalWeek(qi + 1, wo);
         res[p.product][`${q}_W${wo}`] = p.weeks[gw] ?? 0;
       });
     });
@@ -443,7 +434,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
 
   const showToast = (msg:string,ok:boolean)=>{setToast({msg,ok});setTimeout(()=>setToast(null),2600);};
 
-  // ── Load ──────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
     try {
@@ -456,7 +446,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
       const tj: AreaTargetResponse = await tr.json();
       if (!tj.success) throw new Error(tj.error || 'Gagal memuat');
 
-      // ★ apiToWeekMap sekarang membaca .weeks per minggu
       const wm = apiToWeekMap(tj.data.products);
       const existing = tj.data.products.map(p => p.product).sort((a,b) => a.localeCompare(b));
 
@@ -467,9 +456,7 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
           prodNames = (j.data.products as string[]).sort((a,b) => a.localeCompare(b));
         }
       }
-      if (prodNames.length === 0) {
-        prodNames = existing;
-      }
+      if (prodNames.length === 0) prodNames = existing;
 
       const all = Array.from(new Set([...existing, ...prodNames])).sort((a,b) => a.localeCompare(b));
       const merged: ProdWeekMap = {};
@@ -510,15 +497,13 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
     setCv(v => v + 1);
   };
 
-  // ★ saveProduct — kirim week_values per minggu, BUKAN average
   const saveProduct = async (p:string) => {
     setSaving(p);
     try {
-      // Bangun { globalWeek: dos } untuk semua 52 minggu
       const week_values: Record<number,number> = {};
       QUARTERS.forEach((q, qi) => {
         getMWG(q).flatMap(g => g.weekOffsets).forEach(wo => {
-          const gw = globalWeek(qi + 1, wo); // 1–52
+          const gw = globalWeek(qi + 1, wo);
           week_values[gw] = getV(p, q, wo);
         });
       });
@@ -559,7 +544,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
     }
   };
 
-  // ★ addProduct — juga kirim week_values per minggu
   const addProduct = async () => {
     if (!newProd) { showToast('Pilih produk', false); return; }
     setSaving('__new__');
@@ -590,7 +574,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
     }
   };
 
-  // ── Derived subtotals ─────────────────────────────────────────
   const subDos = useMemo(() => QUARTERS.reduce((acc,q) => {
     acc[q] = r2(products.reduce((s,p) =>
       s + getMWG(q).flatMap(g => g.weekOffsets).reduce((ss,wo) => ss + (weekMap[p]?.[`${q}_W${wo}`] ?? 0), 0), 0));
@@ -710,7 +693,7 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
             </td></tr>
           )}
 
-          {/* ══ TABLE HEADERS — 3 levels ══ */}
+          {/* ══ TABLE HEADERS ══ */}
           <tr>
             <th rowSpan={3} style={{...TH,textAlign:'left',minWidth:192,maxWidth:192,position:'sticky',left:0,zIndex:40,background:t.thead,borderRight:`2px solid ${t.lineStrong}`,padding:'6px 8px 6px 12px',verticalAlign:'middle'}}>
               <div style={{display:'flex',alignItems:'center',gap:5}}>
@@ -872,7 +855,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
                   const sc=e.currentTarget.querySelector('td[data-stick]') as HTMLElement|null;
                   if(sc) sc.style.background=rowBg;
                 }}>
-
                 <td data-stick style={{padding:'5px 8px 5px 0',borderRight:`2px solid ${isEdit?'rgba(59,130,246,0.25)':t.lineStrong}`,position:'sticky',left:0,background:rowBg,zIndex:10,transition:'background 0.08s'}}>
                   <div style={{display:'flex',alignItems:'center'}}>
                     <div style={{width:2,alignSelf:'stretch',flexShrink:0,marginRight:8,borderRadius:'0 1px 1px 0',background:isEdit?'#3b82f6':'transparent',transition:'background 0.15s'}}/>
@@ -887,7 +869,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
                     </div>
                   </div>
                 </td>
-
                 {QUARTERS.map((q,qi)=>{
                   const qc=QC[q as QKey];
                   return (
@@ -910,11 +891,9 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
                     </React.Fragment>
                   );
                 })}
-
                 <td style={{...TD,textAlign:'right',fontWeight:800,fontFamily:'"IBM Plex Mono",monospace',background:totDos>0?'rgba(99,102,241,0.14)':t.rowAlt,color:totDos>0?QC['Q1'].txHd:t.tx4,borderLeft:'2px solid rgba(99,102,241,0.35)',borderRight:'2px solid rgba(99,102,241,0.35)',minWidth:70,fontSize:11}}>
                   {totDos>0?fmtN(totDos):'—'}
                 </td>
-
                 {DERIVED.map(d=>(
                   <React.Fragment key={d.key}>
                     {QUARTERS.map(q=>{
@@ -928,7 +907,6 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
                     </td>
                   </React.Fragment>
                 ))}
-
                 <td style={{padding:'4px 6px',background:rowBg}}>
                   <div style={{display:'flex',gap:3,justifyContent:'flex-end',alignItems:'center'}}>
                     {isEdit?(
@@ -1022,6 +1000,12 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
   const YEARS = ['2023','2024','2025','2026','2027','2028'];
   const yearRef = useRef<HTMLDivElement>(null);
 
+  // ── State untuk edit nama area ────────────────────────────────
+  const [editAreaId,   setEditAreaId]   = useState<string|null>(null);
+  const [editAreaName, setEditAreaName] = useState('');
+  const [savingArea,   setSavingArea]   = useState(false);
+  const editAreaRef = useRef<HTMLInputElement>(null);
+
   const showToast = (msg:string,ok=true)=>{setToast({show:true,msg,ok});setTimeout(()=>setToast(t=>({...t,show:false})),3000);};
 
   useEffect(()=>{loadAreas();},[]);
@@ -1030,6 +1014,11 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
     document.addEventListener('click',h,true);
     return ()=>document.removeEventListener('click',h,true);
   },[]);
+
+  // Auto-focus input saat mode edit area aktif
+  useEffect(()=>{
+    if(editAreaId) setTimeout(()=>editAreaRef.current?.focus(),50);
+  },[editAreaId]);
 
   const loadAreas = async()=>{
     try {
@@ -1065,6 +1054,37 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
     if(j.success){setSelIds(prev=>{const n=new Set(prev);n.delete(delId);return n;});showToast('Area dihapus');}
     else showToast(`Gagal: ${j.error}`,false);
     setDelId(null);
+  };
+
+  // ── Handler edit nama area ────────────────────────────────────
+  const startEditArea = (area: AreaConfig) => {
+    setEditAreaId(area.id);
+    setEditAreaName(area.name || area.id.replace('area_','').replace(/_/g,' '));
+  };
+
+  const cancelEditArea = () => {
+    setEditAreaId(null);
+    setEditAreaName('');
+  };
+
+  const saveAreaName = async () => {
+    if (!editAreaId || !editAreaName.trim()) {
+      showToast('Nama area tidak boleh kosong', false);
+      return;
+    }
+    setSavingArea(true);
+    try {
+      const j = await apiCall('update', { id: editAreaId, name: editAreaName.trim() })
+        .catch(()=>({success:false,error:'Network'}));
+      if (j.success) {
+        showToast('Nama area diperbarui');
+        cancelEditArea();
+      } else {
+        showToast(`Gagal: ${j.error}`, false);
+      }
+    } finally {
+      setSavingArea(false);
+    }
   };
 
   const toggle   = (id:string)=>setSelIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
@@ -1239,17 +1259,97 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
             </div>
           )}
 
-          {displayed.map(area=>(
-            <div key={`${area.id}_${year}`} style={{background:t.card,borderRadius:7,border:`1px solid ${t.lineStrong}`,boxShadow:t.shadow,marginBottom:14,overflow:'visible'}}>
-              <div style={{overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',maxWidth:'100%',borderRadius:7}}>
-                <table style={{minWidth:'100%',borderCollapse:'collapse',fontSize:12}}>
-                  <tbody>
-                    <ExpandedProductRows areaId={area.id} year={year} t={t as Tok} theme={theme}/>
-                  </tbody>
-                </table>
+          {displayed.map(area=>{
+            const isEditingThisArea = editAreaId === area.id;
+            const areaDisplayName = area.name || area.id.replace('area_','').replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
+
+            return (
+              <div key={`${area.id}_${year}`} style={{background:t.card,borderRadius:7,border:`1px solid ${t.lineStrong}`,boxShadow:t.shadow,marginBottom:14,overflow:'visible'}}>
+                {/* ── Edit nama area bar ── */}
+                <div style={{
+                  display:'flex',alignItems:'center',gap:8,
+                  padding:'8px 14px',
+                  borderBottom:`1px solid ${t.line}`,
+                  background:isEditingThisArea
+                    ? (theme==='dark'?'rgba(59,130,246,0.06)':'#eff6ff')
+                    : t.cardRaised,
+                  borderRadius:'7px 7px 0 0',
+                  transition:'background 0.15s',
+                }}>
+                  <div style={{width:6,height:6,borderRadius:'50%',background:'#6366f1',flexShrink:0}}/>
+
+                  {isEditingThisArea ? (
+                    /* ── Mode edit: input + tombol save/cancel ── */
+                    <>
+                      <input
+                        ref={editAreaRef}
+                        value={editAreaName}
+                        onChange={e=>setEditAreaName(e.target.value)}
+                        onKeyDown={e=>{
+                          if(e.key==='Enter') saveAreaName();
+                          if(e.key==='Escape') cancelEditArea();
+                        }}
+                        placeholder="Nama area…"
+                        style={{
+                          flex:1,maxWidth:300,
+                          padding:'4px 8px',borderRadius:4,
+                          fontSize:12,fontWeight:600,
+                          background:theme==='dark'?'rgba(59,130,246,0.1)':'#fff',
+                          border:`1.5px solid ${theme==='dark'?'rgba(59,130,246,0.5)':'#93c5fd'}`,
+                          color:t.tx1,outline:'none',
+                          fontFamily:'"IBM Plex Sans",sans-serif',
+                          boxShadow:'0 0 0 3px rgba(59,130,246,0.1)',
+                        }}
+                      />
+                      <span style={{fontSize:9,color:t.tx4,fontFamily:'"IBM Plex Mono",monospace',flexShrink:0}}>
+                        {area.id}
+                      </span>
+                      <div style={{display:'flex',gap:4,marginLeft:'auto'}}>
+                        <Btn v="save" sz="xs" onClick={saveAreaName} disabled={savingArea} t={t}>
+                          {savingArea?<><Spinner sz={8} color="#fff"/> Simpan…</>:<><Save size={9}/> Simpan</>}
+                        </Btn>
+                        <Btn v="cancel" sz="xs" onClick={cancelEditArea} disabled={savingArea} t={t}>
+                          <X size={9}/>
+                        </Btn>
+                      </div>
+                    </>
+                  ) : (
+                    /* ── Mode normal: nama + tombol edit + hapus ── */
+                    <>
+                      <span style={{
+                        fontSize:12,fontWeight:700,color:t.tx1,
+                        fontFamily:'"IBM Plex Sans",sans-serif',
+                        flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                      }}>
+                        {areaDisplayName}
+                      </span>
+                      <span style={{fontSize:9,color:t.tx4,fontFamily:'"IBM Plex Mono",monospace',flexShrink:0}}>
+                        {area.id}
+                      </span>
+                      <div style={{display:'flex',gap:4,marginLeft:8,flexShrink:0}}>
+                        <Btn v="edit" sz="xs" onClick={()=>startEditArea(area)} t={t}>
+                          <Edit2 size={9}/> {!mob&&'Ubah Nama'}
+                        </Btn>
+                        {user?.role==='root'&&(
+                          <Btn v="delete" sz="xs" onClick={()=>setDelId(area.id)} t={t}>
+                            <Trash2 size={9}/>
+                          </Btn>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div style={{overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',maxWidth:'100%',borderRadius:'0 0 7px 7px'}}>
+                  <table style={{minWidth:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <tbody>
+                      <ExpandedProductRows areaId={area.id} year={year} t={t as Tok} theme={theme}/>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {selIds.size>0&&displayed.length===0&&(
             <div style={{background:t.card,borderRadius:7,padding:'20px',border:`1px solid ${t.lineStrong}`,textAlign:'center',color:t.tx3,fontSize:12}}>
