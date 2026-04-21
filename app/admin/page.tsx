@@ -292,7 +292,7 @@ const ROLE_CFG: Record<UserRole, { Icon: React.ComponentType<any>; color: string
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STAT CARD — hanya tampil untuk role root
+// STAT CARD
 // ─────────────────────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, cardKey, icon: Icon, sub, trend }: {
@@ -341,39 +341,405 @@ function StatCard({ label, value, cardKey, icon: Icon, sub, trend }: {
 // PREVIEW PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PreviewPanel = React.memo(function PreviewPanel({ fileId }: { fileId: string }) {
+const PreviewPanel = React.memo(function PreviewPanel({
+  fileId,
+  fileName,
+  fileStatus,
+}: {
+  fileId: string;
+  fileName?: string;
+  fileStatus?: UploadedFile['status'];
+}) {
   const { t } = useTheme();
-  const [data, setData] = useState<Record<string, unknown>[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const w = useWindowWidth();
+  const isMobile = w < BP_MD;
+
+  const [data,       setData]       = useState<Record<string, unknown>[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [error,      setError]      = useState('');
+  const [activeCols, setActiveCols] = useState<Set<string>>(new Set());
+  const [allCols,    setAllCols]    = useState<string[]>([]);
+
   useEffect(() => {
-    setLoading(true); setError('');
-    fetch(`/api/files/${fileId}/preview`).then(r => r.json())
-      .then(r => { if (r.success) setData(r.data || []); else setError(r.error || 'Gagal'); })
-      .catch(() => setError('Gagal memuat preview')).finally(() => setLoading(false));
+    setLoading(true); setError(''); setData([]); setAllCols([]); setActiveCols(new Set());
+    fetch(`/api/files/${fileId}/preview`)
+      .then(r => r.json())
+      .then(r => {
+        if (r.success && r.data?.length) {
+          const cols = Object.keys(r.data[0]);
+          setAllCols(cols);
+          setActiveCols(new Set(isMobile ? cols.slice(0, 5) : cols));
+          setData(r.data);
+        } else {
+          setError(r.error || 'Tidak ada data');
+        }
+      })
+      .catch(() => setError('Gagal memuat preview'))
+      .finally(() => setLoading(false));
   }, [fileId]);
-  if (loading) return <div style={{ padding: 20, textAlign: 'center', color: t.textMuted, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Spinner color={t.textMuted} />Memuat…</div>;
-  if (error) return <div style={{ padding: '11px 13px', color: t.red.text, fontSize: 12, background: t.red.bg, borderRadius: 8, border: `1px solid ${t.red.border}` }}>⚠ {error}</div>;
-  if (!data.length) return <div style={{ padding: 14, color: t.textMuted, fontSize: 12 }}>Tidak ada data.</div>;
-  const cols = Object.keys(data[0]);
+
+  const stats = useMemo(() => {
+    if (!data.length || !allCols.length) return null;
+    const numericCols = allCols.filter(c =>
+      data.every(row => {
+        const v = row[c];
+        return v !== '' && v !== null && v !== undefined && !isNaN(Number(v));
+      })
+    );
+    const omzetCol  = allCols.find(c => /omzet/i.test(c));
+    const produkCol = allCols.find(c => /produk/i.test(c));
+    const kotaCol   = allCols.find(c => /kota|area/i.test(c));
+    const totalOmzet   = omzetCol  ? data.reduce((s, r) => s + Number(r[omzetCol]  ?? 0), 0) : null;
+    const uniqueProduk = produkCol ? new Set(data.map(r => r[produkCol])).size : null;
+    const uniqueKota   = kotaCol   ? new Set(data.map(r => r[kotaCol])).size   : null;
+    return { totalOmzet, uniqueProduk, uniqueKota, numericCols };
+  }, [data, allCols]);
+
+  const visibleCols = allCols.filter(c => activeCols.has(c));
+
+  const toggleCol = useCallback((col: string) => {
+    setActiveCols(prev => {
+      const next = new Set(prev);
+      if (next.has(col)) { if (next.size > 2) next.delete(col); }
+      else { next.add(col); }
+      return next;
+    });
+  }, []);
+
+  const isNumericCell = (col: string, val: unknown) =>
+    stats?.numericCols.includes(col) && val !== '' && val !== null && !isNaN(Number(val));
+
+  const fmtCell = (col: string, val: unknown): string => {
+    if (val === null || val === undefined || val === '') return '—';
+    if (isNumericCell(col, val)) {
+      if (/omzet/i.test(col)) return `Rp ${Number(val).toLocaleString('id-ID')}`;
+      return Number(val).toLocaleString('id-ID');
+    }
+    return String(val);
+  };
+
+  const statusColors: Record<UploadedFile['status'], { bg: string; text: string; border: string }> = {
+    completed:  t.green,
+    processing: t.blue,
+    error:      t.red,
+  };
+  const sc = fileStatus ? statusColors[fileStatus] : t.gray;
+
+  if (loading) return (
+    <div style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, color: t.textMuted, fontSize: 12, fontFamily: FONT_MONO }}>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {[0, 1, 2].map(i => (
+          <span key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: t.textFaint, display: 'inline-block', animation: 'fadeIn 0.9s ease-in-out infinite', animationDelay: `${i * 0.18}s` }} />
+        ))}
+      </div>
+      Memuat preview…
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ margin: '6px 0', padding: '10px 13px', borderRadius: 8, background: t.red.bg, border: `1px solid ${t.red.border}`, color: t.red.text, fontSize: 12, display: 'flex', alignItems: 'center', gap: 7 }}>
+      <AlertCircle size={12} style={{ flexShrink: 0 }} />
+      {error}
+    </div>
+  );
+
+  if (!data.length) return (
+    <div style={{ padding: '28px', textAlign: 'center', color: t.textMuted, fontSize: 12, fontFamily: FONT_MONO }}>
+      Tidak ada data untuk ditampilkan.
+    </div>
+  );
+
   return (
-    <div style={{ overflowX: 'auto', borderRadius: 10, border: `1px solid ${t.border}`, WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: FONT_MONO }}>
-        <thead><tr style={{ background: t.tableHead }}>
-          {cols.map(c => <th key={c} style={{ padding: '8px 11px', textAlign: 'left', fontWeight: 700, color: t.textMuted, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: 9 }}>{c}</th>)}
-        </tr></thead>
-        <tbody>
-          {data.slice(0, 10).map((row, i) => (
-            <tr key={i} style={{ background: i % 2 === 1 ? t.tableAlt : 'transparent' }}>
-              {cols.map(c => <td key={c} style={{ padding: '7px 11px', color: t.textSub, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{String(row[c] ?? '—')}</td>)}
+    <div style={{ borderRadius: 12, overflow: 'hidden', border: `1px solid ${t.border}`, background: t.cardbg }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: t.tableHead, borderBottom: `1px solid ${t.border}`, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: t.green.bg, border: `1px solid ${t.green.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <FileSpreadsheet size={12} color={t.green.text} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: t.text, fontFamily: FONT_MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: isMobile ? 160 : 480 }}>
+              {fileName || fileId}
+            </div>
+            <div style={{ fontSize: 10, color: t.textMuted, fontFamily: FONT_MONO, marginTop: 1 }}>
+              {data.length} baris &middot; {allCols.length} kolom
+            </div>
+          </div>
+          {fileStatus && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 12, fontSize: 10, fontWeight: 600, fontFamily: FONT_MONO, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, flexShrink: 0 }}>
+              {fileStatus === 'completed'  && <CheckCircle size={9} />}
+              {fileStatus === 'processing' && <span style={{ width: 7, height: 7, border: `1.5px solid ${sc.text}`, borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />}
+              {fileStatus === 'error'      && <AlertCircle size={9} />}
+              {fileStatus}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: 10, color: t.textFaint, fontFamily: FONT_MONO, flexShrink: 0 }}>
+          preview 10 baris
+        </span>
+      </div>
+
+      {/* Stats bar */}
+      {stats && (() => {
+        const statItems = [
+          { label: 'Total Baris',   value: data.length.toLocaleString('id-ID'),                                              sub: 'records preview' },
+          ...(stats.totalOmzet   !== null ? [{ label: 'Total Omzet',  value: `Rp ${(stats.totalOmzet / 1e6).toFixed(1)}jt`, sub: `Rp ${stats.totalOmzet.toLocaleString('id-ID')}` }] : []),
+          ...(stats.uniqueProduk !== null ? [{ label: 'Produk Unik',  value: String(stats.uniqueProduk),                     sub: 'SKU berbeda' }] : []),
+          ...(stats.uniqueKota   !== null ? [{ label: 'Kota / Area',  value: String(stats.uniqueKota),                       sub: 'wilayah' }] : []),
+        ].slice(0, isMobile ? 2 : 4);
+        return (
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statItems.length}, 1fr)`, borderBottom: `1px solid ${t.border}` }}>
+            {statItems.map((s, i) => (
+              <div key={s.label} style={{ padding: '10px 14px', borderRight: i < statItems.length - 1 ? `1px solid ${t.border}` : 'none' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, fontFamily: FONT_MONO, textTransform: 'uppercase', letterSpacing: '0.1em', color: t.textMuted, marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: isMobile ? 15 : 18, fontWeight: 700, fontFamily: FONT_MONO, color: t.text, lineHeight: 1 }}>{s.value}</div>
+                <div style={{ fontSize: 10, color: t.textMuted, marginTop: 2, fontFamily: FONT_MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.sub}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
+      {/* Column chips */}
+      {allCols.length > 0 && (
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '8px 12px', borderBottom: `1px solid ${t.border}`, background: t.tableHead }}>
+          {allCols.map(col => {
+            const on = activeCols.has(col);
+            return (
+              <button
+                key={col}
+                onClick={() => toggleCol(col)}
+                title={on ? `Sembunyikan kolom ${col}` : `Tampilkan kolom ${col}`}
+                style={{
+                  fontSize: 10, fontFamily: FONT_MONO, padding: '2px 9px', borderRadius: 12,
+                  border: `1px solid ${on ? t.borderActive : t.border}`,
+                  background: on ? 'rgba(99,102,241,0.1)' : t.inputbg,
+                  color: on ? '#818cf8' : t.textMuted,
+                  cursor: 'pointer', transition: 'all 0.12s', outline: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {col}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Data table */}
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: 360, overflowY: 'auto' }}>
+        <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              {visibleCols.map(col => (
+                <th
+                  key={col}
+                  style={{
+                    position: 'sticky', top: 0, zIndex: 2,
+                    padding: '7px 12px', textAlign: 'left',
+                    fontSize: 9, fontWeight: 700, fontFamily: FONT_MONO,
+                    textTransform: 'uppercase', letterSpacing: '0.09em',
+                    color: t.textMuted, borderBottom: `1px solid ${t.border}`,
+                    background: t.tableHead, whiteSpace: 'nowrap',
+                    ...(stats?.numericCols.includes(col) ? { textAlign: 'right' } : {}),
+                  }}
+                >
+                  {col}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {data.length > 10 && <div style={{ padding: '6px 11px', fontSize: 10, color: t.textMuted, textAlign: 'right', borderTop: `1px solid ${t.border}` }}>+{data.length - 10} baris lainnya</div>}
+          </thead>
+          <tbody>
+            {data.map((row, i) => (
+              <tr key={i} style={{ background: i % 2 === 1 ? t.tableAlt : 'transparent' }}>
+                {visibleCols.map(col => {
+                  const numeric = isNumericCell(col, row[col]);
+                  return (
+                    <td
+                      key={col}
+                      style={{
+                        padding: '6px 12px',
+                        color: numeric ? t.text : t.textSub,
+                        fontFamily: FONT_MONO,
+                        borderBottom: i < data.length - 1 ? `1px solid ${t.border}` : 'none',
+                        whiteSpace: 'nowrap',
+                        fontWeight: numeric ? 600 : 400,
+                        textAlign: numeric ? 'right' : 'left',
+                        fontSize: 12,
+                      }}
+                    >
+                      {fmtCell(col, row[col])}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '7px 14px', borderTop: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: t.tableHead, flexWrap: 'wrap', gap: 6 }}>
+        <span style={{ fontSize: 10, color: t.textMuted, fontFamily: FONT_MONO }}>
+          {visibleCols.length} / {allCols.length} kolom ditampilkan
+        </span>
+        <span style={{ fontSize: 10, color: t.textFaint, fontFamily: FONT_MONO }}>
+          klik label kolom di atas untuk toggle
+        </span>
+      </div>
     </div>
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PREVIEW MODAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PreviewModal({ file, onClose }: { file: UploadedFile; onClose: () => void }) {
+  const { t } = useTheme();
+  const w = useWindowWidth();
+  const isMobile = w < BP_MD;
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+
+  // Prevent body scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1100,
+        background: t.modalOverlay,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: isMobile ? 10 : 24,
+        animation: 'fadeIn 0.15s ease',
+        backdropFilter: 'blur(4px)',
+      }}
+    >
+      <div style={{
+        background: t.cardbg,
+        border: `1px solid ${t.borderCard}`,
+        borderRadius: 16,
+        width: '100%',
+        maxWidth: 1000,
+        maxHeight: isMobile ? '92vh' : '85vh',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        boxShadow: t.shadowElevated,
+        animation: 'slideUp 0.2s ease',
+      }}>
+
+        {/* Modal Header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 18px',
+          borderBottom: `1px solid ${t.border}`,
+          background: t.tableHead,
+          flexShrink: 0,
+          gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 9,
+              background: t.blue.bg, border: `1px solid ${t.blue.border}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              <Eye size={15} color={t.blue.text} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.text, lineHeight: 1 }}>
+                Preview Data
+              </div>
+              <div style={{
+                fontSize: 11, color: t.textMuted, fontFamily: FONT_MONO, marginTop: 3,
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                maxWidth: isMobile ? 180 : 560,
+              }}>
+                {file.original_name}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {/* File meta badges */}
+            {!isMobile && (
+              <>
+                <span style={badge(t.gray.bg, t.gray.text, t.gray.border)}>
+                  <Database size={9} />
+                  {file.record_count.toLocaleString('id-ID')} records
+                </span>
+                <span style={badge(
+                  file.status === 'completed' ? t.green.bg : file.status === 'error' ? t.red.bg : t.blue.bg,
+                  file.status === 'completed' ? t.green.text : file.status === 'error' ? t.red.text : t.blue.text,
+                  file.status === 'completed' ? t.green.border : file.status === 'error' ? t.red.border : t.blue.border,
+                )}>
+                  {file.status === 'completed' && <CheckCircle size={9} />}
+                  {file.status === 'error'     && <AlertCircle size={9} />}
+                  {file.status}
+                </span>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              title="Tutup (Esc)"
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: t.red.bg, border: `1px solid ${t.red.border}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s',
+              }}
+            >
+              <X size={14} color={t.red.text} />
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '12px' : '16px 20px' }}>
+          <PreviewPanel
+            fileId={file.id}
+            fileName={file.original_name}
+            fileStatus={file.status}
+          />
+        </div>
+
+        {/* Modal Footer */}
+        <div style={{
+          padding: '10px 18px',
+          borderTop: `1px solid ${t.border}`,
+          background: t.tableHead,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0, flexWrap: 'wrap', gap: 8,
+        }}>
+          <span style={{ fontSize: 11, color: t.textFaint, fontFamily: FONT_MONO }}>
+            Tekan <kbd style={{ padding: '1px 5px', borderRadius: 4, background: t.inputbg, border: `1px solid ${t.border}`, fontSize: 10, color: t.textMuted }}>Esc</kbd> atau klik di luar untuk menutup
+          </span>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 20px', borderRadius: 9, fontSize: 13, fontWeight: 600,
+              background: t.gray.bg, color: t.gray.text,
+              border: `1px solid ${t.gray.border}`, cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            Tutup
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STATUS BADGE / SORT ICON
@@ -412,12 +778,12 @@ function FilesTable({ files, onDelete, isRoot }: { files: UploadedFile[]; onDele
   const w = useWindowWidth();
   const isMobile = w < BP_MD;
 
-  const [search,   setSearch]   = useState('');
-  const [sortKey,  setSortKey]  = useState<SortKey>('created_at');
-  const [sortDir,  setSortDir]  = useState<SortDir>('desc');
-  const [page,     setPage]     = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [preview,  setPreview]  = useState<string | null>(null);
+  const [search,      setSearch]      = useState('');
+  const [sortKey,     setSortKey]     = useState<SortKey>('created_at');
+  const [sortDir,     setSortDir]     = useState<SortDir>('desc');
+  const [page,        setPage]        = useState(1);
+  const [pageSize,    setPageSize]    = useState(10);
+  const [previewFile, setPreviewFile] = useState<UploadedFile | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -443,7 +809,6 @@ function FilesTable({ files, onDelete, isRoot }: { files: UploadedFile[]; onDele
       acc.push(n); return acc;
     }, []);
 
-  // Kolom yang tampil: sembunyikan Records & Omzet untuk non-root
   const visibleCols = isRoot ? TABLE_COLS : TABLE_COLS.filter(c => c.key !== 'record_count' && c.key !== 'total_omzet');
 
   const thS = (key: SortKey): React.CSSProperties => ({
@@ -456,47 +821,55 @@ function FilesTable({ files, onDelete, isRoot }: { files: UploadedFile[]; onDele
   });
 
   return (
-    <div style={card(t)}>
-      {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 7 }}>
-            <FileSpreadsheet size={14} color="#6366f1" />File Diupload
-          </div>
-          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, fontFamily: FONT_MONO }}>
-            {filtered.length !== files.length ? `${filtered.length} / ${files.length}` : `${files.length} total`}
-          </div>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <Search size={12} color={t.textMuted} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-          <input type="text" placeholder="Cari file…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            style={{ paddingLeft: 27, paddingRight: search ? 26 : 10, paddingTop: 7, paddingBottom: 7, fontSize: 12, borderRadius: 9, background: t.inputbg, border: `1px solid ${search ? t.borderActive : t.borderInput}`, color: t.text, outline: 'none', width: isMobile ? 148 : 190, transition: 'border-color 0.15s' }} />
-          {search && <button onClick={() => { setSearch(''); setPage(1); }} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, padding: 0, display: 'flex' }}><X size={11} /></button>}
-        </div>
-      </div>
+    <>
+      {/* Preview Modal */}
+      {previewFile && (
+        <PreviewModal
+          file={previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
 
-      {/* Table */}
-      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-        <table style={{ minWidth: 480, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr>
-            {visibleCols.map(({ label, key }) => (
-              <th key={key} style={thS(key)} onClick={() => handleSort(key)}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{label}<SortIcon col={key} sortKey={sortKey} sortDir={sortDir} /></span>
-              </th>
-            ))}
-            <th style={{ ...thS('status'), textAlign: 'center', cursor: 'default' }}>Aksi</th>
-          </tr></thead>
-          <tbody>
-            {paginated.length === 0 ? (
-              <tr><td colSpan={visibleCols.length + 1} style={{ padding: 40, textAlign: 'center', color: t.textMuted, fontSize: 12, fontFamily: FONT_MONO }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                  <FileSpreadsheet size={26} color={t.textFaint} />
-                  {search ? `Tidak ada "${search}"` : 'Belum ada file'}
-                </div>
-              </td></tr>
-            ) : paginated.map((file, idx) => (
-              <React.Fragment key={file.id}>
-                <tr style={{ background: idx % 2 === 1 ? t.tableAlt : 'transparent' }}>
+      <div style={card(t)}>
+        {/* Header */}
+        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 7 }}>
+              <FileSpreadsheet size={14} color="#6366f1" />File Diupload
+            </div>
+            <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2, fontFamily: FONT_MONO }}>
+              {filtered.length !== files.length ? `${filtered.length} / ${files.length}` : `${files.length} total`}
+            </div>
+          </div>
+          <div style={{ position: 'relative' }}>
+            <Search size={12} color={t.textMuted} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+            <input type="text" placeholder="Cari file…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+              style={{ paddingLeft: 27, paddingRight: search ? 26 : 10, paddingTop: 7, paddingBottom: 7, fontSize: 12, borderRadius: 9, background: t.inputbg, border: `1px solid ${search ? t.borderActive : t.borderInput}`, color: t.text, outline: 'none', width: isMobile ? 148 : 190, transition: 'border-color 0.15s' }} />
+            {search && <button onClick={() => { setSearch(''); setPage(1); }} style={{ position: 'absolute', right: 7, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: t.textMuted, padding: 0, display: 'flex' }}><X size={11} /></button>}
+          </div>
+        </div>
+
+        {/* Table */}
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ minWidth: 480, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr>
+              {visibleCols.map(({ label, key }) => (
+                <th key={key} style={thS(key)} onClick={() => handleSort(key)}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{label}<SortIcon col={key} sortKey={sortKey} sortDir={sortDir} /></span>
+                </th>
+              ))}
+              <th style={{ ...thS('status'), textAlign: 'center', cursor: 'default' }}>Aksi</th>
+            </tr></thead>
+            <tbody>
+              {paginated.length === 0 ? (
+                <tr><td colSpan={visibleCols.length + 1} style={{ padding: 40, textAlign: 'center', color: t.textMuted, fontSize: 12, fontFamily: FONT_MONO }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <FileSpreadsheet size={26} color={t.textFaint} />
+                    {search ? `Tidak ada "${search}"` : 'Belum ada file'}
+                  </div>
+                </td></tr>
+              ) : paginated.map((file, idx) => (
+                <tr key={file.id} style={{ background: idx % 2 === 1 ? t.tableAlt : 'transparent' }}>
                   <td style={{ padding: '11px 13px', color: t.text, fontWeight: 500 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 26, height: 26, borderRadius: 6, background: t.green.bg, border: `1px solid ${t.green.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -518,56 +891,54 @@ function FilesTable({ files, onDelete, isRoot }: { files: UploadedFile[]; onDele
                   <td style={{ padding: '11px 13px' }}><StatusBadge status={file.status} /></td>
                   <td style={{ padding: '11px 13px', textAlign: 'center' }}>
                     <div style={{ display: 'flex', justifyContent: 'center', gap: 5 }}>
-                      <button onClick={() => setPreview(p => p === file.id ? null : file.id)} style={iconBtn(preview === file.id ? t.blue.bg : t.inputbg, preview === file.id ? t.blue.border : t.border, 28)} title="Preview">
-                        {preview === file.id ? <X size={11} color={t.blue.text} /> : <Eye size={11} color={t.textMuted} />}
+                      {/* Preview button — opens modal */}
+                      <button
+                        onClick={() => setPreviewFile(file)}
+                        style={iconBtn(t.blue.bg, t.blue.border, 28)}
+                        title="Preview data"
+                      >
+                        <Eye size={11} color={t.blue.text} />
                       </button>
-                      <button onClick={() => onDelete(file.id, file.original_name)} style={iconBtn(t.red.bg, t.red.border, 28)} title="Hapus">
+                      {/* Delete button */}
+                      <button
+                        onClick={() => onDelete(file.id, file.original_name)}
+                        style={iconBtn(t.red.bg, t.red.border, 28)}
+                        title="Hapus"
+                      >
                         <Trash2 size={11} color={t.red.text} />
                       </button>
                     </div>
                   </td>
                 </tr>
-                {preview === file.id && (
-                  <tr>
-                    <td colSpan={visibleCols.length + 1} style={{ padding: '0 13px 14px', background: t.tableAlt }}>
-                      <div style={{ paddingTop: 12 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: t.blue.text, fontFamily: FONT_MONO, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <Eye size={10} /> {file.original_name}
-                        </div>
-                        <PreviewPanel fileId={file.id} />
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Pagination */}
-      {sorted.length > 0 && (
-        <div style={{ padding: '11px 16px', borderTop: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, color: t.textMuted, fontFamily: FONT_MONO }}>Baris:</span>
-            <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{ padding: '4px 7px', fontSize: 11, borderRadius: 7, background: t.inputbg, border: `1px solid ${t.borderInput}`, color: t.text, outline: 'none', fontFamily: FONT_MONO }}>
-              {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 11, color: t.textMuted, fontFamily: FONT_MONO }}>{(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} / {sorted.length}</span>
-            <div style={{ display: 'flex', gap: 3 }}>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} style={{ ...iconBtn(t.gray.bg, t.gray.border, 26), cursor: safePage === 1 ? 'not-allowed' : 'pointer', opacity: safePage === 1 ? 0.4 : 1 }}><ChevronLeft size={11} color={t.textSub} /></button>
-              {!isMobile && pageNums.map((item, idx) => item === 'ellipsis'
-                ? <span key={`e${idx}`} style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: t.textMuted }}>…</span>
-                : <button key={item} onClick={() => setPage(item as number)} style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${safePage === item ? t.borderActive : t.gray.border}`, background: safePage === item ? 'rgba(99,102,241,0.12)' : t.gray.bg, color: safePage === item ? '#6366f1' : t.textSub, fontSize: 11, fontFamily: FONT_MONO, cursor: 'pointer', fontWeight: safePage === item ? 700 : 400 }}>{item}</button>
-              )}
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} style={{ ...iconBtn(t.gray.bg, t.gray.border, 26), cursor: safePage === totalPages ? 'not-allowed' : 'pointer', opacity: safePage === totalPages ? 0.4 : 1 }}><ChevronRight size={11} color={t.textSub} /></button>
+        {/* Pagination */}
+        {sorted.length > 0 && (
+          <div style={{ padding: '11px 16px', borderTop: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontFamily: FONT_MONO }}>Baris:</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }} style={{ padding: '4px 7px', fontSize: 11, borderRadius: 7, background: t.inputbg, border: `1px solid ${t.borderInput}`, color: t.text, outline: 'none', fontFamily: FONT_MONO }}>
+                {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontFamily: FONT_MONO }}>{(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} / {sorted.length}</span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1} style={{ ...iconBtn(t.gray.bg, t.gray.border, 26), cursor: safePage === 1 ? 'not-allowed' : 'pointer', opacity: safePage === 1 ? 0.4 : 1 }}><ChevronLeft size={11} color={t.textSub} /></button>
+                {!isMobile && pageNums.map((item, idx) => item === 'ellipsis'
+                  ? <span key={`e${idx}`} style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: t.textMuted }}>…</span>
+                  : <button key={item} onClick={() => setPage(item as number)} style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${safePage === item ? t.borderActive : t.gray.border}`, background: safePage === item ? 'rgba(99,102,241,0.12)' : t.gray.bg, color: safePage === item ? '#6366f1' : t.textSub, fontSize: 11, fontFamily: FONT_MONO, cursor: 'pointer', fontWeight: safePage === item ? 700 : 400 }}>{item}</button>
+                )}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages} style={{ ...iconBtn(t.gray.bg, t.gray.border, 26), cursor: safePage === totalPages ? 'not-allowed' : 'pointer', opacity: safePage === totalPages ? 0.4 : 1 }}><ChevronRight size={11} color={t.textSub} /></button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -878,7 +1249,6 @@ function ResetPasswordForm() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Identitas user */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 10, background: user ? ROLE_CFG[user.role].bg + '80' : t.inputbg, border: `1px solid ${user ? ROLE_CFG[user.role].border : t.borderInput}`, marginBottom: 4 }}>
         {user && React.createElement(ROLE_CFG[user.role].Icon, { size: 16, color: ROLE_CFG[user.role].color })}
         <div>
@@ -887,7 +1257,6 @@ function ResetPasswordForm() {
         </div>
       </div>
 
-      {/* Password lama */}
       <FormGroup label="Password Saat Ini">
         <div style={{ position: 'relative' }}>
           <input type={showCur ? 'text' : 'password'} value={currentPw} onChange={e => setCurrentPw(e.target.value)} placeholder="Masukkan password saat ini" style={inputStyle()} />
@@ -895,13 +1264,11 @@ function ResetPasswordForm() {
         </div>
       </FormGroup>
 
-      {/* Password baru */}
       <FormGroup label="Password Baru" hint="Minimal 6 karakter, kombinasikan huruf dan angka">
         <div style={{ position: 'relative' }}>
           <input type={showNew ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Masukkan password baru" style={inputStyle()} />
           <EyeToggle show={showNew} onToggle={() => setShowNew(p => !p)} />
         </div>
-        {/* Strength bar */}
         {newPw.length > 0 && (
           <div style={{ marginTop: 7 }}>
             <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
@@ -914,7 +1281,6 @@ function ResetPasswordForm() {
         )}
       </FormGroup>
 
-      {/* Konfirmasi */}
       <FormGroup label="Konfirmasi Password Baru">
         <div style={{ position: 'relative' }}>
           <input type={showCon ? 'text' : 'password'} value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Ulangi password baru" style={inputStyle()} />
@@ -967,12 +1333,10 @@ function SettingsTab() {
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
-      {/* Reset password — tersedia untuk semua role */}
       <CardBox title="Ubah Password" icon={Lock} iconColor="#6366f1" accent="#6366f1">
         <ResetPasswordForm />
       </CardBox>
 
-      {/* Migration — root only */}
       {isRoot && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <CardBox title="Database Migration" icon={Database} iconColor="#10b981" accent="#10b981">
@@ -992,7 +1356,7 @@ function SettingsTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// NAV ITEM — redesigned
+// NAV ITEM
 // ─────────────────────────────────────────────────────────────────────────────
 
 function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, accent = '#6366f1' }: {
@@ -1026,7 +1390,6 @@ function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, ac
         position: 'relative',
       }}
     >
-      {/* Icon wrapper */}
       <div style={{
         width: 30, height: 30, borderRadius: 8, flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1045,7 +1408,6 @@ function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, ac
         </>
       )}
 
-      {/* Tooltip untuk collapsed */}
       {collapsed && hovered && (
         <div style={{ position: 'absolute', left: 'calc(100% + 12px)', top: '50%', transform: 'translateY(-50%)', background: '#1a1f35', color: '#fff', padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', pointerEvents: 'none', zIndex: 200, boxShadow: '0 4px 16px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}>
           {label}
@@ -1057,7 +1419,7 @@ function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, ac
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIDEBAR — redesigned
+// SIDEBAR
 // ─────────────────────────────────────────────────────────────────────────────
 
 const NAV_SECTIONS = [
@@ -1076,9 +1438,10 @@ const NAV_SECTIONS = [
     ],
   },
 ];
-// 'view_settings' diganti 'view_files' agar admin & user juga bisa akses tab Pengaturan
-// (semua role yang bisa login pasti punya permission ini)
-const PERM_MAP: Record<string, string> = { upload: 'view_files', areas: 'view_areas', users: 'manage_users', settings: 'view_files' };
+
+const PERM_MAP: Record<string, string> = {
+  upload: 'view_files', areas: 'view_areas', users: 'manage_users', settings: 'view_files',
+};
 
 function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can, fileCount, isMobile, onClose }: {
   activeTab: string; setActiveTab: (id: string) => void;
@@ -1090,22 +1453,9 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
 
   return (
     <>
-      {/* ── Logo / Brand ── */}
-      <div style={{
-        padding: collapsed ? '14px 0' : '14px 16px',
-        borderBottom: `1px solid ${t.sidebarBorder}`,
-        display: 'flex', alignItems: 'center',
-        justifyContent: collapsed ? 'center' : 'space-between',
-        gap: 10, height: 64, flexShrink: 0,
-      }}>
+      <div style={{ padding: collapsed ? '14px 0' : '14px 16px', borderBottom: `1px solid ${t.sidebarBorder}`, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', gap: 10, height: 64, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, overflow: 'hidden' }}>
-          {/* Logo pill */}
-          <div style={{
-            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-            background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
-          }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.4)' }}>
             <BarChart3 size={18} color="#fff" />
           </div>
           {!collapsed && (
@@ -1120,22 +1470,9 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
         )}
       </div>
 
-      {/* ── User card ── */}
       {user && (
-        <div style={{
-          padding: collapsed ? '12px 0' : '12px 14px',
-          borderBottom: `1px solid ${t.sidebarBorder}`,
-          display: 'flex', alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          gap: 10, flexShrink: 0,
-        }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-            background: ROLE_CFG[user.role].bg,
-            border: `1.5px solid ${ROLE_CFG[user.role].border}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: `0 0 0 3px ${ROLE_CFG[user.role].color}15`,
-          }}>
+        <div style={{ padding: collapsed ? '12px 0' : '12px 14px', borderBottom: `1px solid ${t.sidebarBorder}`, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 10, flexShrink: 0 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0, background: ROLE_CFG[user.role].bg, border: `1.5px solid ${ROLE_CFG[user.role].border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 0 0 3px ${ROLE_CFG[user.role].color}15` }}>
             {React.createElement(ROLE_CFG[user.role].Icon, { size: 15, color: ROLE_CFG[user.role].color })}
           </div>
           {!collapsed && (
@@ -1147,7 +1484,6 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
         </div>
       )}
 
-      {/* ── Nav ── */}
       <nav style={{ flex: 1, padding: collapsed ? '12px 6px' : '12px 0 12px', overflowY: 'auto', overflowX: 'hidden' }}>
         {NAV_SECTIONS.map(({ section, items }) => {
           const visible = items.filter(item => can(PERM_MAP[item.id] ?? 'view_files'));
@@ -1159,33 +1495,18 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
               )}
               {collapsed && <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 10px 8px' }} />}
               {visible.map(item => (
-                <NavItem
-                  key={item.id} label={item.label} icon={item.icon}
-                  active={activeTab === item.id} collapsed={collapsed}
-                  badge={item.id === 'upload' ? fileCount : undefined}
-                  accent={item.accent}
-                  onClick={() => { setActiveTab(item.id); if (isMobile) onClose(); }}
-                />
+                <NavItem key={item.id} label={item.label} icon={item.icon} active={activeTab === item.id} collapsed={collapsed} badge={item.id === 'upload' ? fileCount : undefined} accent={item.accent} onClick={() => { setActiveTab(item.id); if (isMobile) onClose(); }} />
               ))}
             </div>
           );
         })}
       </nav>
 
-      {/* ── Bottom controls ── */}
       <div style={{ borderTop: `1px solid ${t.sidebarBorder}`, padding: collapsed ? '10px 6px' : '10px 10px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {/* Collapse toggle — desktop only */}
         {!isMobile && (
           <button
             onClick={() => setCollapsed(!collapsed)}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center',
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              gap: 8, padding: collapsed ? '8px' : '8px 10px',
-              background: 'none', border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 9, cursor: 'pointer', color: t.sidebarText,
-              transition: 'all 0.15s', fontSize: 12, fontWeight: 500,
-            }}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 8, padding: collapsed ? '8px' : '8px 10px', background: 'none', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 9, cursor: 'pointer', color: t.sidebarText, transition: 'all 0.15s', fontSize: 12, fontWeight: 500 }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
