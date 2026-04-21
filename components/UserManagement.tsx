@@ -454,7 +454,7 @@ function UserFormModal({ editing, theme, me, areas, onSave, onCancel }: UserForm
         email: form.email.trim(), role: form.role,
         allowed_areas: form.role === 'root' ? [] : form.allowed_areas,
       };
-      if (!isEdit)       payload.username = form.username.trim().toLowerCase();
+       payload.username = form.username.trim().toLowerCase();
       if (form.password) payload.password = form.password;
       await onSave(payload);
     } finally { setSaving(false); }
@@ -494,12 +494,12 @@ function UserFormModal({ editing, theme, me, areas, onSave, onCancel }: UserForm
         {/* Form — scrollable */}
         <form onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:14,padding:'18px',overflowY:'auto',color:t.tx3}}>
 
-          {!isEdit && (
+          
             <Field label="Username" error={errors.username}>
               <input className="um-input" type="text" value={form.username} onChange={e=>setF('username',e.target.value)} placeholder="username_baru"
                 style={{...INP,borderColor:errors.username?'#ef4444':t.inputBd}}/>
             </Field>
-          )}
+          
 
           <Field label="Email" error={errors.email}>
             <input className="um-input" type="email" value={form.email} onChange={e=>setF('email',e.target.value)} placeholder="user@example.com"
