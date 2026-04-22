@@ -675,170 +675,169 @@ export default function UserManagement({ theme }: { theme: Theme }) {
         />
       )}
 
-      {/* ── MAIN CARD ── */}
+      {/* ── TOOLBAR BAR (ganti header card) ── */}
       <div style={{
-        background: t.card,
-        borderTop: '2px solid #6366f1',
-        borderRight: `1px solid ${t.lineStrong}`,
-        borderBottom: `1px solid ${t.lineStrong}`,
-        borderLeft: `1px solid ${t.lineStrong}`,
-        borderRadius: 9,
-        boxShadow: t.shadow,
         display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        minHeight: 0,
-        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+        flexWrap: 'wrap',
+        marginBottom: 0,
+        paddingBottom: 12,
+        borderBottom: `1px solid ${t.line}`,
+        flexShrink: 0,
       }}>
-
-        {/* Header */}
-        <div style={{ padding: '14px 18px', borderBottom: `1px solid ${t.line}`, background: t.cardAlt, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 8, background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Users size={15} color="#818cf8"/>
-            </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: t.tx1, fontFamily: F_SANS, letterSpacing: '-0.02em' }}>Manajemen User</div>
-              <div style={{ fontSize: 10, color: t.tx3, fontFamily: F_MONO, marginTop: 1 }}>{users.length} user terdaftar</div>
-            </div>
-          </div>
-          <button onClick={() => { setEditing(null); setShowForm(true); }} className="um-btn"
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#6366f1', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: F_SANS }}>
-            <Plus size={13}/> Tambah User
-          </button>
-        </div>
-
-        {/* Table */}
-        <div style={{ overflowX: 'auto', overflowY: 'auto', flex: 1, minHeight: 0 }}>
-          <style>{`.um-row:hover td { background: ${t.rowHov} !important; }`}</style>
-          <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: F_SANS }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-              <tr style={{ background: t.thead }}>
-                {['User', 'Email', 'Role', 'Area', 'Status', 'Login Terakhir', 'Dibuat Oleh', 'Aksi'].map((h, i) => (
-                  <th key={h} style={{ padding: '9px 14px', textAlign: i === 7 ? 'center' : 'left', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.theadTx, borderBottom: `1px solid rgba(255,255,255,0.06)`, fontFamily: F_MONO, whiteSpace: 'nowrap' }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: t.tx3, fontSize: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <Spin sz={14}/> Memuat…
-                  </div>
-                </td></tr>
-              ) : sorted.length === 0 ? (
-                <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: t.tx3, fontSize: 12 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <Users size={20} color={t.tx4}/>
-                    <span>Belum ada user terdaftar</span>
-                  </div>
-                </td></tr>
-              ) : sorted.map((user, idx) => {
-                const c      = roleCss(user.role, t);
-                const isSelf = user.id === me?.id;
-                const rowBg  = idx % 2 === 1 ? t.rowAlt : t.card;
-                return (
-                  <tr key={user.id} className="um-row" style={{ borderBottom: `1px solid ${t.line}`, transition: 'background 0.08s' }}>
-                    {/* User */}
-                    <td style={{ padding: '10px 14px', background: rowBg }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                        <div style={{ width: 30, height: 30, borderRadius: 7, background: c.bg, border: `1px solid ${c.bd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <RoleIcon role={user.role} size={13}/>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: t.tx1, fontFamily: F_MONO, display: 'flex', alignItems: 'center', gap: 5 }}>
-                            {user.username}
-                            {isSelf && <span style={{ fontSize: 9, background: t.blueBg, color: t.blue, border: `1px solid ${t.blueBd}`, padding: '0 4px', borderRadius: 3, fontWeight: 700 }}>YA</span>}
-                          </div>
-                          <div style={{ fontSize: 10, color: t.tx4, marginTop: 1 }}>{user.created_at ? new Date(user.created_at).getFullYear() : ''}</div>
-                        </div>
-                      </div>
-                    </td>
-                    {/* Email */}
-                    <td style={{ padding: '10px 14px', background: rowBg, color: t.tx2, fontFamily: F_MONO, fontSize: 11 }}>{user.email}</td>
-                    {/* Role */}
-                    <td style={{ padding: '10px 14px', background: rowBg }}><RolePill role={user.role} t={t}/></td>
-                    {/* Area */}
-                    <td style={{ padding: '10px 14px', background: rowBg }}>
-                      {user.role === 'root' ? (
-                        <span style={{ fontSize: 10.5, color: t.purple, fontFamily: F_MONO, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: t.purpleBg, border: `1px solid ${t.purpleBd}` }}>Semua</span>
-                      ) : user.allowed_areas?.length ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                          {user.allowed_areas.slice(0, 3).map(id => {
-                            const a = areas.find(x => x.id === id);
-                            return a ? (
-                              <span key={id} style={{ fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: t.blueBg, color: t.blue, border: `1px solid ${t.blueBd}`, fontFamily: F_MONO }}>{a.name || id}</span>
-                            ) : null;
-                          })}
-                          {user.allowed_areas.length > 3 && (
-                            <span style={{ fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: t.cardAlt, color: t.tx3, border: `1px solid ${t.line}`, fontFamily: F_MONO }}>+{user.allowed_areas.length - 3}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 11, color: t.tx4, fontFamily: F_MONO }}>—</span>
-                      )}
-                    </td>
-                    {/* Status */}
-                    <td style={{ padding: '10px 14px', background: rowBg }}><StatusPill active={user.is_active} t={t}/></td>
-                    {/* Login Terakhir */}
-                    <td style={{ padding: '10px 14px', background: rowBg, whiteSpace: 'nowrap' }}>
-                      {user.last_login ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                          <span style={{ fontSize: 11, color: t.tx2, fontFamily: F_MONO }}>
-                            {new Date(user.last_login).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </span>
-                          <span style={{ fontSize: 10, color: t.tx4, fontFamily: F_MONO }}>
-                            {new Date(user.last_login).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                          </span>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 11, color: t.tx4, fontFamily: F_MONO }}>—</span>
-                      )}
-                    </td>
-                    {/* Dibuat Oleh */}
-                    <td style={{ padding: '10px 14px', background: rowBg, color: t.tx4, fontFamily: F_MONO, fontSize: 11 }}>{user.created_by_name ?? '—'}</td>
-                    {/* Aksi */}
-                    <td style={{ padding: '10px 14px', background: rowBg }}>
-                      <div style={{ display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'nowrap' }}>
-                        {canToggle(user) && (
-                          <IBtn icon={user.is_active ? ToggleRight : ToggleLeft} color={user.is_active ? t.red : t.green} bg={user.is_active ? t.redBg : t.greenBg} bd={user.is_active ? t.redBd : t.greenBd} onClick={() => handleToggleActive(user)} title={user.is_active ? 'Nonaktifkan' : 'Aktifkan'}/>
-                        )}
-                        {canEdit(user) && (
-                          <IBtn icon={Edit2} color={t.blue} bg={t.blueBg} bd={t.blueBd} onClick={() => { setEditing(user); setShowForm(false); }} title="Edit"/>
-                        )}
-                        {canReset(user) && (
-                          <IBtn icon={KeyRound} color={t.purple} bg={t.purpleBg} bd={t.purpleBd} onClick={() => setResetUser(user)} title="Reset Password"/>
-                        )}
-                        {canDel(user) && (
-                          <IBtn icon={Trash2} color={t.red} bg={t.redBg} bd={t.redBd} onClick={() => setDeleteId(user.id)} title="Hapus"/>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '11px 18px', borderTop: `1px solid ${t.line}`, background: t.cardAlt, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: t.tx3, fontFamily: F_MONO }}>
+            {users.length} user terdaftar
+          </span>
           {(['root', 'admin', 'user'] as UserRole[]).map(role => {
-            const Icon = ROLE_CFG[role].icon;
-            const c    = roleCss(role, t);
+            const count = users.filter(u => u.role === role).length;
+            if (!count) return null;
+            const c = roleCss(role, t);
             return (
-              <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: t.tx3, fontFamily: F_MONO }}>
-                <Icon size={11} color={c.tx}/>
-                <strong style={{ color: c.tx }}>{ROLE_LABELS[role]}</strong>:
-                <span>{ROLE_CFG[role].desc}</span>
-              </div>
+              <span key={role} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 7px', borderRadius: 12, fontSize: 10, fontWeight: 700, fontFamily: F_MONO, background: c.bg, color: c.tx, border: `1px solid ${c.bd}` }}>
+                <RoleIcon role={role} size={9}/>{count}
+              </span>
             );
           })}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: t.tx4, fontFamily: F_MONO }}>
-            <KeyRound size={10}/> Klik ikon kunci untuk reset password
-          </div>
+        </div>
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="um-btn"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: '#6366f1', color: '#fff', border: 'none', cursor: 'pointer', fontFamily: F_SANS }}>
+          <Plus size={13}/> Tambah User
+        </button>
+      </div>
+
+      {/* ── TABLE ── */}
+      <div style={{ overflowX: 'auto', overflowY: 'auto', flex: 1, minHeight: 0 }}>
+        <style>{`.um-row:hover td { background: ${t.rowHov} !important; }`}</style>
+        <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: 12, fontFamily: F_SANS }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+            <tr style={{ background: t.thead }}>
+              {['User', 'Email', 'Role', 'Area', 'Status', 'Login Terakhir', 'Dibuat Oleh', 'Aksi'].map((h, i) => (
+                <th key={h} style={{ padding: '9px 14px', textAlign: i === 7 ? 'center' : 'left', fontSize: 9.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.theadTx, borderBottom: `1px solid rgba(255,255,255,0.06)`, fontFamily: F_MONO, whiteSpace: 'nowrap' }}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: t.tx3, fontSize: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Spin sz={14}/> Memuat…
+                </div>
+              </td></tr>
+            ) : sorted.length === 0 ? (
+              <tr><td colSpan={8} style={{ padding: 40, textAlign: 'center', color: t.tx3, fontSize: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                  <Users size={20} color={t.tx4}/>
+                  <span>Belum ada user terdaftar</span>
+                </div>
+              </td></tr>
+            ) : sorted.map((user, idx) => {
+              const c      = roleCss(user.role, t);
+              const isSelf = user.id === me?.id;
+              const rowBg  = idx % 2 === 1 ? t.rowAlt : 'transparent';
+              return (
+                <tr key={user.id} className="um-row" style={{ borderBottom: `1px solid ${t.line}`, transition: 'background 0.08s' }}>
+                  {/* User */}
+                  <td style={{ padding: '10px 14px', background: rowBg }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 7, background: c.bg, border: `1px solid ${c.bd}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <RoleIcon role={user.role} size={13}/>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: t.tx1, fontFamily: F_MONO, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          {user.username}
+                          {isSelf && <span style={{ fontSize: 9, background: t.blueBg, color: t.blue, border: `1px solid ${t.blueBd}`, padding: '0 4px', borderRadius: 3, fontWeight: 700 }}>YA</span>}
+                        </div>
+                        <div style={{ fontSize: 10, color: t.tx4, marginTop: 1 }}>{user.created_at ? new Date(user.created_at).getFullYear() : ''}</div>
+                      </div>
+                    </div>
+                  </td>
+                  {/* Email */}
+                  <td style={{ padding: '10px 14px', background: rowBg, color: t.tx2, fontFamily: F_MONO, fontSize: 11 }}>{user.email}</td>
+                  {/* Role */}
+                  <td style={{ padding: '10px 14px', background: rowBg }}><RolePill role={user.role} t={t}/></td>
+                  {/* Area */}
+                  <td style={{ padding: '10px 14px', background: rowBg }}>
+                    {user.role === 'root' ? (
+                      <span style={{ fontSize: 10.5, color: t.purple, fontFamily: F_MONO, fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: t.purpleBg, border: `1px solid ${t.purpleBd}` }}>Semua</span>
+                    ) : user.allowed_areas?.length ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                        {user.allowed_areas.slice(0, 3).map(id => {
+                          const a = areas.find(x => x.id === id);
+                          return a ? (
+                            <span key={id} style={{ fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: t.blueBg, color: t.blue, border: `1px solid ${t.blueBd}`, fontFamily: F_MONO }}>{a.name || id}</span>
+                          ) : null;
+                        })}
+                        {user.allowed_areas.length > 3 && (
+                          <span style={{ fontSize: 9.5, padding: '2px 5px', borderRadius: 3, background: t.cardAlt, color: t.tx3, border: `1px solid ${t.line}`, fontFamily: F_MONO }}>+{user.allowed_areas.length - 3}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: t.tx4, fontFamily: F_MONO }}>—</span>
+                    )}
+                  </td>
+                  {/* Status */}
+                  <td style={{ padding: '10px 14px', background: rowBg }}><StatusPill active={user.is_active} t={t}/></td>
+                  {/* Login Terakhir */}
+                  <td style={{ padding: '10px 14px', background: rowBg, whiteSpace: 'nowrap' }}>
+                    {user.last_login ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <span style={{ fontSize: 11, color: t.tx2, fontFamily: F_MONO }}>
+                          {new Date(user.last_login).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                        <span style={{ fontSize: 10, color: t.tx4, fontFamily: F_MONO }}>
+                          {new Date(user.last_login).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </span>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: t.tx4, fontFamily: F_MONO }}>—</span>
+                    )}
+                  </td>
+                  {/* Dibuat Oleh */}
+                  <td style={{ padding: '10px 14px', background: rowBg, color: t.tx4, fontFamily: F_MONO, fontSize: 11 }}>{user.created_by_name ?? '—'}</td>
+                  {/* Aksi */}
+                  <td style={{ padding: '10px 14px', background: rowBg }}>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 4, flexWrap: 'nowrap' }}>
+                      {canToggle(user) && (
+                        <IBtn icon={user.is_active ? ToggleRight : ToggleLeft} color={user.is_active ? t.red : t.green} bg={user.is_active ? t.redBg : t.greenBg} bd={user.is_active ? t.redBd : t.greenBd} onClick={() => handleToggleActive(user)} title={user.is_active ? 'Nonaktifkan' : 'Aktifkan'}/>
+                      )}
+                      {canEdit(user) && (
+                        <IBtn icon={Edit2} color={t.blue} bg={t.blueBg} bd={t.blueBd} onClick={() => { setEditing(user); setShowForm(false); }} title="Edit"/>
+                      )}
+                      {canReset(user) && (
+                        <IBtn icon={KeyRound} color={t.purple} bg={t.purpleBg} bd={t.purpleBd} onClick={() => setResetUser(user)} title="Reset Password"/>
+                      )}
+                      {canDel(user) && (
+                        <IBtn icon={Trash2} color={t.red} bg={t.redBg} bd={t.redBd} onClick={() => setDeleteId(user.id)} title="Hapus"/>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <div style={{ paddingTop: 10, marginTop: 'auto', borderTop: `1px solid ${t.line}`, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+        {(['root', 'admin', 'user'] as UserRole[]).map(role => {
+          const Icon = ROLE_CFG[role].icon;
+          const c    = roleCss(role, t);
+          return (
+            <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, color: t.tx3, fontFamily: F_MONO }}>
+              <Icon size={11} color={c.tx}/>
+              <strong style={{ color: c.tx }}>{ROLE_LABELS[role]}</strong>:
+              <span>{ROLE_CFG[role].desc}</span>
+            </div>
+          );
+        })}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: t.tx4, fontFamily: F_MONO }}>
+          <KeyRound size={10}/> Klik ikon kunci untuk reset password
         </div>
       </div>
     </div>

@@ -1130,7 +1130,7 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
 
   return (
     <>
-      {/* Logo */}
+      {/* Logo + collapse toggle di kanan logo (desktop) */}
       <div style={{padding:collapsed?'14px 0':'14px 16px',borderBottom:`1px solid ${t.sidebarBorder}`,display:'flex',alignItems:'center',justifyContent:collapsed?'center':'space-between',gap:10,height:64,flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:10,overflow:'hidden'}}>
           <div style={{width:36,height:36,borderRadius:10,flexShrink:0,background:'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 12px rgba(99,102,241,0.4)'}}>
@@ -1143,7 +1143,29 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
             </div>
           )}
         </div>
-        {isMobile&&<button onClick={onClose} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:7,cursor:'pointer',color:'rgba(255,255,255,0.5)',padding:6,display:'flex',flexShrink:0}}><X size={14}/></button>}
+        {/* Desktop: collapse button di header sidebar */}
+        {!isMobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'Perluas sidebar' : 'Sembunyikan sidebar'}
+            style={{
+              width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              cursor: 'pointer', color: 'rgba(255,255,255,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+          >
+            {collapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
+          </button>
+        )}
+        {/* Mobile: close button */}
+        {isMobile && (
+          <button onClick={onClose} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:7,cursor:'pointer',color:'rgba(255,255,255,0.5)',padding:6,display:'flex',flexShrink:0}}><X size={14}/></button>
+        )}
       </div>
 
       {/* User info */}
@@ -1178,9 +1200,8 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
         })}
       </nav>
 
-      {/* Bottom: theme + logout + collapse */}
+      {/* Bottom: theme + logout */}
       <div style={{borderTop:`1px solid ${t.sidebarBorder}`,padding:collapsed?'10px 6px':'10px 10px',flexShrink:0,display:'flex',flexDirection:'column',gap:6}}>
-
         {/* Theme toggle */}
         {collapsed ? (
           <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} title={theme==='dark'?'Mode Terang':'Mode Gelap'}
@@ -1210,18 +1231,6 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
             onMouseLeave={e=>(e.currentTarget.style.background='rgba(239,68,68,0.08)')}>
             <LogOut size={13} color="#f87171"/>
             <span style={{color:'#f87171'}}>Logout</span>
-          </button>
-        )}
-
-        {/* Collapse toggle (desktop only) */}
-        {!isMobile&&(
-          <button onClick={()=>setCollapsed(!collapsed)}
-            style={{width:'100%',display:'flex',alignItems:'center',justifyContent:collapsed?'center':'flex-start',gap:8,padding:collapsed?'8px':'8px 10px',background:'none',border:'1px solid rgba(255,255,255,0.06)',borderRadius:9,cursor:'pointer',color:t.sidebarText,transition:'all 0.15s',fontSize:12,fontWeight:500}}
-            onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.05)')}
-            onMouseLeave={e=>(e.currentTarget.style.background='none')}>
-            {collapsed
-              ?<ChevronRight size={14} color="rgba(255,255,255,0.4)"/>
-              :<><ChevronLeft size={14} color="rgba(255,255,255,0.4)"/><span style={{color:'rgba(255,255,255,0.4)'}}>Sembunyikan</span></>}
           </button>
         )}
       </div>
@@ -1255,7 +1264,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, can, fileCo
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOPBAR — hanya menu + judul halaman
+// TOPBAR — mobile menu toggle + page title only
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PAGE_META: Record<string, {title:string;subtitle:string;icon:React.ComponentType<any>;color:string}> = {
@@ -1265,7 +1274,7 @@ const PAGE_META: Record<string, {title:string;subtitle:string;icon:React.Compone
   settings: { title: 'Pengaturan',      subtitle: 'Akun & konfigurasi',    icon: Settings, color: '#f59e0b' },
 };
 
-function Topbar({ activeTab, onMenuToggle }: { activeTab: string; onMenuToggle: () => void }) {
+function Topbar({ activeTab, onMobileMenuToggle }: { activeTab: string; onMobileMenuToggle: () => void }) {
   const { t } = useTheme();
   const w = useWindowWidth();
   const isMobile = w < BP_MD;
@@ -1274,9 +1283,15 @@ function Topbar({ activeTab, onMenuToggle }: { activeTab: string; onMenuToggle: 
 
   return (
     <header style={{height:56,background:t.headerbg,borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',padding:`0 ${isMobile?12:20}px`,gap:isMobile?8:12,flexShrink:0,boxShadow:t.shadow}}>
-      <button onClick={onMenuToggle} style={{width:34,height:34,background:t.inputbg,border:`1px solid ${t.border}`,borderRadius:9,cursor:'pointer',color:t.textSub,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all 0.15s'}}>
-        <Menu size={16}/>
-      </button>
+      {/* Mobile only: hamburger to open sidebar drawer */}
+      {isMobile && (
+        <button
+          onClick={onMobileMenuToggle}
+          style={{width:34,height:34,background:t.inputbg,border:`1px solid ${t.border}`,borderRadius:9,cursor:'pointer',color:t.textSub,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all 0.15s'}}
+        >
+          <Menu size={16}/>
+        </button>
+      )}
       <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
         <div style={{width:32,height:32,borderRadius:9,background:page.color+'15',border:`1px solid ${page.color}25`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
           <PageIcon size={15} color={page.color}/>
@@ -1360,7 +1375,8 @@ function DashboardContent() {
       />
 
       <div style={{flex:1,display:'flex',flexDirection:'column',marginLeft:sidebarW,transition:'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',minWidth:0,height:'100vh',overflow:'hidden'}}>
-        <Topbar activeTab={activeTab} onMenuToggle={()=>isMobile?setMobileSidebarOpen(p=>!p):setSidebarCollapsed(p=>!p)}/>
+        {/* Topbar: mobile menu toggle only */}
+        <Topbar activeTab={activeTab} onMobileMenuToggle={() => setMobileSidebarOpen(p => !p)}/>
 
         <main style={{
           flex: 1,
@@ -1407,7 +1423,7 @@ export default function AdminDashboard() {
               @keyframes toastIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
               @keyframes sgPulse { 0%,100%{opacity:0.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
               @keyframes sgRing  { to{transform:rotate(360deg)} }
-              @keyframes sgBar   { 0%{width:0%} 40%{width:60%} 70%{width:82%} 100%{width:96%} }
+              @keyframes sgBar   { 0%{width:0%} 40%{width:60%} 70%{width:82%}100%{width:96%} }
               ::-webkit-scrollbar       { width: 4px; height: 4px; }
               ::-webkit-scrollbar-track { background: transparent; }
               ::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 3px; }
