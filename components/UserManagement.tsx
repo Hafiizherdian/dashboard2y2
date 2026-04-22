@@ -726,8 +726,13 @@ export default function UserManagement({ theme }: { theme: Theme }) {
   const canToggle = (u: AppUser) => !!me && me.id !== u.id && me.role !== 'admin' && canEdit(u);
   const canReset  = (u: AppUser) => canEdit(u);
 
-  const formatDate = (s: string | null) =>
-    s ? new Date(s).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' }) : '—';
+  const formatDate = (s: string | null) => {
+  if (!s) return '—';
+  const d = new Date(s);
+  const tgl = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  return `${tgl}, ${jam}`;
+};
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -866,7 +871,20 @@ export default function UserManagement({ theme }: { theme: Theme }) {
                     {/* Status */}
                     <td style={{padding:'10px 14px',background:rowBg}}><StatusPill active={user.is_active} t={t}/></td>
                     {/* Last login */}
-                    <td style={{padding:'10px 14px',background:rowBg,color:t.tx3,fontFamily:F_MONO,fontSize:11,whiteSpace:'nowrap'}}>{formatDate(user.last_login)}</td>
+                    <td style={{padding:'10px 14px',background:rowBg,whiteSpace:'nowrap'}}>
+  {user.last_login ? (
+    <div style={{display:'flex',flexDirection:'column',gap:1}}>
+      <span style={{fontSize:11,color:t.tx2,fontFamily:F_MONO}}>
+        {new Date(user.last_login).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' })}
+      </span>
+      <span style={{fontSize:10,color:t.tx4,fontFamily:F_MONO}}>
+        {new Date(user.last_login).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit' })}
+      </span>
+    </div>
+  ) : (
+    <span style={{fontSize:11,color:t.tx4,fontFamily:F_MONO}}>—</span>
+  )}
+</td>
                     {/* Created by */}
                     <td style={{padding:'10px 14px',background:rowBg,color:t.tx4,fontFamily:F_MONO,fontSize:11}}>{user.created_by_name ?? '—'}</td>
                     {/* Actions */}
