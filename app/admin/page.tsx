@@ -27,14 +27,64 @@ import { ROLE_LABELS, UserRole } from '@/lib/auth/types';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AdminGuard({ children }: { children: React.ReactNode }) {
-  const { user, can } = useAuth();
-  if (!user) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080b12', color: '#fff', flexDirection: 'column', gap: 16 }}>
-      <ShieldAlert size={48} color="#ef4444" />
-      <span style={{ fontSize: 16, fontWeight: 600 }}>Anda belum login</span>
-      <span style={{ fontSize: 14, opacity: 0.7 }}>Silakan login terlebih dahulu</span>
+  const { user, can, loading } = useAuth();
+  const [dots, setDots] = useState(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => setDots(d => (d + 1) % 4), 500);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    if (!loading && !user) window.location.href = '/login?from=' + encodeURIComponent(window.location.pathname);
+  }, [user, loading]);
+
+  if (loading || !user) return (
+    <div style={{
+      minHeight: '100vh', background: '#07090e',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: 0,
+      fontFamily: 'IBM Plex Mono, monospace',
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+        @keyframes sgPulse { 0%,100%{opacity:0.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
+        @keyframes sgRing  { to{transform:rotate(360deg)} }
+        @keyframes sgFadeUp{ from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes sgBar   { 0%{width:0%} 40%{width:60%} 70%{width:82%} 100%{width:96%} }
+      `}</style>
+      <div style={{ animation: 'sgFadeUp 0.5s ease both', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+        <div style={{ position: 'relative', width: 64, height: 64 }}>
+          <svg style={{ position: 'absolute', inset: 0, animation: 'sgRing 1.4s linear infinite' }}
+            width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="28" stroke="rgba(28,151,6,0.15)" strokeWidth="2.5"/>
+            <path d="M32 4 a28 28 0 0 1 24.2 14" stroke="#1c9706" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+          <div style={{
+            position: 'absolute', inset: 10, borderRadius: 12,
+            background: 'rgba(28,151,6,0.12)', border: '1px solid rgba(28,151,6,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'sgPulse 2s ease-in-out infinite',
+          }}>
+            <img src="/logo-cgkn.png" alt="CGKN" style={{ width: 28, height: 28, objectFit: 'contain' }}/>
+          </div>
+        </div>
+        <div style={{ textAlign: 'center', animation: 'sgFadeUp 0.5s 0.1s ease both', opacity: 0 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.03em', lineHeight: 1 }}>CGKN</div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', textTransform: 'uppercase', marginTop: 4 }}>Admin Panel</div>
+        </div>
+        <div style={{ animation: 'sgFadeUp 0.5s 0.2s ease both', opacity: 0, width: 160 }}>
+          <div style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg, #1c9706, #4ade80)', borderRadius: 2, animation: 'sgBar 2.5s cubic-bezier(0.4,0,0.2,1) forwards' }}/>
+          </div>
+        </div>
+        <div style={{ animation: 'sgFadeUp 0.5s 0.3s ease both', opacity: 0, fontSize: 10, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.06em' }}>
+          Memverifikasi sesi{'.' .repeat(dots)}
+        </div>
+      </div>
     </div>
   );
+
   if (!can('access_admin_panel')) return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080b12', color: '#fff', flexDirection: 'column', gap: 16 }}>
       <ShieldAlert size={48} color="#ef4444" />
@@ -42,6 +92,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
       <span style={{ fontSize: 14, opacity: 0.7, textAlign: 'center', maxWidth: 400 }}>Anda tidak memiliki akses ke panel admin.</span>
     </div>
   );
+
   return <>{children}</>;
 }
 
@@ -1643,15 +1694,42 @@ function DashboardContent() {
   const sidebarW = isMobile ? 0 : (sidebarCollapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W);
 
   if (isLoading) return (
-    <div style={{ minHeight: '100vh', background: t.pagebg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-        <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg, #6366f1 0%, #818cf8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(99,102,241,0.4)' }}>
-          <BarChart3 size={24} color="#fff" style={{ animation: 'pulse 1.5s ease-in-out infinite' }} />
+  <div style={{
+    minHeight: '100vh', background: '#07090e',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'column', fontFamily: 'IBM Plex Mono, monospace',
+  }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+      <div style={{ position: 'relative', width: 64, height: 64 }}>
+        <svg style={{ position: 'absolute', inset: 0, animation: 'sgRing 1.4s linear infinite' }}
+          width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="rgba(28,151,6,0.15)" strokeWidth="2.5"/>
+          <path d="M32 4 a28 28 0 0 1 24.2 14" stroke="#1c9706" strokeWidth="2.5" strokeLinecap="round"/>
+        </svg>
+        <div style={{
+          position: 'absolute', inset: 10, borderRadius: 12,
+          background: 'rgba(28,151,6,0.12)', border: '1px solid rgba(28,151,6,0.25)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'sgPulse 2s ease-in-out infinite',
+        }}>
+          <img src="/logo-cgkn.png" alt="CGKN" style={{ width: 28, height: 28, objectFit: 'contain' }}/>
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: t.text }}>Memuat…</span>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.03em', lineHeight: 1 }}>CGKN</div>
+        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', textTransform: 'uppercase', marginTop: 4 }}>Admin Panel</div>
+      </div>
+      <div style={{ width: 160 }}>
+        <div style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: 'linear-gradient(90deg, #1c9706, #4ade80)', borderRadius: 2, animation: 'sgBar 2.5s cubic-bezier(0.4,0,0.2,1) forwards' }}/>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.06em' }}>
+        Memuat data…
       </div>
     </div>
-  );
+  </div>
+);
 
   return (
     <div style={{ minHeight: '100vh', background: t.pagebg, fontFamily: FONT_SANS, display: 'flex', transition: 'background 0.3s' }}>
