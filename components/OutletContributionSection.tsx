@@ -982,7 +982,7 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
   const [selCustomerName, setSelCustomerName] = useState('');        // nama untuk chip display
   const [selSalesman,    setSelSalesman]    = useState('all');        // filter salesman
   const [globalSearch,   setGlobalSearch]  = useState('');           // global search box
-  const [filterOpen,     setFilterOpen]    = useState(false);
+  const [filterOpen,     setFilterOpen]    = useState(true);
   const [activeTab,      setActiveTab]     = useState<'A'|'B'>('A');
 
   const raw = data?.outletData ?? [];
