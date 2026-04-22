@@ -1293,28 +1293,27 @@ function generateProductL4WC1WData(records: any[], c1wWeek: number, l4wWeeks: nu
  */
 function generateOutletData(records: any[]): OutletSalesData[] {
   type CustomerEntry = {
-    dozNet:   number;
-    city:     string;
-    district: string;
-    village:  string;
-    salesman: string;
+    dozNet:      number;
+    city:        string;
+    district:    string;
+    village:     string;
+    salesman:    string;
+    customer_no: string;   // ← tambah
   };
-
-  type CustomerMap = Map<string, CustomerEntry>;
+  type CustomerMap = Map<string, CustomerEntry>;   // key = "customerNo||customerName"
   type ProductMap  = Map<string, CustomerMap>;
   type CategoryMap = Map<string, ProductMap>;
   type WeekMap     = Map<number, CategoryMap>;
   type YearMap     = Map<number, WeekMap>;
-
-  const outletMap = new Map<string, YearMap>();
+  const outletMap  = new Map<string, YearMap>();
 
   records.forEach(record => {
-    const outletType = record.customer_type || 'Tipe Customer tidak diketahui';
-    const week       = Number(record.week)      || 0;
-    const dozNet     = Number(record.units_dos) || 0;
-    const product    = record.product           || 'Produk tidak diketahui';
-    const year       = (record.year as number) ?? new Date(record.date).getFullYear();
-    const category   = getProductCategory(product);
+    const outletType  = record.customer_type || 'Tipe Customer tidak diketahui';
+    const week        = Number(record.week)      || 0;
+    const dozNet      = Number(record.units_dos) || 0;
+    const product     = record.product           || 'Produk tidak diketahui';
+    const year        = (record.year as number) ?? new Date(record.date).getFullYear();
+    const category    = getProductCategory(product);
 
     let city     = (record.city     || '').trim() || 'Tidak diketahui';
     let district = (record.district || '').trim() || 'Tidak diketahui';
@@ -1330,30 +1329,30 @@ function generateOutletData(records: any[]): OutletSalesData[] {
       }
     }
 
-    const village  = record.village  || 'Unknown';
-    const customer = record.customer || 'Unknown';
-    const salesman = record.salesman || 'Unknown';
+    const village     = record.village      || 'Unknown';
+    const customer    = record.customer     || 'Unknown';
+    const customer_no = record.customer_no  || '';         // ← ambil dari record
+    const salesman    = record.salesman     || 'Unknown';
 
-    if (!outletMap.has(outletType)) outletMap.set(outletType, new Map<number, WeekMap>());
+    // Key unik: gabung customer_no + nama agar customer beda ID tidak ter-merge
+    const customerKey = customer_no ? `${customer_no}||${customer}` : `||${customer}`;
+
+    if (!outletMap.has(outletType)) outletMap.set(outletType, new Map());
     const yearMap = outletMap.get(outletType)!;
-
-    if (!yearMap.has(year)) yearMap.set(year, new Map<number, CategoryMap>());
+    if (!yearMap.has(year)) yearMap.set(year, new Map());
     const weekMap = yearMap.get(year)!;
-
-    if (!weekMap.has(week)) weekMap.set(week, new Map<string, ProductMap>());
+    if (!weekMap.has(week)) weekMap.set(week, new Map());
     const categoryMap = weekMap.get(week)!;
-
-    if (!categoryMap.has(category)) categoryMap.set(category, new Map<string, CustomerMap>());
+    if (!categoryMap.has(category)) categoryMap.set(category, new Map());
     const productMap = categoryMap.get(category)!;
-
-    if (!productMap.has(product)) productMap.set(product, new Map<string, CustomerEntry>());
+    if (!productMap.has(product)) productMap.set(product, new Map());
     const customerMap = productMap.get(product)!;
 
-    const current = customerMap.get(customer);
+    const current = customerMap.get(customerKey);
     if (current) {
       current.dozNet += dozNet;
     } else {
-      customerMap.set(customer, { dozNet, city, district, village, salesman });
+      customerMap.set(customerKey, { dozNet, city, district, village, salesman, customer_no });
     }
   });
 
@@ -1364,19 +1363,25 @@ function generateOutletData(records: any[]): OutletSalesData[] {
       weekMap.forEach((categoryMap: CategoryMap, week: number) => {
         categoryMap.forEach((productMap: ProductMap, category: string) => {
           productMap.forEach((customerMap: CustomerMap, product: string) => {
-            customerMap.forEach((data: CustomerEntry, customer: string) => {
+            customerMap.forEach((data: CustomerEntry, customerKey: string) => {
+              // Pisahkan kembali customer_no dan nama dari composite key
+              const separatorIdx = customerKey.indexOf('||');
+              const customer     = customerKey.slice(separatorIdx + 2);   // nama
+              // customer_no sudah tersimpan di data.customer_no
+
               outletData.push({
                 week,
                 year,
                 outletType,
                 category,
                 product,
-                dozNet:   data.dozNet,
-                city:     data.city,
-                district: data.district,
-                village:  data.village,
+                dozNet:      data.dozNet,
+                city:        data.city,
+                district:    data.district,
+                village:     data.village,
                 customer,
-                salesman: data.salesman,
+                customer_no: data.customer_no,   // ← ikut di-push
+                salesman:    data.salesman,
               });
             });
           });

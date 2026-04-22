@@ -29,6 +29,7 @@ export interface OutletSalesData {
   city?: string;          // Kota/kabupaten
   district?: string;      // Kecamatan
   village?: string;       // Desa/kelurahan
+  customer_no?: string;
   customer?: string;      // Nama customer
   salesman?: string;      // Nama salesman
 }
