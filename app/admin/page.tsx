@@ -664,7 +664,7 @@ function FilesTable({ files, onDelete, isRoot }: { files: UploadedFile[]; onDele
   return (
     <>
       {previewFile && <PreviewModal file={previewFile} onClose={() => setPreviewFile(null)}/>}
-      <div style={card(t)}>
+      <div style={card(t, { overflow: 'visible' })}>
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: t.text, display: 'flex', alignItems: 'center', gap: 7 }}><FileSpreadsheet size={14} color="#6366f1"/>File Diupload</div>
