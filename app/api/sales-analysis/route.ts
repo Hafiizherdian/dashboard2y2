@@ -36,11 +36,21 @@ export async function GET(request: NextRequest) {
 
       // Apply area-based filtering for non-root users
       if (user.role !== 'root' && user.allowed_areas && user.allowed_areas.length > 0) {
-        if (!filters.area || !user.allowed_areas.includes(filters.area)) {
-          // If no specific area or area not allowed, use first allowed area
-          filters.area = user.allowed_areas[0];
-        }
-      }
+  if (filters.area) {
+    // Ada area spesifik — validasi akses
+    if (!user.allowed_areas.includes(filters.area)) {
+      return NextResponse.json(
+        { success: false, error: 'Anda tidak memiliki akses ke area ini' },
+        { status: 403 }
+      );
+    }
+    // filters.area valid, biarkan
+  } else {
+    // Tidak pilih area → pakai semua allowed areas
+    filters.allowedAreas = user.allowed_areas;
+  }
+}
+// root tanpa area filter → tidak perlu set apa-apa, fetch semua
 
       const data = await fetchSalesData(filters);
       
