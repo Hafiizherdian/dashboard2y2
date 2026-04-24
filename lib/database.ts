@@ -45,6 +45,7 @@ interface FetchFilters {
   weekStart2?: number;
   weekEnd2?: number;
   selectedUnit?: string;
+  allowedAreas?: string[];
 }
 
 // ─── ISO week cross-year resolution ──────────────────────────────────────────
@@ -171,9 +172,12 @@ async function querySalesRecords(filters?: FetchFilters): Promise<any[]> {
   }
 
   if (filters?.area && filters.area.trim().length > 0) {
-    values.push(filters.area.trim());
-    conditions.push(`area = $${values.length}`);
-  }
+  values.push(filters.area.trim());
+  conditions.push(`area = $${values.length}`);
+} else if (filters?.allowedAreas && filters.allowedAreas.length > 0) {
+  values.push(filters.allowedAreas);
+  conditions.push(`area = ANY($${values.length})`);
+}
 
   if (filters?.product && filters.product.trim().length > 0) {
     values.push(filters.product.trim());
