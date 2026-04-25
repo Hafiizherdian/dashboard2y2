@@ -174,7 +174,6 @@ function buildWhereConditions(filters?: FetchFilters): { conditions: string[]; v
 }
 
 // ─── Query 1: agregasi untuk chart (tanpa customer detail) ───────────────────
-// Menghasilkan ~15k rows vs 4.7 juta raw rows sebelumnya
 async function querySalesRecords(filters?: FetchFilters): Promise<any[]> {
   const { conditions, values } = buildWhereConditions(filters);
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -196,7 +195,7 @@ async function querySalesRecords(filters?: FetchFilters): Promise<any[]> {
     FROM sales_records
     ${whereClause}
     GROUP BY area, week, date, product, category, customer_type, city
-    LIMIT 500000
+    LIMIT 800000
   `;
 
   const client = await pool.connect();
@@ -211,44 +210,12 @@ async function querySalesRecords(filters?: FetchFilters): Promise<any[]> {
   }
 }
 
-// ─── Query 2: outlet records dengan customer detail (current year only) ──────
-// Menghasilkan ~150k rows per 4 minggu vs 4.7 juta raw rows
+// ─── Query 2: outlet records dengan customer detail ───────────────────────────
+// date wajib ada di GROUP BY agar resolveWeekYear akurat per tanggal asli.
+// Agregasi units_dos per customer dilakukan di sini (SUM per date+customer),
+// lalu penggabungan lintas tanggal dalam satu week dilakukan di generateOutletData.
 async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
-  const conditions: string[] = [];
-  const values: any[] = [];
-
-  // Fetch kedua tahun (year1 dan year2)
-  if (filters?.year1 !== undefined || filters?.year2 !== undefined) {
-    const years: number[] = [];
-    if (filters?.year1 !== undefined) years.push(filters.year1);
-    if (filters?.year2 !== undefined && filters.year2 !== filters.year1) years.push(filters.year2);
-
-    const startIdx = values.length + 1;
-    years.forEach(y => values.push(y));
-    const placeholders = years.map((_, i) => `$${startIdx + i}`).join(', ');
-    conditions.push(`EXTRACT(YEAR FROM date) IN (${placeholders})`);
-  }
-
-  if (filters?.area && filters.area.trim().length > 0) {
-    values.push(filters.area.trim());
-    conditions.push(`area = $${values.length}`);
-  } else if (filters?.allowedAreas && filters.allowedAreas.length > 0) {
-    values.push(filters.allowedAreas);
-    conditions.push(`area = ANY($${values.length})`);
-  }
-
-  // Wajib ada filter week range — tanpa ini data terlalu besar
-  const weekStart = filters?.weekStart2 ?? filters?.weekStart1;
-  const weekEnd   = filters?.weekEnd2   ?? filters?.weekEnd1;
-  if (weekStart && weekEnd) {
-    values.push(weekStart);
-    values.push(weekEnd);
-    conditions.push(`week BETWEEN $${values.length - 1} AND $${values.length}`);
-  } else {
-    // Fallback: batasi 13 minggu terakhir kalau tidak ada filter week
-    conditions.push(`week >= EXTRACT(WEEK FROM NOW())::int - 12`);
-  }
-
+  const { conditions, values } = buildWhereConditions(filters);
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const query = `
@@ -272,7 +239,7 @@ async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
       area, week, date, product, category,
       customer_type, city, district, village,
       salesman, customer, customer_no
-    LIMIT 300000
+    LIMIT 2000000
   `;
 
   const client = await pool.connect();
@@ -429,7 +396,7 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
     const records = await querySalesRecords(filters);
     console.log(`✅ Fetched ${records.length} chart records dari DB`);
 
-    // Query 2: outlet data — agregasi per customer, current year only
+    // Query 2: outlet data — agregasi per customer, KEDUA tahun
     const outletRecords = await queryOutletRecords(filters);
     console.log(`✅ Fetched ${outletRecords.length} outlet records dari DB`);
 
@@ -499,13 +466,20 @@ async function processSalesRecords(
     );
   }
 
-  // ─── STEP 1b: Resolve ISO week untuk outlet records juga ─────────────────
+  // ─── STEP 1b: Resolve ISO week untuk outlet records ───────────────────────
   if (outletRecords && outletRecords.length > 0) {
+    let outletCrossYearCount = 0;
     outletRecords.forEach(record => {
+      const dbYear = new Date(record.date).getFullYear();
+      const dbWeek = Number(record.week);
       const resolved = resolveWeekYear(record);
       record.year = resolved.year;
       record.week = resolved.week;
+      if (resolved.year !== dbYear || resolved.week !== dbWeek) {
+        outletCrossYearCount++;
+      }
     });
+    console.log(`🔄 [STEP-1b] Outlet ISO resolution: ${outletCrossYearCount} record di-remap`);
   }
 
   // ─── STEP 2: Filter hanya ISO year yang diminta ───────────────────────────
@@ -517,7 +491,12 @@ async function processSalesRecords(
     ? records.filter(r => requestedISOYears.has(r.year as number))
     : records;
 
-  console.log(`\n🔍 [STEP-2] ISO filter: requested=[${[...requestedISOYears]}], hasil=${isoFilteredRecords.length} records`);
+  // Filter outlet records dengan ISO year yang sama
+  const isoFilteredOutletRecords = (outletRecords && requestedISOYears.size > 0)
+    ? outletRecords.filter(r => requestedISOYears.has(r.year as number))
+    : (outletRecords ?? []);
+
+  console.log(`\n🔍 [STEP-2] ISO filter: requested=[${[...requestedISOYears]}], chart=${isoFilteredRecords.length} records, outlet=${isoFilteredOutletRecords.length} records`);
 
   const targetYear = filters?.year2 ?? filters?.year1;
   if (targetYear) {
@@ -627,9 +606,30 @@ async function processSalesRecords(
     return false;
   };
 
-  const rangeFilteredRecords = isoFilteredRecords.filter(isRecordInRange);
+  const rangeFilteredRecords       = isoFilteredRecords.filter(isRecordInRange);
+  const rangeFilteredOutletRecords = isoFilteredOutletRecords.filter(isRecordInRange);
 
-  console.log(`\n🔍 [STEP-4] Range filter: ${isoFilteredRecords.length} → ${rangeFilteredRecords.length} records`);
+  console.log(`\n🔍 [STEP-4] Range filter:`);
+  console.log(`   chart: ${isoFilteredRecords.length} → ${rangeFilteredRecords.length} records`);
+  console.log(`   outlet: ${isoFilteredOutletRecords.length} → ${rangeFilteredOutletRecords.length} records`);
+
+  // ── Sanity check: total units_dos chart vs outlet harus sama ─────────────
+  const chartTotalDos  = rangeFilteredRecords.reduce((s, r) => s + (Number(r.units_dos) || 0), 0);
+  const outletTotalDos = rangeFilteredOutletRecords.reduce((s, r) => s + (Number(r.units_dos) || 0), 0);
+  const diff           = Math.abs(chartTotalDos - outletTotalDos);
+  const diffPct        = chartTotalDos > 0 ? (diff / chartTotalDos * 100).toFixed(2) : 'N/A';
+  console.log(`\n🔢 [SANITY] Total units_dos setelah range filter:`);
+  console.log(`   chart  : ${chartTotalDos.toFixed(2)}`);
+  console.log(`   outlet : ${outletTotalDos.toFixed(2)}`);
+  console.log(`   selisih: ${diff.toFixed(2)} (${diffPct}%) ${diff < 1 ? '✅ konsisten' : '❌ TIDAK KONSISTEN — cek LIMIT atau GROUP BY'}`);
+  if (diff >= 1) {
+    // Breakdown per year untuk pinpoint masalah
+    [currentYear, previousYear].filter(Boolean).forEach(y => {
+      const cDos = rangeFilteredRecords.filter(r => r.year === y).reduce((s, r) => s + (Number(r.units_dos) || 0), 0);
+      const oDos = rangeFilteredOutletRecords.filter(r => r.year === y).reduce((s, r) => s + (Number(r.units_dos) || 0), 0);
+      console.log(`   [ISO ${y}] chart=${cDos.toFixed(2)} outlet=${oDos.toFixed(2)} selisih=${Math.abs(cDos-oDos).toFixed(2)}`);
+    });
+  }
 
   if (targetYear) {
     const prevCalYear = targetYear - 1;
@@ -654,6 +654,17 @@ async function processSalesRecords(
       console.log(`   Range year2: start=${currentYearWeekRange?.start}, end=${currentYearWeekRange?.end}`);
       console.log(`   Record week=${w1DesBeforeRange[0].week} → tidak masuk range!`);
     }
+
+    // Log outlet year breakdown setelah filter
+    const outletYearBreakdown = new Map<number, number>();
+    rangeFilteredOutletRecords.forEach(r => {
+      const y = r.year as number;
+      outletYearBreakdown.set(y, (outletYearBreakdown.get(y) || 0) + 1);
+    });
+    console.log(`\n📊 [STEP-4] Outlet records per ISO year setelah range filter:`);
+    Array.from(outletYearBreakdown.entries()).sort().forEach(([y, cnt]) =>
+      console.log(`   ISO ${y}: ${cnt} records`)
+    );
   }
 
   // ─── STEP 5: Build weeklyMap ──────────────────────────────────────────────
@@ -801,9 +812,7 @@ async function processSalesRecords(
   const quarterlyData    = await generateQuarterlyData(rangeFilteredRecords, effectiveYear, areaId, filters?.selectedUnit);
   const l4wc4wData       = generateL4WC4WData(rangeFilteredRecords, currentYear, filters);
   const yearOnYearGrowth = generateYearOnYearGrowth(rangeFilteredRecords, effectivePrevYear, effectiveYear, filters?.selectedUnit);
-
-  // ─── Outlet data dari query terpisah ─────────────────────────────────────
-  const outletData = generateOutletData(outletRecords ?? []);
+  const outletData       = generateOutletData(rangeFilteredOutletRecords);
 
   return { weeklyData, quarterlyData, weekComparisons, l4wc4wData, yearOnYearGrowth, comparisonYears, comparisonWeeks, outletData };
 }
@@ -830,7 +839,7 @@ async function generateQuarterlyData(
     has_target: boolean;
   }
 
-  const weekTargetMap = new Map<number, WeekTargetRow>();
+  const weekTargetMap        = new Map<number, WeekTargetRow>();
   const productWeekTargetMap = new Map<string, Map<number, {
     units_dos: number; units_bks: number; units_slop: number; units_bal: number;
   }>>();
@@ -905,8 +914,8 @@ async function generateQuarterlyData(
       result.rows.forEach(r => {
         const dos = parseFloat(r.units_dos) || 0;
         weekTargetMap.set(Number(r.week), {
-          week:      Number(r.week),
-          quarter:   Number(r.quarter),
+          week:       Number(r.week),
+          quarter:    Number(r.quarter),
           units_dos:  dos,
           units_bks:  parseFloat(r.units_bks)  || 0,
           units_slop: parseFloat(r.units_slop) || 0,
@@ -1394,7 +1403,7 @@ function generateOutletData(records: any[]): OutletSalesData[] {
     const week        = Number(record.week)      || 0;
     const dozNet      = Number(record.units_dos) || 0;
     const product     = record.product           || 'Produk tidak diketahui';
-    const year        = (record.year as number) ?? new Date(record.date).getFullYear();
+    const year: number = (record.year as number) || new Date(record.date).getFullYear();
     const category    = getProductCategory(product);
 
     let city     = (record.city     || '').trim() || 'Tidak diketahui';
