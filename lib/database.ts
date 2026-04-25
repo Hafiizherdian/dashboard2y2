@@ -239,7 +239,7 @@ async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
       area, week, date, product, category,
       customer_type, city, district, village,
       salesman, customer, customer_no
-    LIMIT 2000000
+    LIMIT 800000
   `;
 
   const client = await pool.connect();
