@@ -217,11 +217,16 @@ async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
   const conditions: string[] = [];
   const values: any[] = [];
 
-  // Hanya current year untuk outlet
-  const currentYear = filters?.year2 ?? filters?.year1;
-  if (currentYear !== undefined) {
-    values.push(currentYear);
-    conditions.push(`EXTRACT(YEAR FROM date) = $${values.length}`);
+  // Fetch kedua tahun (year1 dan year2)
+  if (filters?.year1 !== undefined || filters?.year2 !== undefined) {
+    const years: number[] = [];
+    if (filters?.year1 !== undefined) years.push(filters.year1);
+    if (filters?.year2 !== undefined && filters.year2 !== filters.year1) years.push(filters.year2);
+
+    const startIdx = values.length + 1;
+    years.forEach(y => values.push(y));
+    const placeholders = years.map((_, i) => `$${startIdx + i}`).join(', ');
+    conditions.push(`EXTRACT(YEAR FROM date) IN (${placeholders})`);
   }
 
   if (filters?.area && filters.area.trim().length > 0) {
@@ -232,13 +237,16 @@ async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
     conditions.push(`area = ANY($${values.length})`);
   }
 
-  // Batasi week range untuk outlet agar data tidak meledak
+  // Wajib ada filter week range — tanpa ini data terlalu besar
   const weekStart = filters?.weekStart2 ?? filters?.weekStart1;
   const weekEnd   = filters?.weekEnd2   ?? filters?.weekEnd1;
   if (weekStart && weekEnd) {
     values.push(weekStart);
     values.push(weekEnd);
     conditions.push(`week BETWEEN $${values.length - 1} AND $${values.length}`);
+  } else {
+    // Fallback: batasi 13 minggu terakhir kalau tidak ada filter week
+    conditions.push(`week >= EXTRACT(WEEK FROM NOW())::int - 12`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -264,7 +272,7 @@ async function queryOutletRecords(filters?: FetchFilters): Promise<any[]> {
       area, week, date, product, category,
       customer_type, city, district, village,
       salesman, customer, customer_no
-    LIMIT 200000
+    LIMIT 300000
   `;
 
   const client = await pool.connect();
