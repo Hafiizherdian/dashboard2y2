@@ -32,6 +32,7 @@ export interface OutletSalesData {
   customer_no?: string;
   customer?: string;      // Nama customer
   salesman?: string;      // Nama salesman
+  weeklyDozNet?:  Record<number, number>; 
 }
 
 /**
