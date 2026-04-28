@@ -547,14 +547,27 @@ function YearPanel({ year, isA, data: rows, theme, onExpand, compact, otherTotal
   }, [rows]);
 
   const weeklyData = useMemo(() => {
-    const m = new Map<number, number>();
-    rows.forEach(r => { if (r.week != null) m.set(r.week, (m.get(r.week) ?? 0) + (r.dozNet ?? 0)); });
-    const result: { week: string; wkNum: number; dozNet: number }[] = [];
-    for (let wk = weekRange.min; wk <= weekRange.max; wk++) {
-      result.push({ week: `W${wk}`, wkNum: wk, dozNet: m.get(wk) ?? 0 });
+  const m = new Map<number, number>();
+
+  rows.forEach(r => {
+    if (r.weeklyDozNet) {
+      // ← Pakai per-week breakdown jika tersedia
+      Object.entries(r.weeklyDozNet).forEach(([wkStr, val]) => {
+        const wk = Number(wkStr);
+        m.set(wk, (m.get(wk) ?? 0) + val);
+      });
+    } else {
+      // fallback: data lama tanpa weeklyDozNet
+      if (r.week != null) m.set(r.week, (m.get(r.week) ?? 0) + (r.dozNet ?? 0));
     }
-    return result;
-  }, [rows, weekRange]);
+  });
+
+  const result: { week: string; wkNum: number; dozNet: number }[] = [];
+  for (let wk = weekRange.min; wk <= weekRange.max; wk++) {
+    result.push({ week: `W${wk}`, wkNum: wk, dozNet: m.get(wk) ?? 0 });
+  }
+  return result;
+}, [rows, weekRange]);
 
   const totalDoz   = useMemo(() => rows.reduce((s, r) => s + (r.dozNet ?? 0), 0), [rows]);
   const weeklyChart = useMemo(() => weeklyData.map(w => ({ ...w, pct: totalDoz > 0 ? (w.dozNet / totalDoz) * 100 : 0 })), [weeklyData, totalDoz]);

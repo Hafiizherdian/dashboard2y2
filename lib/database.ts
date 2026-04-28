@@ -391,6 +391,7 @@ interface UnitAgg {
 // week dihapus dari key → satu entry per customer×product×year×type
 interface OutletAgg {
   dozNet:      number;  // total akumulasi semua week
+  weeklyDozNet:   Record<number, number>;
   city:        string;
   district:    string;
   village:     string;
@@ -572,12 +573,14 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       const existingOutlet = outletAggMap.get(outletKey);
       if (existingOutlet) {
         existingOutlet.dozNet += dos;
-        // Update week range tracking
+        existingOutlet.weeklyDozNet[isoWeek] = (existingOutlet.weeklyDozNet[isoWeek] ?? 0) + dos;
         if (isoWeek < existingOutlet.weekMin) existingOutlet.weekMin = isoWeek;
         if (isoWeek > existingOutlet.weekMax) existingOutlet.weekMax = isoWeek;
       } else {
         outletAggMap.set(outletKey, {
-          dozNet: dos, city, district, village, salesman, customer_no,
+          dozNet: dos,
+          weeklyDozNet: { [isoWeek]: dos },  // ← TAMBAH
+          city, district, village, salesman, customer_no,
           year: isoYear, outletType, category, product, customer,
           weekMin: isoWeek, weekMax: isoWeek,
         });
@@ -784,6 +787,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       category:    agg.category,
       product:     agg.product,
       dozNet:      agg.dozNet,
+      weeklyDozNet:  agg.weeklyDozNet,
       city:        agg.city,
       district:    agg.district,
       village:     agg.village,
