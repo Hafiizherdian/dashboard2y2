@@ -132,27 +132,17 @@ function calcISOWeekYear(year: number, month: number, day: number): { week: numb
 }
 
 function resolveWeekYear(record: any): { week: number; year: number } {
-  const { year: rawYear, month, day } = parseDateLocal(record.date);
+  const { year: rawYear, month } = parseDateLocal(record.date);
   const dbWeek = Number(record.week);
 
-  if (month >= 1 && month <= 10) {
-    return { week: dbWeek, year: rawYear };
+  // Desember tapi kolom week = 1 → masuk tahun depan
+  if (month === 11 && dbWeek === 1) {
+    return { week: 1, year: rawYear + 1 };
   }
 
-  if (month === 11 && day >= 28) {
-    const { week, isoYear } = calcISOWeekYear(rawYear, month, day);
-    if (isoYear !== rawYear) {
-      return { week, year: isoYear };
-    }
-    return { week: dbWeek, year: rawYear };
-  }
-
-  if (month === 0 && day <= 3) {
-    const { week, isoYear } = calcISOWeekYear(rawYear, month, day);
-    if (isoYear !== rawYear) {
-      return { week, year: isoYear };
-    }
-    return { week: dbWeek, year: rawYear };
+  // Januari tapi kolom week = 52 atau 53 → masuk tahun lalu
+  if (month === 0 && (dbWeek === 52 || dbWeek === 53)) {
+    return { week: dbWeek, year: rawYear - 1 };
   }
 
   return { week: dbWeek, year: rawYear };
