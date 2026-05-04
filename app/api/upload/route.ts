@@ -20,17 +20,12 @@ export async function POST(request: NextRequest) {
       const file = formData.get('file') as File;
       let selectedArea = formData.get('area') as string;
 
-      // Auto-determine area for non-root users
       if (session.role !== 'root') {
         const userAreas = session.allowed_areas || [];
-        
-        // If no area provided and user has single area, auto-assign
         if (!selectedArea && userAreas.length === 1) {
           selectedArea = userAreas[0];
           console.log(`[API/upload] Auto-assigned area ${selectedArea} for user ${session.username}`);
         }
-        
-        // Validate area access
         if (selectedArea && !userAreas.includes(selectedArea)) {
           return NextResponse.json(
             { success: false, error: `Anda tidak memiliki akses ke area: ${selectedArea}` },
@@ -46,7 +41,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Memvalidasi tipe file
       const allowedTypes = [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel',
@@ -63,15 +57,13 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Create temp directory if it doesn't exist
       const tempDir = join(process.cwd(), 'temp');
       try {
         await mkdir(tempDir, { recursive: true });
       } catch {
-        // Directory already exists or created
+        // Directory already exists
       }
 
-      // Save file temporarily
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
       const tempPath = join(tempDir, file.name);
@@ -81,7 +73,6 @@ export async function POST(request: NextRequest) {
       try {
         let data: any[] = [];
 
-        // Memproses file berdasarkan tipe
         if (file.type === 'text/csv') {
           console.log('Processing CSV file...');
           data = await processCSVFile(tempPath);
@@ -90,7 +81,6 @@ export async function POST(request: NextRequest) {
           data = await processExcelFile(buffer);
         }
 
-        // Data di proses dan di validasi
         const processedData = processSalesData(data, selectedArea);
 
         if (processedData.length === 0) {
@@ -104,13 +94,11 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Menyimpan ke database
         const client = await pool.connect();
 
         try {
           await client.query('BEGIN');
 
-          // Menyimpan record file
           const fileQuery = `
             INSERT INTO uploaded_files (
               filename, original_name, file_size, record_count, total_omzet,
@@ -128,12 +116,11 @@ export async function POST(request: NextRequest) {
             processedData.length,
             totalOmzet,
             'processing',
-            'admin', // TODO: Get from auth
+            'admin',
           ]);
 
           const fileId = fileResult.rows[0].id;
 
-          // Menyimpan record penjualan
           const salesQuery = `
             INSERT INTO sales_records (
               file_id, grand_total, week, date, product, category, customer_no, customer,
@@ -166,7 +153,6 @@ export async function POST(request: NextRequest) {
             ]);
           }
 
-          // Update file status ke selesai
           await client.query('UPDATE uploaded_files SET status = $1 WHERE id = $2', [
             'completed',
             fileId,
@@ -191,11 +177,10 @@ export async function POST(request: NextRequest) {
           client.release();
         }
       } finally {
-        // Clean up temp file
         try {
           await unlink(tempPath);
         } catch {
-          // File might not exist, ignore error
+          // File might not exist, ignore
         }
       }
     } catch (error) {
@@ -276,32 +261,18 @@ const MONTH_TRANSLATION_REGEX = new RegExp(
   'gi'
 );
 
-function getCorrectYearForWeek(week: number, parsedDate: Date): number {
-  const dateYear = parsedDate.getFullYear();
-  const dateMonth = parsedDate.getMonth();
-  const dateDay = parsedDate.getDate();
-
-  if (week === 52 && dateMonth === 0) return dateYear - 1;
-
-  if (week === 1 && dateMonth === 11) {
-    if (dateDay >= 28) return dateYear + 1;
-    return dateYear + 1;
-  }
-
-  return dateYear;
-}
-
-function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
+/**
+ * TIDAK mengubah tahun sama sekali saat upload.
+ * Tanggal disimpan apa adanya ke DB (tahun kalender asli).
+ * Koreksi ISO week (Des W1 → tahun depan, Jan W52 → tahun lalu)
+ * sepenuhnya ditangani oleh resolveWeekYear() di database.ts saat data dibaca.
+ */
+function parseSalesDate(rawValue: string | Date): Date | null {
   if (!rawValue) return null;
 
+  // Date object dari XLSX cellDates: langsung pakai, tidak diubah
   if (rawValue instanceof Date) {
-    if (week !== undefined) {
-      const correctedYear = getCorrectYearForWeek(week, rawValue);
-      const correctedDate = new Date(rawValue);
-      correctedDate.setFullYear(correctedYear);
-      return correctedDate;
-    }
-    return rawValue;
+    return isNaN(rawValue.getTime()) ? null : rawValue;
   }
 
   if (typeof rawValue !== 'string') return null;
@@ -315,45 +286,30 @@ function parseSalesDate(rawValue: string | Date, week?: number): Date | null {
     return INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()] ?? match;
   });
 
-  let parsed = new Date(normalized);
-  if (!isNaN(parsed.getTime())) {
-    if (week !== undefined) {
-      const correctedYear = getCorrectYearForWeek(week, parsed);
-      parsed.setFullYear(correctedYear);
-    }
-    return parsed;
-  }
+  // Coba parse langsung
+  const direct = new Date(normalized);
+  if (!isNaN(direct.getTime())) return direct;
 
+  // Format DD/MM/YYYY atau DD-MM-YYYY
   const dmyMatch = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
   if (dmyMatch) {
     const [, dayStr, monthStr, yearStr] = dmyMatch;
-    const year = parseInt(yearStr.length === 2 ? `20${yearStr}` : yearStr, 10);
+    const year  = parseInt(yearStr.length === 2 ? `20${yearStr}` : yearStr, 10);
     const month = parseInt(monthStr, 10) - 1;
-    const day = parseInt(dayStr, 10);
-    parsed = new Date(year, month, day);
-    if (!isNaN(parsed.getTime())) {
-      if (week !== undefined) {
-        parsed.setFullYear(getCorrectYearForWeek(week, parsed));
-      }
-      return parsed;
-    }
-    return null;
+    const day   = parseInt(dayStr, 10);
+    const result = new Date(year, month, day);
+    return isNaN(result.getTime()) ? null : result;
   }
 
+  // Format YYYY/MM/DD atau YYYY-MM-DD
   const ymdMatch = normalized.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
   if (ymdMatch) {
     const [, yearStr, monthStr, dayStr] = ymdMatch;
-    const year = parseInt(yearStr, 10);
+    const year  = parseInt(yearStr, 10);
     const month = parseInt(monthStr, 10) - 1;
-    const day = parseInt(dayStr, 10);
-    parsed = new Date(year, month, day);
-    if (!isNaN(parsed.getTime())) {
-      if (week !== undefined) {
-        parsed.setFullYear(getCorrectYearForWeek(week, parsed));
-      }
-      return parsed;
-    }
-    return null;
+    const day   = parseInt(dayStr, 10);
+    const result = new Date(year, month, day);
+    return isNaN(result.getTime()) ? null : result;
   }
 
   return null;
@@ -375,27 +331,27 @@ function parseNumericValue(raw: unknown): number {
   }
 
   const sanitized = trimmed.replace(/[^0-9.,\-]/g, '');
-  const negative = sanitized.includes('-');
-  const unsigned = sanitized.replace(/-/g, '');
+  const negative  = sanitized.includes('-');
+  const unsigned  = sanitized.replace(/-/g, '');
 
   const hasComma = unsigned.includes(',');
-  const hasDot = unsigned.includes('.');
+  const hasDot   = unsigned.includes('.');
 
   let normalized: string;
 
   if (hasComma && hasDot) {
-    const lastComma = unsigned.lastIndexOf(',');
-    const lastDot = unsigned.lastIndexOf('.');
+    const lastComma     = unsigned.lastIndexOf(',');
+    const lastDot       = unsigned.lastIndexOf('.');
     const commaAfterDot = lastComma > lastDot;
 
     if (commaAfterDot) {
-      const parts = unsigned.split(',');
-      const integerPart = parts[0].replace(/\./g, '') || '0';
+      const parts          = unsigned.split(',');
+      const integerPart    = parts[0].replace(/\./g, '') || '0';
       const fractionalPart = parts.slice(1).join('');
       normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
     } else {
-      const parts = unsigned.split('.');
-      const integerPart = parts[0].replace(/,/g, '') || '0';
+      const parts          = unsigned.split('.');
+      const integerPart    = parts[0].replace(/,/g, '') || '0';
       const fractionalPart = parts.slice(1).join('');
       normalized = fractionalPart ? `${integerPart}.${fractionalPart}` : integerPart;
     }
@@ -406,8 +362,6 @@ function parseNumericValue(raw: unknown): number {
     } else {
       normalized = parts.join('');
     }
-  } else if (hasDot) {
-    normalized = unsigned;
   } else {
     normalized = unsigned;
   }
@@ -429,39 +383,41 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
 
       let week = 1;
       const weekStr = row['Minggu'] || '';
-      if (weekStr.startsWith('W')) {
+      if (typeof weekStr === 'string' && weekStr.startsWith('W')) {
         week = parseInt(weekStr.substring(1)) || 1;
       } else {
-        week = parseInt(weekStr) || 1;
+        week = parseInt(String(weekStr)) || 1;
       }
 
-      const rawDate = row['Tanggal'] || row['Date'] || '';
-      const parsedDate = parseSalesDate(rawDate, week);
+      const rawDate    = row['Tanggal'] || row['Date'] || '';
+      // parseSalesDate tidak lagi menerima week — tidak ada koreksi tahun di sini
+      const parsedDate = parseSalesDate(rawDate);
 
       if (!parsedDate) {
         console.warn('Skipping row due to invalid date format:', {
           rawDate,
-          product: row['Produk'] || row['Product'],
+          product:  row['Produk'] || row['Product'],
           customer: row['Customer'],
         });
         continue;
       }
 
       const city = row['Kota'] || row['City'] || '';
+
       const record = {
         grand_total:   parseNumericValue(row['Grand Total']),
-        week:          parseNumericValue(row['Minggu']),
+        week,
         date:          parsedDate,
-        product:       row['Produk']          || row['Product']       || '',
-        category:      row['Kategori']        || row['Category']      || '',
-        customer_no:   row['No. Customer']    || row['Customer No']   || '',
-        customer:      row['Customer']        || '',
-        customer_type: row['Tipe Customer']   || row['Customer Type'] || '',
-        salesman:      row['Salesman']        || '',
-        village:       row['Desa']            || row['Village']       || '',
-        district:      row['Kecamatan']       || row['District']      || '',
+        product:       row['Produk']        || row['Product']       || '',
+        category:      row['Kategori']      || row['Category']      || '',
+        customer_no:   row['No. Customer']  || row['Customer No']   || '',
+        customer:      row['Customer']      || '',
+        customer_type: row['Tipe Customer'] || row['Customer Type'] || '',
+        salesman:      row['Salesman']      || '',
+        village:       row['Desa']          || row['Village']       || '',
+        district:      row['Kecamatan']     || row['District']      || '',
         city,
-        area:          selectedArea           || null,
+        area:          selectedArea         || null,
         units_bks:     parseNumericValue(row['Jual (Bks Net)']),
         units_slop:    parseNumericValue(row['Jual (Slop Net)']),
         units_bal:     parseNumericValue(row['Jual (Bal Net)']),
