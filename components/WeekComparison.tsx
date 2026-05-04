@@ -1138,9 +1138,9 @@ export default function WeekComparisonComponent({
     { key: 'variancePercentage', label: 'Var %',                   right: true },
   ], [previousYearLabel, currentYearLabel]);
 
-  const tableCols = useMemo(
-    () => isMobile ? allCols.filter(c => !c.mobileHide) : allCols,
-    [isMobile, allCols],
+    const tableCols = useMemo(
+    () => allCols,
+    [allCols],
   );
 
   const card = useCallback((extra: React.CSSProperties = {}): React.CSSProperties => ({
@@ -1278,7 +1278,7 @@ export default function WeekComparisonComponent({
         </div>
         <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 260 : 560 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 460 : 560 }}>
               <thead>
                 <tr>
                   {tableCols.map(col => (
@@ -1301,9 +1301,9 @@ export default function WeekComparisonComponent({
                       onMouseEnter={e => ((e.currentTarget as HTMLTableRowElement).style.background = t.rowHover)}
                       onMouseLeave={e => ((e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? 'transparent' : t.rowAlt)}>
                       <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', fontSize: isMobile ? 11 : 12, color: t.text, fontWeight: 500, fontFamily: 'IBM Plex Sans,sans-serif', borderBottom: `1px solid ${t.borderLight}`, maxWidth: isMobile ? 110 : 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.product}</td>
-                      {!isMobile && <td style={{ padding: '10px 16px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtExact(detail.previousYear)}</td>}
+                      <td style={{ padding: '10px 16px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtExact(detail.previousYear)}</td>
                       <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', fontSize: isMobile ? 11 : 12, color: t.text, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtExact(detail.currentYear)}</td>
-                      {!isMobile && <td style={{ padding: '10px 16px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap', color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtExact(detail.variance)}</td>}
+                      <td style={{ padding: '10px 16px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap', color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtExact(detail.variance)}</td>
                       <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>
                         <GrowthPill value={detail.variancePercentage} />
                       </td>
@@ -1320,11 +1320,7 @@ export default function WeekComparisonComponent({
             </table>
           </div>
         </div>
-        {isMobile && sortedProductDetails.length > 0 && (
-          <p style={{ margin: '8px 0 0', fontSize: 10, color: t.textFaint, fontFamily: 'IBM Plex Mono,monospace' }}>
-            * Kolom {String(previousYearLabel)} &amp; Variance tersembunyi di mobile.
-          </p>
-        )}
+        
         <p style={{ margin: '8px 0 0', fontSize: isMobile ? 10 : 11, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>
           {selectedWeek === null
             ? `${sortedProductDetails.length} produk · ${getUnitLabel(selectedUnit)} · semua minggu`
