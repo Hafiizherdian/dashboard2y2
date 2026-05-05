@@ -143,19 +143,23 @@ function calcISOWeekYear(year: number, month: number, day: number): { week: numb
  * Koreksi ISO cross-year sepenuhnya terjadi di sini.
  */
 function resolveWeekYear(record: any): { week: number; year: number } {
-  const { year: rawYear, month } = parseDateLocal(record.date);
+  const { year: rawYear, month, day } = parseDateLocal(record.date);
   const dbWeek = Number(record.week);
 
-  // Des 29-31 + W1 → masuk W1 tahun depan
-  // Des 28 tidak mungkin W1 secara ISO, jadi tidak disentuh
-  if (month === 11 && dbWeek === 1 && day >= 29) {
-    return { week: 1, year: rawYear + 1 };
+  // Desember + W1 → hitung ISO aktual untuk konfirmasi
+  if (month === 11 && dbWeek === 1) {
+    const { isoYear } = calcISOWeekYear(rawYear, month, day);
+    if (isoYear !== rawYear) {
+      return { week: 1, year: isoYear };
+    }
   }
 
-  // Jan 1-3 + W52/53 → masuk tahun lalu
-  // Jan 4+ selalu W1 tahun berjalan, tidak disentuh
-  if (month === 0 && (dbWeek === 52 || dbWeek === 53) && day <= 3) {
-    return { week: dbWeek, year: rawYear - 1 };
+  // Januari + W52/53 → hitung ISO aktual untuk konfirmasi
+  if (month === 0 && (dbWeek === 52 || dbWeek === 53)) {
+    const { week, isoYear } = calcISOWeekYear(rawYear, month, day);
+    if (isoYear !== rawYear) {
+      return { week, year: isoYear };
+    }
   }
 
   return { week: dbWeek, year: rawYear };
