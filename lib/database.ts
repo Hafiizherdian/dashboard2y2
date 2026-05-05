@@ -25,6 +25,14 @@
  *   - week tracking: simpan min/max week per outlet di OutletAgg (untuk info range jika dibutuhkan)
  *   - Hapus MAX_OUTLET_ENTRIES cap — tidak diperlukan lagi karena data sudah ringkas
  *   - OutletSalesData.dozNet sekarang adalah total akumulasi seluruh period (bukan per-week)
+ *
+ * PERUBAHAN v5 (fix ISO week boundary):
+ *   - resolveWeekYear: tambah guard `day >= 29` untuk Des W1
+ *     → 28 Des selalu W52, hanya 29-31 Des yang bisa jatuh di W1 tahun depan
+ *   - resolveWeekYear: tambah guard `day <= 3` untuk Jan W52/53
+ *     → hanya 1-3 Jan yang bisa jatuh di W52/53 tahun lalu
+ *   - route.ts (upload): parseSalesDate tidak lagi mengubah tahun sama sekali
+ *     → tanggal disimpan apa adanya ke DB, koreksi ISO sepenuhnya di resolveWeekYear
  */
 
 import Cursor from 'pg-cursor';
@@ -75,15 +83,6 @@ interface FetchFilters {
 }
 
 // ─── ISO week cross-year resolution ──────────────────────────────────────────
-// ROOT CAUSE BUG SEBELUMNYA:
-//   Record dari PostgreSQL datang sebagai Date object dengan timezone WIB (+7).
-//   Di server yang berjalan UTC, "2025-12-29 00:00:00 WIB" = "2025-12-28 17:00:00 UTC".
-//   Sehingga date.getFullYear()/getMonth()/getDate() return 28 Des bukan 29 Des!
-//   Ini menyebabkan calcISOWeekYear salah hitung dan 29/30 Des 2025 tidak di-remap ke ISO 2026.
-//
-// FIX: parseDateLocal() membaca tanggal dari string YYYY-MM-DD atau mengoffset +7 jam
-//   sebelum menggunakan UTC date components, sehingga selalu dapat calendar date Indonesia.
-
 function parseDateLocal(dateVal: any): { year: number; month: number; day: number } {
   let str: string | null = null;
   if (typeof dateVal === 'string') {
@@ -131,17 +130,31 @@ function calcISOWeekYear(year: number, month: number, day: number): { week: numb
   return { week, isoYear };
 }
 
+/**
+ * Resolve ISO week dan tahun dari record DB.
+ *
+ * Aturan boundary ISO 8601:
+ *   - Des 28 → selalu W52 tahun berjalan (tidak pernah W1)
+ *   - Des 29-31 + dbWeek=1 → W1 tahun depan
+ *   - Jan 1-3  + dbWeek=52/53 → W52/53 tahun lalu
+ *   - Jan 4+   → selalu W1 tahun berjalan
+ *
+ * Tanggal di DB disimpan apa adanya (tahun kalender asli, tidak diubah saat upload).
+ * Koreksi ISO cross-year sepenuhnya terjadi di sini.
+ */
 function resolveWeekYear(record: any): { week: number; year: number } {
   const { year: rawYear, month } = parseDateLocal(record.date);
   const dbWeek = Number(record.week);
 
-  // Desember tapi kolom week = 1 → masuk tahun depan
-  if (month === 11 && dbWeek === 1) {
+  // Des 29-31 + W1 → masuk W1 tahun depan
+  // Des 28 tidak mungkin W1 secara ISO, jadi tidak disentuh
+  if (month === 11 && dbWeek === 1 && day >= 29) {
     return { week: 1, year: rawYear + 1 };
   }
 
-  // Januari tapi kolom week = 52 atau 53 → masuk tahun lalu
-  if (month === 0 && (dbWeek === 52 || dbWeek === 53)) {
+  // Jan 1-3 + W52/53 → masuk tahun lalu
+  // Jan 4+ selalu W1 tahun berjalan, tidak disentuh
+  if (month === 0 && (dbWeek === 52 || dbWeek === 53) && day <= 3) {
     return { week: dbWeek, year: rawYear - 1 };
   }
 
@@ -377,24 +390,21 @@ interface UnitAgg {
   dos:  number;
 }
 
-// v4: OutletAgg tidak lagi menyimpan week tunggal, tapi total akumulasi
-// week dihapus dari key → satu entry per customer×product×year×type
 interface OutletAgg {
-  dozNet:      number;  // total akumulasi semua week
-  weeklyDozNet:   Record<number, number>;
-  city:        string;
-  district:    string;
-  village:     string;
-  salesman:    string;
-  customer_no: string;
-  year:        number;
-  outletType:  string;
-  category:    string;
-  product:     string;
-  customer:    string;
-  // week tracking: min/max untuk info range (opsional, tidak dipakai di key)
-  weekMin:     number;
-  weekMax:     number;
+  dozNet:       number;
+  weeklyDozNet: Record<number, number>;
+  city:         string;
+  district:     string;
+  village:      string;
+  salesman:     string;
+  customer_no:  string;
+  year:         number;
+  outletType:   string;
+  category:     string;
+  product:      string;
+  customer:     string;
+  weekMin:      number;
+  weekMax:      number;
 }
 
 /**
@@ -419,10 +429,6 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
   }
 }
 
-/**
- * Process sales records dengan streaming.
- * ISO week resolution logic TIDAK DIUBAH.
- */
 async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const areaId       = filters?.area;
   const selectedUnit = filters?.selectedUnit || 'units_dos';
@@ -445,7 +451,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`\n🔧 [PRE-RANGE] year1=${year1} range=${preRangeYear1 ? `W${preRangeYear1.start}-W${preRangeYear1.end}` : 'all'}`);
   console.log(`   [PRE-RANGE] year2=${year2} range=${preRangeYear2 ? `W${preRangeYear2.start}-W${preRangeYear2.end}` : 'all'}`);
 
-  // ─── Struktur agregat ─────────────────────────────────────────────────────
   const weekProductMap     = new Map<string, UnitAgg>();
   const weekYearSet        = new Map<number, Set<number>>();
   const allProductsSet     = new Set<string>();
@@ -471,7 +476,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     return true;
   };
 
-  // ─── STEP 1: Stream semua record, langsung agregasi ───────────────────────
   await streamSalesRecords(filters, (batch) => {
     for (const record of batch) {
       totalRecordCount++;
@@ -507,7 +511,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         return Number.isFinite(numeric) ? numeric * OMZET_SCALE : 0;
       })();
 
-      // Aggregate unit per week-product
       const wpKey    = `${isoYear}-${isoWeek}-${product}`;
       const existing = weekProductMap.get(wpKey);
       if (existing) {
@@ -521,19 +524,12 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
 
       omzetByProductWeek.set(wpKey, (omzetByProductWeek.get(wpKey) || 0) + omz);
 
-      // YearOnYear aggregate
       const unitVal = selectedUnit === 'units_bks'  ? bks
                     : selectedUnit === 'units_slop' ? slop
                     : selectedUnit === 'units_bal'  ? bal
                     : dos;
       yearUnitMap.set(isoYear, (yearUnitMap.get(isoYear) || 0) + unitVal);
 
-      // ── Outlet aggregate ──────────────────────────────────────────────────
-      // v4 FIX: key TIDAK mengandung isoWeek
-      // SEBELUM: `${isoYear}|${isoWeek}|${outletType}|${category}|${product}|${customerKey}`
-      //   → 1.93M records → 1.18M unique keys (terlalu granular, per-week per-customer)
-      // SESUDAH: `${isoYear}|${outletType}|${category}|${product}|${customerKey}`
-      //   → aggregate per customer×product×year, jauh lebih sedikit entry
       const outletType  = record.customer_type || 'Tipe Customer tidak diketahui';
       const category    = getProductCategory(product);
       const customer    = record.customer    || 'Unknown';
@@ -556,9 +552,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       const salesman = record.salesman || 'Unknown';
 
       const customerKey = customer_no ? `${customer_no}||${customer}` : `||${customer}`;
-
-      // Key tanpa week → collapse semua week menjadi satu entry per customer×product×year
-      const outletKey = `${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
+      const outletKey   = `${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
 
       const existingOutlet = outletAggMap.get(outletKey);
       if (existingOutlet) {
@@ -569,7 +563,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       } else {
         outletAggMap.set(outletKey, {
           dozNet: dos,
-          weeklyDozNet: { [isoWeek]: dos },  // ← TAMBAH
+          weeklyDozNet: { [isoWeek]: dos },
           city, district, village, salesman, customer_no,
           year: isoYear, outletType, category, product, customer,
           weekMin: isoWeek, weekMax: isoWeek,
@@ -582,7 +576,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`   ISO cross-year remap: ${crossYearCount} records`);
   console.log(`   Filtered out by week range: ${filteredOutByWeek} records`);
   console.log(`   Records masuk agregasi: ${totalRecordCount - filteredOutByWeek} records`);
-  console.log(`   outletAggMap size: ${outletAggMap.size} (v4: tanpa week di key)`);
+  console.log(`   outletAggMap size: ${outletAggMap.size}`);
   console.log(`   weekProductMap size: ${weekProductMap.size}`);
   console.log(`   allProductsSet size: ${allProductsSet.size}`);
   console.log(`✅ Fetched ${totalRecordCount} records dari DB`);
@@ -600,8 +594,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     };
   }
 
-  // ─── STEP 2: Tentukan year & week range ──────────────────────────────────
-  // v3 FIX: forEach push + sort, tidak ada spread
   const sortedYears: number[] = [];
   weekYearSet.forEach((_, year) => sortedYears.push(year));
   sortedYears.sort((a, b) => a - b);
@@ -613,7 +605,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     currentYear:  currentYear  ?? null,
   };
 
-  // v3 FIX: getWeekRangeFromData menggunakan forEach min/max, bukan Array.from+sort
   const getWeekRangeFromData = (year: number): { start: number; end: number } | null => {
     const weeks = weekYearSet.get(year);
     if (!weeks || weeks.size === 0) return null;
@@ -660,16 +651,13 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     : selectedUnit === 'units_bal'  ? agg.bal
     : agg.dos;
 
-  // ─── STEP 3: Build weeklyData & weekComparisons dari agregat ─────────────
   const weeklyData: WeeklySales[]         = [];
   const weekComparisons: WeekComparison[] = [];
 
-  // Union week dari kedua year — maks 53 entry, aman
   const allWeeks = new Set<number>();
   if (previousYear !== undefined) weekYearSet.get(previousYear)?.forEach(w => allWeeks.add(w));
   if (currentYear  !== undefined) weekYearSet.get(currentYear)?.forEach(w  => allWeeks.add(w));
 
-  // v3 FIX: forEach push + sort
   const sortedWeeks: number[] = [];
   allWeeks.forEach(w => sortedWeeks.push(w));
   sortedWeeks.sort((a, b) => a - b);
@@ -724,7 +712,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       }
     }
 
-    // v3 FIX: forEach push + sort, bukan Array.from().map().sort()
     const details: WeekComparisonProductDetail[] = [];
     productTotalsMap.forEach((totals, product) => {
       const variance           = totals.current - totals.previous;
@@ -760,24 +747,18 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       weeklyData.push({ week, year: previousYear, sales: prevYearSales, target: prevYearSales * 1.1 });
   }
 
-  // ─── STEP 4: Outlet data dari outletAggMap ────────────────────────────────
-  // v4 FIX: outletAggMap sekarang di-key tanpa week → jauh lebih sedikit entry
-  // Tidak ada cap/truncation — semua data dikirim lengkap
-  // OutletSalesData.week diisi dengan weekMin (week pertama customer tersebut muncul)
-  // karena field week masih ada di tipe OutletSalesData untuk kompatibilitas
   console.log(`\n📦 [STEP-4] outletAggMap size=${outletAggMap.size} (no truncation needed)`);
 
   const outletData: OutletSalesData[] = [];
   outletAggMap.forEach(agg => {
     outletData.push({
-      // week: gunakan weekMin sebagai representasi (field tetap ada untuk kompatibilitas tipe)
       week:        agg.weekMin,
       year:        agg.year,
       outletType:  agg.outletType,
       category:    agg.category,
       product:     agg.product,
       dozNet:      agg.dozNet,
-      weeklyDozNet:  agg.weeklyDozNet,
+      weeklyDozNet: agg.weeklyDozNet,
       city:        agg.city,
       district:    agg.district,
       village:     agg.village,
@@ -789,7 +770,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
 
   console.log(`   outletData entries dikirim ke client: ${outletData.length}`);
 
-  // ─── STEP 5: YearOnYear dari yearUnitMap ─────────────────────────────────
   const effectiveYear     = currentYear  ?? sortedYears[sortedYears.length - 1];
   const effectivePrevYear = previousYear ?? (currentYear ?? sortedYears[0]);
 
@@ -805,7 +785,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     };
   })();
 
-  // ─── STEP 6: Reconstruct virtual records untuk generateQuarterlyData & generateL4WC4WData
   const virtualRecords = reconstructVirtualRecords(
     weekProductMap,
     omzetByProductWeek,
@@ -816,7 +795,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const quarterlyData = await generateQuarterlyData(
     virtualRecords, effectiveYear, areaId, filters?.selectedUnit,
   );
-  const l4wc4wData    = generateL4WC4WData(virtualRecords, currentYear, filters);
+  const l4wc4wData = generateL4WC4WData(virtualRecords, currentYear, filters);
 
   return {
     weeklyData,
@@ -830,9 +809,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   };
 }
 
-/**
- * Rekonstruksi "virtual records" dari Map agregat
- */
 function reconstructVirtualRecords(
   weekProductMap:     Map<string, UnitAgg>,
   omzetByProductWeek: Map<string, number>,
@@ -874,9 +850,6 @@ function reconstructVirtualRecords(
   return virtual;
 }
 
-/**
- * Generate quarterly data dari records dengan target dari area
- */
 async function generateQuarterlyData(
   records:       any[],
   year:          number,
@@ -1080,8 +1053,7 @@ async function generateQuarterlyData(
 
     const result: QuarterlyProductDetail[] = [];
     productActualMap.forEach((actual, product) => {
-      const dbTarget = productQuarterTargets.get(product)?.get(qNum);
-
+      const dbTarget   = productQuarterTargets.get(product)?.get(qNum);
       const dosTarget  = dbTarget?.units_dos  ?? 0;
       const bksTarget  = dbTarget?.units_bks  ?? 0;
       const slopTarget = dbTarget?.units_slop ?? 0;
@@ -1159,10 +1131,7 @@ async function generateQuarterlyData(
                                : target;
 
     const details = generateQuarterlyProductDetails(
-      quarterRecords,
-      qIndex,
-      unitType,
-      yearRecords,
+      quarterRecords, qIndex, unitType, yearRecords,
     );
 
     const weeklyBreakdown: WeeklyBreakdown[] = [];
@@ -1281,22 +1250,19 @@ async function generateQuarterlyData(
   return quarterlyData;
 }
 
-/**
- * Generate L4W vs C1W data
- */
 function generateL4WC4WData(records: any[], currentYear?: number, filters?: FetchFilters): L4WC4WData {
   const empty: L4WC4WData = { l4wAverage: 0, c4wAverage: 0, c1wValue: 0, variance: 0, variancePercentage: 0, weeklyTrendData: [] };
 
   if (records.length === 0) return empty;
 
-  const effectiveYear = filters?.year2 ?? currentYear;
+  const effectiveYear   = filters?.year2 ?? currentYear;
   const filteredRecords = effectiveYear !== undefined
     ? records.filter(r => (r.year ?? new Date(r.date).getFullYear()) === effectiveYear)
     : records;
   const effectiveRecords = filteredRecords.length > 0 ? filteredRecords : records;
 
   const weeklyTotalsMap = new Map<string, { year: number; week: number; total: number }>();
-  const selectedUnit = filters?.selectedUnit || 'units_dos';
+  const selectedUnit    = filters?.selectedUnit || 'units_dos';
 
   for (const record of effectiveRecords) {
     const week = Number(record.week) || 0;
@@ -1312,7 +1278,6 @@ function generateL4WC4WData(records: any[], currentYear?: number, filters?: Fetc
     }
   }
 
-  // v3 FIX: forEach push + sort, bukan Array.from().sort()
   const weeklyTotals: { year: number; week: number; total: number }[] = [];
   weeklyTotalsMap.forEach(v => weeklyTotals.push(v));
   weeklyTotals.sort((a, b) => a.year !== b.year ? a.year - b.year : a.week - b.week);
@@ -1330,7 +1295,6 @@ function generateL4WC4WData(records: any[], currentYear?: number, filters?: Fetc
 
   const l4wAverageRaw = l4wWeeks.reduce((sum, e) => sum + e.total, 0) / l4wWeeks.length;
 
-  // v3 FIX: ganti Math.min/max spread dengan reduce loop
   let l4wMinWeek = Infinity;
   let l4wMaxWeek = -Infinity;
   l4wWeeks.forEach(w => {
@@ -1367,9 +1331,6 @@ function generateL4WC4WData(records: any[], currentYear?: number, filters?: Fetc
   } as L4WC4WData;
 }
 
-/**
- * Generate product detail data untuk L4W vs C1W per produk
- */
 function generateProductL4WC1WData(records: any[], c1wWeek: number, l4wWeeks: number[]): ProductL4WC1WData[] {
   type WeekEntry = { omzet: number; units_bks: number; units_slop: number; units_bal: number; units_dos: number };
 
