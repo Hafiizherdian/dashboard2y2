@@ -194,7 +194,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── Helper: Process Excel ────────────────────────────────────────────────────
-// cellDates: false → baca serial number mentah, hindari konversi UTC
+// cellDates: false → baca serial number mentah, hindari konversi UTC oleh XLSX
 // raw: true → nilai numerik tetap sebagai angka
 
 async function processExcelFile(buffer: Buffer): Promise<any[]> {
@@ -272,36 +272,34 @@ const MONTH_TRANSLATION_REGEX = new RegExp(
 function excelSerialToLocalDate(serial: number): Date | null {
   if (!Number.isFinite(serial) || serial < 1) return null;
 
-  // Koreksi bug Excel: serial 60 dianggap 29 Feb 1900 (tidak ada)
-  // Semua serial > 60 harus dikurangi 1
+  // Koreksi bug Excel leap year 1900 (serial 60 = 29 Feb 1900 yang tidak ada)
   const adjusted = serial > 60 ? serial - 1 : serial;
 
-  // Excel epoch: 1 Jan 1900 = serial 1
-  // Gunakan Date local (bukan UTC) agar tidak ada timezone shift
-  const epoch = new Date(1899, 11, 31); // 31 Des 1899 local
-  const ms    = epoch.getTime() + adjusted * 86400000;
-  const d     = new Date(ms);
+  // Excel epoch: serial 1 = 1 Jan 1900
+  // Gunakan UTC murni — Date.UTC(1899, 11, 31) = 31 Des 1899 00:00 UTC
+  const epochMs  = Date.UTC(1899, 11, 31); // ← UTC, bukan local
+  const targetMs = epochMs + adjusted * 86_400_000;
 
-  // Ekstrak komponen local, buat ulang sebagai midnight local
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  // Ekstrak komponen UTC, bukan local — tidak ada timezone shift
+  const d = new Date(targetMs);
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  //              ↑ getUTC*, bukan getFullYear/Month/Date
 }
 
 /**
  * Parse tanggal dari berbagai format tanpa mengubah tahun.
  * Selalu menggunakan local time — tidak ada UTC konversi.
- * Koreksi ISO week (Des W1 → tahun depan, Jan W52 → tahun lalu)
- * sepenuhnya ditangani oleh resolveWeekYear() di database.ts saat data dibaca.
+ * Koreksi ISO week sepenuhnya ditangani oleh resolveWeekYear() di database.ts.
  */
 function parseSalesDate(rawValue: string | Date | number): Date | null {
   if (rawValue === null || rawValue === undefined || rawValue === '') return null;
 
-  // ── Excel serial number ──────────────────────────────────────────────────
+  // Excel serial number → konversi ke local date
   if (typeof rawValue === 'number') {
     return excelSerialToLocalDate(rawValue);
   }
 
-  // ── Date object (dari CSV parser atau fallback) ───────────────────────────
-  // Ekstrak komponen local time, bukan UTC — hindari timezone shift
+  // Date object → ekstrak komponen local, hindari UTC shift
   if (rawValue instanceof Date) {
     if (isNaN(rawValue.getTime())) return null;
     return new Date(rawValue.getFullYear(), rawValue.getMonth(), rawValue.getDate());
@@ -312,11 +310,8 @@ function parseSalesDate(rawValue: string | Date | number): Date | null {
   let normalized = rawValue.replace(/^"|"$/g, '').trim();
   if (!normalized) return null;
 
-  // Hapus prefix hari Indonesia ("Senin, ", "Selasa, ", dst)
   normalized = normalized.replace(INDONESIAN_DAY_PREFIX, '').trim();
   normalized = normalized.replace(/\s+/g, ' ');
-
-  // Terjemahkan nama bulan Indonesia → English
   normalized = normalized.replace(MONTH_TRANSLATION_REGEX, (match) => {
     return INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()] ?? match;
   });
@@ -438,7 +433,7 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
         continue;
       }
 
-      console.log(`[upload] week=${week} rawDate="${rawDate}" → parsed=${parsedDate.toLocaleDateString('id-ID')} (${parsedDate.getFullYear()}-${String(parsedDate.getMonth()+1).padStart(2,'0')}-${String(parsedDate.getDate()).padStart(2,'0')})`);
+      console.log(`[upload] week=${week} rawDate="${rawDate}" → ${parsedDate.getFullYear()}-${String(parsedDate.getMonth()+1).padStart(2,'0')}-${String(parsedDate.getDate()).padStart(2,'0')}`);
 
       const city = row['Kota'] || row['City'] || '';
 

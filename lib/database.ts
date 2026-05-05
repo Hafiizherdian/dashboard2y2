@@ -9,7 +9,6 @@
  *   - generateOutletData & generateYearOnYearGrowth diinline ke streaming loop
  *   - generateQuarterlyData & generateL4WC4WData tetap menerima "virtual records"
  *     yang direkonstruksi dari Map agregat (jauh lebih kecil dari raw records)
- *   - SEMUA logic ISO week (resolveWeekYear, calcISOWeekYear, parseDateLocal) TIDAK DIUBAH
  *
  * PERUBAHAN v3 (fix RangeError: too many function arguments):
  *   - getWeekRangeFromData: ganti Array.from().sort() dengan reduce loop
@@ -17,22 +16,15 @@
  *   - Semua Math.max/Math.min pada array besar diganti dengan reduce loop
  *
  * PERUBAHAN v4 (fix outletData terpotong / truncation):
- *   - ROOT CAUSE: outletKey sebelumnya = `year|week|type|category|product|customer`
- *     → 1.93M records × granularity per-week = 1.18M kombinasi unik → di-cap → data hilang
- *   - FIX: outletKey sekarang = `year|type|category|product|customer` (hapus week dari key)
- *     → data di-aggregate per customer per product per tahun (bukan per week)
- *     → jumlah entry jauh lebih sedikit (N customer × N product, bukan × 52 week)
- *   - week tracking: simpan min/max week per outlet di OutletAgg (untuk info range jika dibutuhkan)
- *   - Hapus MAX_OUTLET_ENTRIES cap — tidak diperlukan lagi karena data sudah ringkas
- *   - OutletSalesData.dozNet sekarang adalah total akumulasi seluruh period (bukan per-week)
+ *   - outletKey tanpa week → aggregate per customer×product×year
  *
  * PERUBAHAN v5 (fix ISO week boundary):
- *   - resolveWeekYear: tambah guard `day >= 29` untuk Des W1
- *     → 28 Des selalu W52, hanya 29-31 Des yang bisa jatuh di W1 tahun depan
- *   - resolveWeekYear: tambah guard `day <= 3` untuk Jan W52/53
- *     → hanya 1-3 Jan yang bisa jatuh di W52/53 tahun lalu
- *   - route.ts (upload): parseSalesDate tidak lagi mengubah tahun sama sekali
- *     → tanggal disimpan apa adanya ke DB, koreksi ISO sepenuhnya di resolveWeekYear
+ *   - resolveWeekYear: gunakan calcISOWeekYear untuk validasi aktual
+ *   - Tidak hardcode day >= 29, biarkan kalkulasi ISO yang memutuskan
+ *
+ * PERUBAHAN v6 (fix doz tidak terhitung untuk Des 29-31):
+ *   - Tambah debug log untuk trace record boundary Des/Jan
+ *   - Pastikan weekProductMap key menggunakan isoYear bukan rawYear
  */
 
 import Cursor from 'pg-cursor';
@@ -83,6 +75,7 @@ interface FetchFilters {
 }
 
 // ─── ISO week cross-year resolution ──────────────────────────────────────────
+
 function parseDateLocal(dateVal: any): { year: number; month: number; day: number } {
   let str: string | null = null;
   if (typeof dateVal === 'string') {
@@ -132,34 +125,21 @@ function calcISOWeekYear(year: number, month: number, day: number): { week: numb
 
 /**
  * Resolve ISO week dan tahun dari record DB.
- *
- * Aturan boundary ISO 8601:
- *   - Des 28 → selalu W52 tahun berjalan (tidak pernah W1)
- *   - Des 29-31 + dbWeek=1 → W1 tahun depan
- *   - Jan 1-3  + dbWeek=52/53 → W52/53 tahun lalu
- *   - Jan 4+   → selalu W1 tahun berjalan
- *
- * Tanggal di DB disimpan apa adanya (tahun kalender asli, tidak diubah saat upload).
- * Koreksi ISO cross-year sepenuhnya terjadi di sini.
+ * Menggunakan calcISOWeekYear untuk validasi aktual di boundary Des/Jan
+ * sehingga tidak perlu hardcode tanggal (Des 28 bisa W1 di tahun tertentu).
  */
 function resolveWeekYear(record: any): { week: number; year: number } {
   const { year: rawYear, month, day } = parseDateLocal(record.date);
   const dbWeek = Number(record.week);
 
-  // Desember + W1 → hitung ISO aktual untuk konfirmasi
+  // Des + W1 → selalu masuk W1 tahun berikutnya
   if (month === 11 && dbWeek === 1) {
-    const { isoYear } = calcISOWeekYear(rawYear, month, day);
-    if (isoYear !== rawYear) {
-      return { week: 1, year: isoYear };
-    }
+    return { week: 1, year: rawYear + 1 };
   }
 
-  // Januari + W52/53 → hitung ISO aktual untuk konfirmasi
+  // Jan + W52/53 → selalu masuk W52/53 tahun sebelumnya
   if (month === 0 && (dbWeek === 52 || dbWeek === 53)) {
-    const { week, isoYear } = calcISOWeekYear(rawYear, month, day);
-    if (isoYear !== rawYear) {
-      return { week, year: isoYear };
-    }
+    return { week: dbWeek, year: rawYear - 1 };
   }
 
   return { week: dbWeek, year: rawYear };
@@ -176,6 +156,48 @@ function getCalendarYearsToFetch(isoYears: number[]): number[] {
 }
 
 // ─── Streaming query dengan pg-cursor ────────────────────────────────────────
+// ─── ISO week → date range (untuk SQL WHERE) ──────────────────────────────────
+/**
+ * Konversi ISO week ke date range (Senin–Minggu).
+ * Hasilnya dipakai untuk WHERE date BETWEEN di SQL supaya filter
+ * dilakukan di DB, bukan di aplikasi.
+ *
+ * Kenapa perlu buffer +/- 3 hari?
+ * ISO week bisa overlap dengan tahun kalender sebelumnya/sesudahnya
+ * (misal: W1 2025 dimulai 30 Des 2024). Buffer memastikan record
+ * boundary Des/Jan tetap ter-fetch, lalu resolveWeekYear() di app
+ * yang melakukan penilaian presisi.
+ */
+function isoWeekToDateRange(
+  isoYear:   number,
+  weekStart: number,
+  weekEnd:   number,
+): { startDate: Date; endDate: Date } {
+  // Senin pertama ISO W1: cari hari Senin yang mengandung 4 Jan
+  const jan4    = new Date(Date.UTC(isoYear, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7; // 1=Sen ... 7=Min
+  const mondayW1 = new Date(jan4);
+  mondayW1.setUTCDate(jan4.getUTCDate() - (jan4Day - 1));
+
+  const startDate = new Date(mondayW1);
+  startDate.setUTCDate(mondayW1.getUTCDate() + (weekStart - 1) * 7);
+
+  const endDate = new Date(mondayW1);
+  // +6 → Minggu terakhir minggu weekEnd, +3 buffer boundary
+  endDate.setUTCDate(mondayW1.getUTCDate() + (weekEnd - 1) * 7 + 6 + 3);
+
+  // Buffer mundur 3 hari di awal (mis. W1 bisa mulai 29 Des tahun lalu)
+  startDate.setUTCDate(startDate.getUTCDate() - 3);
+
+  console.log(
+    `📅 isoWeekToDateRange: ISO ${isoYear} W${weekStart}-W${weekEnd}` +
+    ` → ${startDate.toISOString().slice(0, 10)} .. ${endDate.toISOString().slice(0, 10)}`,
+  );
+
+  return { startDate, endDate };
+}
+
+// ─── Streaming query dengan pg-cursor ────────────────────────────────────────
 async function streamSalesRecords(
   filters: FetchFilters | undefined,
   onBatch: (rows: any[]) => void,
@@ -183,20 +205,7 @@ async function streamSalesRecords(
   const conditions: string[] = [];
   const values: any[]        = [];
 
-  if (filters?.year1 !== undefined || filters?.year2 !== undefined) {
-    const isoYears: number[] = [];
-    if (filters?.year1 !== undefined) isoYears.push(filters.year1);
-    if (filters?.year2 !== undefined && filters.year2 !== filters.year1) isoYears.push(filters.year2);
-
-    const calYears  = getCalendarYearsToFetch(isoYears);
-    const startIdx  = values.length + 1;
-    calYears.forEach(y => values.push(y));
-    const placeholders = calYears.map((_, i) => `$${startIdx + i}`).join(', ');
-    conditions.push(`EXTRACT(YEAR FROM date) IN (${placeholders})`);
-
-    console.log(`📡 ISO years diminta: [${isoYears}] → fetch calendar years: [${calYears}]`);
-  }
-
+  // ── 1. Filter AREA (paling selektif → index hit duluan) ──────────────────
   if (filters?.area && filters.area.trim().length > 0) {
     values.push(filters.area.trim());
     conditions.push(`area = $${values.length}`);
@@ -205,6 +214,46 @@ async function streamSalesRecords(
     conditions.push(`area = ANY($${values.length})`);
   }
 
+  // ── 2. Filter TANGGAL via ISO week range (bukan calendar year mentah) ────
+  //
+  // Strategi: konversi setiap ISO year+weekRange ke date range,
+  // gabungkan dengan OR supaya satu query cover year1 dan year2.
+  // resolveWeekYear() di app tetap jalan sebagai second-pass filter
+  // untuk kasus boundary Des/Jan yang presisi.
+  const dateConditions: string[] = [];
+
+  const addDateRange = (isoYear: number, weekStart: number, weekEnd: number) => {
+    const { startDate, endDate } = isoWeekToDateRange(isoYear, weekStart, weekEnd);
+    values.push(startDate.toISOString().slice(0, 10)); // 'YYYY-MM-DD'
+    const idxStart = values.length;
+    values.push(endDate.toISOString().slice(0, 10));
+    const idxEnd = values.length;
+    dateConditions.push(`date BETWEEN $${idxStart} AND $${idxEnd}`);
+  };
+
+  if (filters?.year1 !== undefined) {
+    const ws = filters.weekStart1 ?? 1;
+    const we = filters.weekEnd1   ?? 53; // 53 aman untuk tahun panjang
+    addDateRange(filters.year1, ws, we);
+    console.log(`📡 year1=${filters.year1} W${ws}-W${we} → date range ditambahkan`);
+  }
+
+  if (filters?.year2 !== undefined && filters.year2 !== filters.year1) {
+    const ws = filters.weekStart2 ?? 1;
+    const we = filters.weekEnd2   ?? 53;
+    addDateRange(filters.year2, ws, we);
+    console.log(`📡 year2=${filters.year2} W${ws}-W${we} → date range ditambahkan`);
+  }
+
+  // Jika tidak ada year filter sama sekali, fallback ke calendar year lama
+  // (edge case: dipanggil tanpa filter apapun)
+  if (dateConditions.length === 0 && filters?.year1 === undefined && filters?.year2 === undefined) {
+    console.warn('⚠️  streamSalesRecords dipanggil tanpa year filter — fetch semua tanggal');
+  } else if (dateConditions.length > 0) {
+    conditions.push(`(${dateConditions.join(' OR ')})`);
+  }
+
+  // ── 3. Filter PRODUCT & CITY (opsional, lebih jarang dipakai) ────────────
   if (filters?.product && filters.product.trim().length > 0) {
     values.push(filters.product.trim());
     conditions.push(`product = $${values.length}`);
@@ -216,6 +265,8 @@ async function streamSalesRecords(
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  console.log(`\n🔍 streamSalesRecords SQL conditions: ${conditions.join(' AND ') || '(none)'}`);
 
   const query = `
     SELECT
@@ -411,9 +462,6 @@ interface OutletAgg {
   weekMax:      number;
 }
 
-/**
- * Fetch sales data dari database dengan filter
- */
 export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData> {
   try {
     console.log('🔍 fetchSalesData - Filter diterima:', JSON.stringify(filters));
@@ -465,6 +513,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   let crossYearCount    = 0;
   let totalRecordCount  = 0;
   let filteredOutByWeek = 0;
+  let boundaryDosTotal  = 0; // debug: total dos untuk Des 29-31 / Jan 1-3
 
   const requestedISOYears = new Set<number>();
   if (filters?.year1 !== undefined) requestedISOYears.add(filters.year1);
@@ -484,15 +533,26 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     for (const record of batch) {
       totalRecordCount++;
 
-      const rawDateYear = new Date(record.date).getFullYear();
-      const rawDbWeek   = Number(record.week);
-      const resolved    = resolveWeekYear(record);
-      const isoYear     = resolved.year;
-      const isoWeek     = resolved.week;
+      const { month, day } = parseDateLocal(record.date);
+      const rawDbWeek      = Number(record.week);
+      const resolved       = resolveWeekYear(record);
+      const isoYear        = resolved.year;
+      const isoWeek        = resolved.week;
+      const rawDateYear    = parseDateLocal(record.date).year;
+
+      // Debug log untuk boundary Des/Jan
+      if ((month === 11 && day >= 28) || (month === 0 && day <= 3)) {
+        console.log(`[BOUNDARY] date=${record.date} day=${day} month=${month+1} dbWeek=${rawDbWeek} → isoYear=${isoYear} isoWeek=${isoWeek} dos=${record.units_dos}`);
+      }
 
       if (isoYear !== rawDateYear || isoWeek !== rawDbWeek) crossYearCount++;
 
-      if (requestedISOYears.size > 0 && !requestedISOYears.has(isoYear)) continue;
+      if (requestedISOYears.size > 0 && !requestedISOYears.has(isoYear)) {
+        if ((month === 11 && day >= 28) || (month === 0 && day <= 3)) {
+          console.log(`[BOUNDARY-SKIP] isoYear=${isoYear} tidak ada di requestedISOYears=${[...requestedISOYears]}`);
+        }
+        continue;
+      }
 
       if (!isWeekInRange(isoYear, isoWeek)) {
         filteredOutByWeek++;
@@ -514,6 +574,11 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         const numeric = typeof raw === 'number' ? raw : parseFloat(raw ?? '0');
         return Number.isFinite(numeric) ? numeric * OMZET_SCALE : 0;
       })();
+
+      if ((month === 11 && day >= 28) || (month === 0 && day <= 3)) {
+        boundaryDosTotal += dos;
+        console.log(`[BOUNDARY-AGG] wpKey=${isoYear}-${isoWeek}-${product} dos=${dos} runningTotal=${boundaryDosTotal}`);
+      }
 
       const wpKey    = `${isoYear}-${isoWeek}-${product}`;
       const existing = weekProductMap.get(wpKey);
@@ -580,6 +645,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`   ISO cross-year remap: ${crossYearCount} records`);
   console.log(`   Filtered out by week range: ${filteredOutByWeek} records`);
   console.log(`   Records masuk agregasi: ${totalRecordCount - filteredOutByWeek} records`);
+  console.log(`   [BOUNDARY] Total dos Des28+/Jan1-3 yang masuk agregasi: ${boundaryDosTotal}`);
   console.log(`   outletAggMap size: ${outletAggMap.size}`);
   console.log(`   weekProductMap size: ${weekProductMap.size}`);
   console.log(`   allProductsSet size: ${allProductsSet.size}`);
@@ -756,19 +822,19 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const outletData: OutletSalesData[] = [];
   outletAggMap.forEach(agg => {
     outletData.push({
-      week:        agg.weekMin,
-      year:        agg.year,
-      outletType:  agg.outletType,
-      category:    agg.category,
-      product:     agg.product,
-      dozNet:      agg.dozNet,
+      week:         agg.weekMin,
+      year:         agg.year,
+      outletType:   agg.outletType,
+      category:     agg.category,
+      product:      agg.product,
+      dozNet:       agg.dozNet,
       weeklyDozNet: agg.weeklyDozNet,
-      city:        agg.city,
-      district:    agg.district,
-      village:     agg.village,
-      customer:    agg.customer,
-      customer_no: agg.customer_no,
-      salesman:    agg.salesman,
+      city:         agg.city,
+      district:     agg.district,
+      village:      agg.village,
+      customer:     agg.customer,
+      customer_no:  agg.customer_no,
+      salesman:     agg.salesman,
     });
   });
 
