@@ -194,12 +194,14 @@ export async function POST(request: NextRequest) {
 }
 
 // ─── Helper: Process Excel ────────────────────────────────────────────────────
+// cellDates: false → baca serial number mentah, hindari konversi UTC
+// raw: true → nilai numerik tetap sebagai angka
 
 async function processExcelFile(buffer: Buffer): Promise<any[]> {
   try {
     const workbook = XLSX.read(buffer, {
       type: 'buffer',
-      cellDates: true,
+      cellDates: false,
       cellNF: false,
       cellText: false,
     });
@@ -208,6 +210,7 @@ async function processExcelFile(buffer: Buffer): Promise<any[]> {
     const data = XLSX.utils.sheet_to_json(worksheet, {
       defval: '',
       blankrows: false,
+      raw: true,
     });
 
     return data;
@@ -262,17 +265,46 @@ const MONTH_TRANSLATION_REGEX = new RegExp(
 );
 
 /**
- * TIDAK mengubah tahun sama sekali saat upload.
- * Tanggal disimpan apa adanya ke DB (tahun kalender asli).
+ * Konversi Excel date serial number ke Date local.
+ * Excel serial: 1 = 1 Jan 1900, dengan bug leap year 1900 (serial 60).
+ * Hasilnya Date local tanpa UTC shift.
+ */
+function excelSerialToLocalDate(serial: number): Date | null {
+  if (!Number.isFinite(serial) || serial < 1) return null;
+
+  // Koreksi bug Excel: serial 60 dianggap 29 Feb 1900 (tidak ada)
+  // Semua serial > 60 harus dikurangi 1
+  const adjusted = serial > 60 ? serial - 1 : serial;
+
+  // Excel epoch: 1 Jan 1900 = serial 1
+  // Gunakan Date local (bukan UTC) agar tidak ada timezone shift
+  const epoch = new Date(1899, 11, 31); // 31 Des 1899 local
+  const ms    = epoch.getTime() + adjusted * 86400000;
+  const d     = new Date(ms);
+
+  // Ekstrak komponen local, buat ulang sebagai midnight local
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Parse tanggal dari berbagai format tanpa mengubah tahun.
+ * Selalu menggunakan local time — tidak ada UTC konversi.
  * Koreksi ISO week (Des W1 → tahun depan, Jan W52 → tahun lalu)
  * sepenuhnya ditangani oleh resolveWeekYear() di database.ts saat data dibaca.
  */
-function parseSalesDate(rawValue: string | Date): Date | null {
-  if (!rawValue) return null;
+function parseSalesDate(rawValue: string | Date | number): Date | null {
+  if (rawValue === null || rawValue === undefined || rawValue === '') return null;
 
-  // Date object dari XLSX cellDates: langsung pakai, tidak diubah
+  // ── Excel serial number ──────────────────────────────────────────────────
+  if (typeof rawValue === 'number') {
+    return excelSerialToLocalDate(rawValue);
+  }
+
+  // ── Date object (dari CSV parser atau fallback) ───────────────────────────
+  // Ekstrak komponen local time, bukan UTC — hindari timezone shift
   if (rawValue instanceof Date) {
-    return isNaN(rawValue.getTime()) ? null : rawValue;
+    if (isNaN(rawValue.getTime())) return null;
+    return new Date(rawValue.getFullYear(), rawValue.getMonth(), rawValue.getDate());
   }
 
   if (typeof rawValue !== 'string') return null;
@@ -280,15 +312,14 @@ function parseSalesDate(rawValue: string | Date): Date | null {
   let normalized = rawValue.replace(/^"|"$/g, '').trim();
   if (!normalized) return null;
 
+  // Hapus prefix hari Indonesia ("Senin, ", "Selasa, ", dst)
   normalized = normalized.replace(INDONESIAN_DAY_PREFIX, '').trim();
   normalized = normalized.replace(/\s+/g, ' ');
+
+  // Terjemahkan nama bulan Indonesia → English
   normalized = normalized.replace(MONTH_TRANSLATION_REGEX, (match) => {
     return INDONESIAN_MONTH_TRANSLATIONS[match.toLowerCase()] ?? match;
   });
-
-  // Coba parse langsung
-  const direct = new Date(normalized);
-  if (!isNaN(direct.getTime())) return direct;
 
   // Format DD/MM/YYYY atau DD-MM-YYYY
   const dmyMatch = normalized.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
@@ -310,6 +341,12 @@ function parseSalesDate(rawValue: string | Date): Date | null {
     const day   = parseInt(dayStr, 10);
     const result = new Date(year, month, day);
     return isNaN(result.getTime()) ? null : result;
+  }
+
+  // Fallback: parse string lalu ekstrak komponen local
+  const direct = new Date(normalized);
+  if (!isNaN(direct.getTime())) {
+    return new Date(direct.getFullYear(), direct.getMonth(), direct.getDate());
   }
 
   return null;
@@ -390,7 +427,6 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
       }
 
       const rawDate    = row['Tanggal'] || row['Date'] || '';
-      // parseSalesDate tidak lagi menerima week — tidak ada koreksi tahun di sini
       const parsedDate = parseSalesDate(rawDate);
 
       if (!parsedDate) {
@@ -401,6 +437,8 @@ function processSalesData(data: any[], selectedArea?: string): any[] {
         });
         continue;
       }
+
+      console.log(`[upload] week=${week} rawDate="${rawDate}" → parsed=${parsedDate.toLocaleDateString('id-ID')} (${parsedDate.getFullYear()}-${String(parsedDate.getMonth()+1).padStart(2,'0')}-${String(parsedDate.getDate()).padStart(2,'0')})`);
 
       const city = row['Kota'] || row['City'] || '';
 
