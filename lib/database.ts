@@ -843,17 +843,19 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const effectiveYear     = currentYear  ?? sortedYears[sortedYears.length - 1];
   const effectivePrevYear = previousYear ?? (currentYear ?? sortedYears[0]);
 
-  const yearOnYearGrowth: YearOnYearGrowth = (() => {
-    const prevTotal = yearUnitMap.get(effectivePrevYear) || 0;
-    const currTotal = yearUnitMap.get(effectiveYear)     || 0;
-    const variance  = currTotal - prevTotal;
-    return {
-      previousYearTotal:  prevTotal,
-      currentYearTotal:   currTotal,
-      variance:           variance,
-      variancePercentage: prevTotal > 0 ? Math.round((variance / prevTotal) * 100 * 10) / 10 : 0,
-    };
-  })();
+  const toFixed2 = (n: number) => Math.round(n * 100) / 100;
+
+const yearOnYearGrowth: YearOnYearGrowth = (() => {
+  const prevTotal = yearUnitMap.get(effectivePrevYear) || 0;
+  const currTotal = yearUnitMap.get(effectiveYear)     || 0;
+  const variance  = currTotal - prevTotal;
+  return {
+    previousYearTotal:  toFixed2(prevTotal),
+    currentYearTotal:   toFixed2(currTotal),
+    variance:           toFixed2(variance),
+    variancePercentage: prevTotal > 0 ? Math.round((variance / prevTotal) * 100 * 10) / 10 : 0,
+  };
+})();
 
   const virtualRecords = reconstructVirtualRecords(
     weekProductMap,
