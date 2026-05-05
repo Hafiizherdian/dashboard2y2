@@ -2,19 +2,18 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { YearOnYearGrowth, ComparisonYears } from '@/types/sales';
-import {  formatPercentage } from '@/lib/utils';
+import { formatPercentage } from '@/lib/utils';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
-  ReferenceLine,
 } from 'recharts';
 import {
   Maximize2, X, TrendingUp, TrendingDown, Minus,
   ArrowUpRight, ArrowDownRight, BarChart2, PieChart as PieIcon,
-  Info, ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 
-// ─── Theme tokens — identik dengan page.tsx ───────────────────────────────────
+// ─── Theme tokens ─────────────────────────────────────────────────────────────
 type Theme = 'dark' | 'light';
 
 const TK = {
@@ -32,9 +31,6 @@ const TK = {
     textFaint:     'rgba(255,255,255,0.18)',
     inputBg:       'rgba(255,255,255,0.03)',
     inputBorder:   'rgba(255,255,255,0.08)',
-    infoBg:        'rgba(16,185,129,0.07)',
-    infoBorder:    'rgba(16,185,129,0.25)',
-    infoText:      '#6ee7b7',
     btnBg:         'rgba(37,99,235,0.12)',
     btnBorder:     'rgba(59,130,246,0.3)',
     btnText:       '#93c5fd',
@@ -47,9 +43,6 @@ const TK = {
     card2Bg: '#0f1f17', card2Border: '#1a4731', card2Text: '#6ee7b7',
     posBg: 'rgba(16,185,129,0.1)', posBorder: 'rgba(16,185,129,0.25)', posText: '#6ee7b7',
     negBg: 'rgba(239,68,68,0.1)',  negBorder: 'rgba(239,68,68,0.22)',  negText: '#fca5a5',
-    summaryBg:     '#0c0e14',
-    summaryBorder: 'rgba(255,255,255,0.05)',
-    bullet1: '#3b82f6', bullet2: '#10b981', bullet3: '#8b5cf6', bullet4: '#f59e0b',
     shadow:  'none',
     divider: 'rgba(255,255,255,0.04)',
     trackBg: 'rgba(255,255,255,0.06)',
@@ -68,9 +61,6 @@ const TK = {
     textFaint:     '#cbd5e1',
     inputBg:       'rgba(0,0,0,0.03)',
     inputBorder:   'rgba(0,0,0,0.1)',
-    infoBg:        'rgba(22,163,74,0.07)',
-    infoBorder:    'rgba(22,163,74,0.25)',
-    infoText:      '#15803d',
     btnBg:         'rgba(37,99,235,0.08)',
     btnBorder:     'rgba(37,99,235,0.25)',
     btnText:       '#1d4ed8',
@@ -83,18 +73,21 @@ const TK = {
     card2Bg: '#f0fdf4', card2Border: '#bbf7d0', card2Text: '#15803d',
     posBg: 'rgba(16,185,129,0.08)', posBorder: 'rgba(22,163,74,0.25)', posText: '#15803d',
     negBg: 'rgba(220,38,38,0.08)',  negBorder: 'rgba(220,38,38,0.2)',   negText: '#dc2626',
-    summaryBg:     '#f8fafc',
-    summaryBorder: 'rgba(0,0,0,0.06)',
-    bullet1: '#3b82f6', bullet2: '#10b981', bullet3: '#8b5cf6', bullet4: '#f59e0b',
     shadow:  '0 1px 8px rgba(0,0,0,0.07)',
     divider: 'rgba(0,0,0,0.04)',
     trackBg: 'rgba(0,0,0,0.06)',
   },
 } as const;
 
-// Chart colors — vivid, accessible
 const COLOR_PREV = '#3b82f6';
 const COLOR_CURR = '#10b981';
+
+// ─── Formatter: 2 angka di belakang koma, format Indonesia ───────────────────
+const fmt2 = (n: number) =>
+  n.toLocaleString('id-ID', {
+    minimumFractionDigits:  2,
+    maximumFractionDigits:  2,
+  });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function useBreakpoint() {
@@ -124,14 +117,14 @@ function ExpandBtn({ onClick, theme }: { onClick: () => void; theme: Theme }) {
         transition: 'background 0.15s, color 0.15s',
       }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.background = t.btnBg;
-        (e.currentTarget as HTMLElement).style.color = t.btnText;
-        (e.currentTarget as HTMLElement).style.borderColor = t.btnBorder;
+        (e.currentTarget as HTMLElement).style.background    = t.btnBg;
+        (e.currentTarget as HTMLElement).style.color         = t.btnText;
+        (e.currentTarget as HTMLElement).style.borderColor   = t.btnBorder;
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLElement).style.background = t.inputBg;
-        (e.currentTarget as HTMLElement).style.color = t.textMuted;
-        (e.currentTarget as HTMLElement).style.borderColor = t.inputBorder;
+        (e.currentTarget as HTMLElement).style.background    = t.inputBg;
+        (e.currentTarget as HTMLElement).style.color         = t.textMuted;
+        (e.currentTarget as HTMLElement).style.borderColor   = t.inputBorder;
       }}
     >
       <Maximize2 size={10} /> Perbesar
@@ -140,7 +133,7 @@ function ExpandBtn({ onClick, theme }: { onClick: () => void; theme: Theme }) {
 }
 
 // ─── ChartTooltip ─────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, formatter, labelPrefix, theme }: any) {
+function ChartTooltip({ active, payload, label, labelPrefix, theme }: any) {
   const t = TK[theme as Theme];
   if (!active || !payload?.length) return null;
   return (
@@ -158,7 +151,7 @@ function ChartTooltip({ active, payload, label, formatter, labelPrefix, theme }:
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.fill ?? p.color, flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: t.textSub }}>{p.name}</span>
           <span style={{ fontSize: 12, fontWeight: 700, color: t.text, marginLeft: 'auto' }}>
-            {formatter ? formatter(p.value) : p.value}
+            {fmt2(p.value)}
           </span>
         </div>
       ))}
@@ -237,61 +230,25 @@ function Modal({ title, onClose, theme, children }: {
 // ─── GrowthBadge ─────────────────────────────────────────────────────────────
 function GrowthBadge({ value, theme, size = 'md' }: { value: number; theme: Theme; size?: 'sm' | 'md' | 'lg' }) {
   const t = TK[theme];
-  const isPos = value > 0;
-  const isNeg = value < 0;
-  const style = isPos ? t.posBg : isNeg ? t.negBg : t.inputBg;
+  const isPos  = value > 0;
+  const isNeg  = value < 0;
+  const bgCol  = isPos ? t.posBg  : isNeg ? t.negBg  : t.inputBg;
   const border = isPos ? t.posBorder : isNeg ? t.negBorder : t.inputBorder;
   const color  = isPos ? t.posText : isNeg ? t.negText : t.textMuted;
   const Icon   = isPos ? ArrowUpRight : isNeg ? ArrowDownRight : Minus;
-  const fs = size === 'lg' ? 15 : size === 'md' ? 12 : 10;
-  const pad = size === 'lg' ? '5px 12px' : size === 'md' ? '3px 9px' : '2px 7px';
+  const fs     = size === 'lg' ? 15 : size === 'md' ? 12 : 10;
+  const pad    = size === 'lg' ? '5px 12px' : size === 'md' ? '3px 9px' : '2px 7px';
 
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 3,
       padding: pad, borderRadius: 20,
       fontSize: fs, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace',
-      background: style, color, border: `1px solid ${border}`,
+      background: bgCol, color, border: `1px solid ${border}`,
     }}>
       <Icon size={fs - 2} />
       {isPos ? '+' : ''}{formatPercentage(value)}
     </span>
-  );
-}
-
-// ─── StatPill ─────────────────────────────────────────────────────────────────
-function StatPill({ label, value, color, theme }: { label: string; value: string; color: string; theme: Theme }) {
-  const t = TK[theme];
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 3,
-      padding: '10px 14px', borderRadius: 9,
-      background: t.inputBg, border: `1px solid ${t.border}`,
-      borderLeft: `3px solid ${color}`,
-    }}>
-      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 14, fontWeight: 800, fontFamily: 'IBM Plex Mono, monospace', color: t.text, letterSpacing: '-0.01em' }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// ─── Bullet ───────────────────────────────────────────────────────────────────
-function Bullet({ color, theme, children }: { color: string; theme: Theme; children: React.ReactNode }) {
-  const t = TK[theme];
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
-      <span style={{
-        width: 6, height: 6, borderRadius: '50%', background: color,
-        flexShrink: 0, marginTop: 6,
-      }} />
-      <p style={{ margin: 0, fontSize: 13, color: t.textSub, fontFamily: 'IBM Plex Sans, sans-serif', lineHeight: 1.65 }}>
-        {children}
-      </p>
-    </div>
   );
 }
 
@@ -308,24 +265,13 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
   const t = TK[theme];
   const { isMobile } = useBreakpoint();
 
-  const [expanded, setExpanded] = useState<'bar' | 'pie' | null>(null);
+  const [expanded,   setExpanded]   = useState<'bar' | 'pie' | null>(null);
   const [detailOpen, setDetailOpen] = useState(true);
-  const [insightOpen, setInsightOpen] = useState(true);
 
   const prevLabel = comparisonYears?.previousYear ?? 'Tahun Sebelumnya';
   const currLabel = comparisonYears?.currentYear  ?? 'Tahun Sekarang';
   const isPos     = data.variancePercentage >= 0;
   const isNeg     = data.variancePercentage < 0;
-  const growthAbs = Math.abs(data.variancePercentage);
-
-  const growthLabel =
-    growthAbs >= 15 ? 'Luar biasa · pertumbuhan >15%' :
-    growthAbs >= 10 ? 'Sangat kuat · 10–15%' :
-    growthAbs >= 5  ? 'Kuat · 5–10%' :
-    growthAbs >= 2  ? 'Sedang · 2–5%' :
-    growthAbs >= 0  ? 'Stabil · 0–2%' : 'Perlu evaluasi · pertumbuhan negatif';
-
-  // Delta labels
   const deltaColor = isPos ? '#10b981' : '#ef4444';
 
   // ── Chart data ─────────────────────────────────────────────────────────────
@@ -339,19 +285,17 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
     { name: String(currLabel), value: data.currentYearTotal  },
   ], [data, prevLabel, currLabel]);
 
-  // contribution %
   const totalBoth = data.previousYearTotal + data.currentYearTotal;
-  const pctPrev = totalBoth > 0 ? (data.previousYearTotal / totalBoth) * 100 : 0;
-  const pctCurr = totalBoth > 0 ? (data.currentYearTotal  / totalBoth) * 100 : 0;
+  const pctPrev   = totalBoth > 0 ? (data.previousYearTotal / totalBoth) * 100 : 0;
+  const pctCurr   = totalBoth > 0 ? (data.currentYearTotal  / totalBoth) * 100 : 0;
 
-  // ── axis props ─────────────────────────────────────────────────────────────
+  // ── Axis props ─────────────────────────────────────────────────────────────
   const axisProps = {
     tick:     { fill: t.axisColor, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' },
     axisLine: false as const,
     tickLine: false as const,
   };
 
-  // card style helper
   const card = (extra: React.CSSProperties = {}): React.CSSProperties => ({
     background:   t.cardBg,
     border:       `1px solid ${t.borderCard}`,
@@ -369,16 +313,16 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
           <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} vertical={false} />
           <XAxis dataKey="year" {...axisProps} />
           <YAxis
-            tickFormatter={v => `${(v / 1_000_000).toFixed(1)}M`}
+            tickFormatter={v => fmt2(v)}
             {...axisProps}
-            width={52}
+            width={80}
           />
           <Tooltip
             content={<ChartTooltip labelPrefix="Tahun: " theme={theme} />}
             cursor={{ fill: t.divider, radius: 4 }}
           />
           <Bar dataKey="sales" name="Total Penjualan" radius={[5, 5, 0, 0]} maxBarSize={90}>
-            {barData.map((entry, i) => (
+            {barData.map((_, i) => (
               <Cell key={i} fill={i === 0 ? COLOR_PREV : COLOR_CURR} />
             ))}
           </Bar>
@@ -395,7 +339,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
             data={pieData} cx="50%" cy="46%"
             innerRadius="30%" outerRadius="58%"
             labelLine={false}
-            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, name }: any) => {
+            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
               if (!percent || percent < 0.05) return null;
               const r = innerRadius + (outerRadius - innerRadius) * 1.55;
               const x = cx + r * Math.cos(-midAngle * Math.PI / 180);
@@ -403,7 +347,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
               return (
                 <text x={x} y={y} fill={t.textSub} textAnchor="middle" dominantBaseline="central"
                   fontSize={10} fontFamily="IBM Plex Mono, monospace" fontWeight={600}>
-                  {`${(percent * 100).toFixed(1)}%`}
+                  {`${(percent * 100).toFixed(2)}%`}
                 </text>
               );
             }}
@@ -413,9 +357,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
               <Cell key={i} fill={i === 0 ? COLOR_PREV : COLOR_CURR} stroke="transparent" />
             ))}
           </Pie>
-          <Tooltip
-            content={<ChartTooltip theme={theme} />}
-          />
+          <Tooltip content={<ChartTooltip theme={theme} />} />
           <Legend
             iconSize={8} iconType="circle"
             wrapperStyle={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, paddingTop: 10 }}
@@ -435,35 +377,37 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', gap: 18,
-      fontFamily: 'IBM Plex Sans, sans-serif',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
-      
-
-      {/* ── KPI Cards — 4 kolom, lebih impactful ── */}
+      {/* ── KPI Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        {/* Prev */}
-        <div style={{ background: t.card1Bg, border: `1px solid ${t.card1Border}`, borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden' }}>
+
+        {/* Prev year */}
+        <div style={{
+          background: t.card1Bg, border: `1px solid ${t.card1Border}`,
+          borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden',
+        }}>
           <div style={{ position: 'absolute', top: 0, right: 0, width: 50, height: 50, background: `radial-gradient(circle at top right, ${COLOR_PREV}20, transparent 70%)`, pointerEvents: 'none' }} />
           <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.card1Text, marginBottom: 6 }}>
             Total {String(prevLabel)}
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            {(data.previousYearTotal)}
+            {fmt2(data.previousYearTotal)}
           </div>
           <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Penjualan omzet</div>
         </div>
 
-        {/* Curr */}
-        <div style={{ background: t.card2Bg, border: `1px solid ${t.card2Border}`, borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden' }}>
+        {/* Curr year */}
+        <div style={{
+          background: t.card2Bg, border: `1px solid ${t.card2Border}`,
+          borderRadius: 12, padding: 18, position: 'relative', overflow: 'hidden',
+        }}>
           <div style={{ position: 'absolute', top: 0, right: 0, width: 50, height: 50, background: `radial-gradient(circle at top right, ${COLOR_CURR}20, transparent 70%)`, pointerEvents: 'none' }} />
           <div style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.card2Text, marginBottom: 6 }}>
             Total {String(currLabel)}
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            {(data.currentYearTotal)}
+            {fmt2(data.currentYearTotal)}
           </div>
           <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Penjualan omzet</div>
         </div>
@@ -478,12 +422,12 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
             Selisih
           </div>
           <div style={{ fontSize: 20, fontWeight: 800, color: deltaColor, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            {isPos ? '+' : ''}{(data.variance)}
+            {isPos ? '+' : ''}{fmt2(data.variance)}
           </div>
           <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>Selisih absolut</div>
         </div>
 
-        {/* Growth */}
+        {/* Growth % */}
         <div style={{
           background: isPos ? t.posBg : t.negBg,
           border: `1px solid ${isPos ? t.posBorder : t.negBorder}`,
@@ -503,7 +447,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
         </div>
       </div>
 
-      {/* ── Charts — bar + donut sejajar ── */}
+      {/* ── Charts ── */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', gap: 12 }}>
 
         {/* Bar chart */}
@@ -517,7 +461,6 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
             </div>
             <ExpandBtn onClick={() => setExpanded('bar')} theme={theme} />
           </div>
-          {/* Legend pills */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
             {[{ color: COLOR_PREV, label: String(prevLabel) }, { color: COLOR_CURR, label: String(currLabel) }].map((item, i) => (
               <span key={i} style={{
@@ -536,7 +479,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
           </div>
         </div>
 
-        {/* Donut chart — lebih modern dari solid pie */}
+        {/* Donut chart */}
         <div style={card({ padding: '16px 16px 14px' })}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -547,11 +490,10 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
             </div>
             <ExpandBtn onClick={() => setExpanded('pie')} theme={theme} />
           </div>
-          {/* Contribution bars */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
             {[
-              { label: String(prevLabel), pct: pctPrev, val: data.previousYearTotal, color: COLOR_PREV },
-              { label: String(currLabel), pct: pctCurr, val: data.currentYearTotal,  color: COLOR_CURR },
+              { label: String(prevLabel), pct: pctPrev, color: COLOR_PREV },
+              { label: String(currLabel), pct: pctCurr, color: COLOR_CURR },
             ].map((item, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
@@ -559,8 +501,8 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                 <div style={{ flex: 1, height: 5, background: t.trackBg, borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: `${item.pct}%`, background: item.color, borderRadius: 3, transition: 'width 0.6s ease' }} />
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, color: t.textSub, fontFamily: 'IBM Plex Mono, monospace', width: 36, textAlign: 'right', flexShrink: 0 }}>
-                  {item.pct.toFixed(1)}%
+                <span style={{ fontSize: 10, fontWeight: 700, color: t.textSub, fontFamily: 'IBM Plex Mono, monospace', width: 44, textAlign: 'right', flexShrink: 0 }}>
+                  {item.pct.toFixed(2)}%
                 </span>
               </div>
             ))}
@@ -571,10 +513,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
         </div>
       </div>
 
-      {/* ── Ringkasan Performa — collapsible ── */}
-      
-
-      {/* ── Detail Table — collapsible ── */}
+      {/* ── Detail Table ── */}
       <div style={card()}>
         <div
           onClick={() => setDetailOpen(p => !p)}
@@ -615,6 +554,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                 </tr>
               </thead>
               <tbody>
+
                 {/* Row 1 — Total */}
                 <tr
                   style={{ background: t.rowAlt, transition: 'background 0.12s' }}
@@ -626,7 +566,7 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                      {(data.previousYearTotal)}
+                      {fmt2(data.previousYearTotal)}
                       <div style={{ width: 48, height: 3, background: t.trackBg, borderRadius: 2, overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${pctPrev}%`, background: COLOR_PREV, borderRadius: 2 }} />
                       </div>
@@ -634,14 +574,14 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700 }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                      {(data.currentYearTotal)}
+                      {fmt2(data.currentYearTotal)}
                       <div style={{ width: 48, height: 3, background: t.trackBg, borderRadius: 2, overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${pctCurr}%`, background: COLOR_CURR, borderRadius: 2 }} />
                       </div>
                     </div>
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right', color: deltaColor, fontWeight: 700 }}>
-                    {isPos ? '+' : ''}{(data.variance)}
+                    {isPos ? '+' : ''}{fmt2(data.variance)}
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right' }}>
                     <GrowthBadge value={data.variancePercentage} theme={theme} size="sm" />
@@ -654,9 +594,11 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                   onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', fontSize: 13 }}>Rata-rata Tahunan</td>
+                  <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', fontSize: 13 }}>
+                    Rata-rata Tahunan
+                  </td>
                   <td colSpan={2} style={{ ...tdBase, textAlign: 'right' }}>
-                    {((data.previousYearTotal + data.currentYearTotal) / 2)}
+                    {fmt2((data.previousYearTotal + data.currentYearTotal) / 2)}
                   </td>
                   <td colSpan={2} style={{ ...tdBase, textAlign: 'right', color: t.textFaint }}>—</td>
                 </tr>
@@ -671,13 +613,14 @@ export default function YearOnYearGrowthComponent({ data, comparisonYears, theme
                     Kontribusi
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right', borderBottom: 'none' }}>
-                    {pctPrev.toFixed(1)}%
+                    {pctPrev.toFixed(2)}%
                   </td>
                   <td style={{ ...tdBase, textAlign: 'right', borderBottom: 'none', color: t.text, fontWeight: 700 }}>
-                    {pctCurr.toFixed(1)}%
+                    {pctCurr.toFixed(2)}%
                   </td>
                   <td colSpan={2} style={{ ...tdBase, textAlign: 'right', color: t.textFaint, borderBottom: 'none' }}>—</td>
                 </tr>
+
               </tbody>
             </table>
           </div>
