@@ -463,7 +463,7 @@ function DashboardContent() {
               : (isMobile ? '14px 12px' : '20px 24px'),
           }}>
           {activeTab === 'upload-penjualan'  && can('view_files')   && <UploadPenjualanTab  dbStats={dbStats} uploadedFiles={uploadedFiles} onRefresh={fetchData} theme={theme} addToast={addToast} />}
-          {activeTab === 'upload-distribusi' && can('upload_file')  && <UploadDistribusiTab theme={theme} addToast={addToast} initialFiles={distFiles} onRefresh={fetchData} />}
+          {activeTab === 'upload-distribusi' && can('upload_file')  && <UploadDistribusiTab theme={theme} addToast={addToast} distFiles={distFiles} onRefresh={fetchData} dbStats={dbStats} />}
           {activeTab === 'areas'             && can('view_areas')   && <AreaManagement theme={theme} />}
           {activeTab === 'users'             && can('manage_users') && <UserManagement theme={theme} />}
           {activeTab === 'settings'          && can('view_files')   && <SettingsTab theme={theme} addToast={addToast} />}

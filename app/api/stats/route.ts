@@ -22,7 +22,10 @@ export async function GET(request: NextRequest) {
         (SELECT COUNT(*) FROM sales_records) as total_records,
         (SELECT COALESCE(SUM(omzet), 0) FROM sales_records) as total_omzet,
         (SELECT COUNT(*) FROM uploaded_files) as total_files,
-        (SELECT MAX(created_at) FROM uploaded_files WHERE status = 'completed') as latest_upload
+        (SELECT MAX(created_at) FROM uploaded_files WHERE status = 'completed') as latest_upload,
+        (SELECT COUNT(*) FROM distribution_records) as distribution_records,
+        (SELECT MAX(created_at) FROM distribution_files WHERE status = 'completed') as distribution_latest_upload,
+        (SELECT COUNT(*) FROM distribution_files) as distribution_files_count
     `;
 
     const result = await pool.query(query);
@@ -33,12 +36,15 @@ export async function GET(request: NextRequest) {
         total_records: parseInt(result.rows[0].total_records) || 0,
         total_omzet: parseFloat(result.rows[0].total_omzet) || 0,
         total_files: parseInt(result.rows[0].total_files) || 0,
-        latest_upload: result.rows[0].latest_upload
+        latest_upload: result.rows[0].latest_upload,
+        distribution_records: parseInt(result.rows[0].distribution_records) || 0,
+        distribution_latest_upload: result.rows[0].distribution_latest_upload,
+        distribution_files_count: parseInt(result.rows[0].distribution_files_count) || 0
       }
     });
 
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    console.error('Gagal untuk fetch statistics:', error);
     return NextResponse.json(
       { success: false, error: 'Gagal untuk fetch statistics' },
       { status: 500 }
