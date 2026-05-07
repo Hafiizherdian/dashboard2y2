@@ -7,6 +7,7 @@ import L4WC4WAnalysis from '@/components/L4WC4WAnalysis';
 import YearOnYearGrowth from '@/components/YearOnYearGrowth';
 import AnalysisSection from '@/components/AnalysisSection';
 import OutletContributionSection from '@/components/OutletContributionSection';
+import DistributionSection from '@/components/DistributionSection';
 import { SalesData } from '@/types/sales';
 import { AreaConfig } from '@/lib/areaConfig';
 import { useAuth, AuthProvider } from '@/lib/auth/AuthContext';
@@ -220,7 +221,8 @@ const TABS=[
   {id:'l4wc4w',   label:'L4W vs C1W', shortLabel:'L4W',       Icon:Activity  },
   {id:'yoy',      label:'YoY Growth', shortLabel:'YoY',       Icon:PieChart  },
   {id:'outlet',   label:'Outlet',     shortLabel:'Outlet',    Icon:Store     },
-  {id:'analysis', label:'Brand Performance',   shortLabel:'Brand Performance',  Icon:FileText  },
+  {id:'analysis', label:'Brand Performance',   shortLabel:'Brand',  Icon:FileText  },
+  {id:'distribution', label:'Distribusi', shortLabel:'Distribusi', Icon:Filter},
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -1238,6 +1240,12 @@ function DashboardInner() {
   const [availH,setAvailH]=useState(600);
   const mainRef=useRef<HTMLDivElement>(null);
 
+  const [distWeekStart, setDistWeekStart] = useState(1);
+  const [distWeekEnd,   setDistWeekEnd]   = useState(52);
+  const [distData, setDistData] = useState<any>(null);
+  const [distLoaded,    setDistLoaded]    = useState(false);
+  const [distLoading,   setDistLoading]  = useState(false);
+
   const [data,setData]=useState<SalesData>(EMPTY_DATA);
   const t=tk[theme];
 
@@ -1318,7 +1326,8 @@ function DashboardInner() {
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
-      default:          return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
+      case 'distribution': return ( <DistributionSection theme={theme} areas={areas} areaFilter={af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd} cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}/>);
+      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
     }
   };
 
