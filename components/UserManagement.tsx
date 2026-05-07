@@ -650,7 +650,7 @@ export default function UserManagement({ theme }: { theme: Theme }) {
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, height: '100%', overflow: 'hidden' }}>
       <style>{CSS}</style>
       <Toasts items={toasts} theme={theme} onRemove={rmToast}/>
 
