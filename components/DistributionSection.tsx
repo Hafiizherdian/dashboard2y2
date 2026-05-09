@@ -201,7 +201,7 @@ function reaggregate(
         ex.total_plan    += r.total_plan;
         ex.total_actual  += r.total_actual;
         ex.total_av_out  += r.total_av_out;
-        ex.outlet_count   = (ex.outlet_count ?? 0) + (r.outlet_count ?? 0);
+        ex.outlet_count = Math.max(ex.outlet_count ?? 0, r.outlet_count ?? 0);
       }
     });
   const achievementSalesman = Array.from(salMap.values())
@@ -997,10 +997,9 @@ export default function DistributionSection({
 
   // ── Data render — re-agregasi instan via useMemo, zero fetch ─────────────
   const data = useMemo((): DistData => {
-    const base = cachedData ?? EMPTY_DATA;
-    if (!productFilter && !outletTypeFilter && !salesmanFilter) return base;
-    return reaggregate(base, productFilter, outletTypeFilter, salesmanFilter);
-  }, [cachedData, productFilter, outletTypeFilter, salesmanFilter]);
+  const base = cachedData ?? EMPTY_DATA;
+  return reaggregate(base, productFilter, outletTypeFilter, salesmanFilter);
+}, [cachedData, productFilter, outletTypeFilter, salesmanFilter]);
 
   const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
 
