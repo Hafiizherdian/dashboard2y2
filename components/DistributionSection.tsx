@@ -169,6 +169,8 @@ function normRows(rows: any[]): any[] {
     ...r,
     total_plan:      parseFloat(r.total_plan      ?? 0),
     total_actual:    parseFloat(r.total_actual    ?? 0),
+    total_av_in:     parseFloat(r.total_av_in     ?? 0),
+    total_ec:        parseFloat(r.total_ec        ?? 0),
     total_av_out:    parseFloat(r.total_av_out    ?? 0),
     achievement_pct: parseFloat(r.achievement_pct ?? 0),
     outlet_count:    parseFloat(r.outlet_count    ?? 0),
