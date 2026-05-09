@@ -9,8 +9,8 @@ import {
 import {
   TrendingUp, Users, Package, Store,
   Target, CheckCircle, Activity,
-  Map as MapIcon, ChevronDown, ChevronUp,
-  RefreshCw,
+  Map as MapIcon, RefreshCw,
+  ClipboardList, ClipboardCheck, Download,
 } from 'lucide-react';
 import { AreaConfig } from '@/lib/areaConfig';
 
@@ -18,55 +18,55 @@ type Theme = 'dark' | 'light';
 
 const tk = {
   dark: {
-    cardBg:       '#0e1118',
-    border:       'rgba(255,255,255,0.07)',
-    borderCard:   'rgba(255,255,255,0.075)',
-    text:         'rgba(255,255,255,0.92)',
-    textSub:      'rgba(255,255,255,0.52)',
-    textMuted:    'rgba(255,255,255,0.28)',
-    textFaint:    'rgba(255,255,255,0.13)',
-    inputBg:      'rgba(255,255,255,0.035)',
-    inputBorder:  'rgba(255,255,255,0.09)',
-    tableHeadBg:  'rgba(255,255,255,0.03)',
-    tableHeadText:'rgba(255,255,255,0.35)',
-    rowHover:     'rgba(255,255,255,0.03)',
-    rowAlt:       'rgba(255,255,255,0.01)',
-    tooltipBg:    '#13161f',
-    tooltipBorder:'rgba(255,255,255,0.09)',
-    gridStroke:   'rgba(255,255,255,0.04)',
-    posBg:  'rgba(16,185,129,0.1)',  posText:  '#34d399', posBorder:  'rgba(16,185,129,0.2)',
-    negBg:  'rgba(239,68,68,0.1)',   negText:  '#f87171', negBorder:  'rgba(239,68,68,0.2)',
-    warnBg: 'rgba(245,158,11,0.09)', warnText: '#fbbf24', warnBorder: 'rgba(245,158,11,0.2)',
-    tabActive:    'rgba(28,151,6,0.16)', tabActiveText: '#4ade80',
-    tabBg:        'rgba(255,255,255,0.04)',
-    selectBg:     '#0b0d13',
-    accordionBg:  'rgba(255,255,255,0.02)',
+    cardBg:         '#0e1118',
+    border:         'rgba(255,255,255,0.07)',
+    borderCard:     'rgba(255,255,255,0.075)',
+    text:           'rgba(255,255,255,0.92)',
+    textSub:        'rgba(255,255,255,0.52)',
+    textMuted:      'rgba(255,255,255,0.28)',
+    textFaint:      'rgba(255,255,255,0.13)',
+    inputBg:        'rgba(255,255,255,0.035)',
+    inputBorder:    'rgba(255,255,255,0.09)',
+    tableHeadBg:    'rgba(255,255,255,0.03)',
+    tableHeadText:  'rgba(255,255,255,0.35)',
+    rowHover:       'rgba(255,255,255,0.03)',
+    rowAlt:         'rgba(255,255,255,0.01)',
+    tooltipBg:      '#13161f',
+    tooltipBorder:  'rgba(255,255,255,0.09)',
+    gridStroke:     'rgba(255,255,255,0.04)',
+    posBg:    'rgba(16,185,129,0.1)',  posText:  '#34d399', posBorder:  'rgba(16,185,129,0.2)',
+    negBg:    'rgba(239,68,68,0.1)',   negText:  '#f87171', negBorder:  'rgba(239,68,68,0.2)',
+    warnBg:   'rgba(245,158,11,0.09)', warnText: '#fbbf24', warnBorder: 'rgba(245,158,11,0.2)',
+    tabActive:      'rgba(28,151,6,0.16)', tabActiveText: '#4ade80',
+    tabBg:          'rgba(255,255,255,0.04)',
+    selectBg:       '#0b0d13',
+    accordionBg:    'rgba(255,255,255,0.02)',
     accordionHover: 'rgba(255,255,255,0.04)',
   },
   light: {
-    cardBg:       '#ffffff',
-    border:       'rgba(0,0,0,0.065)',
-    borderCard:   'rgba(0,0,0,0.08)',
-    text:         '#0f172a',
-    textSub:      '#475569',
-    textMuted:    '#94a3b8',
-    textFaint:    '#cbd5e1',
-    inputBg:      'rgba(0,0,0,0.03)',
-    inputBorder:  'rgba(0,0,0,0.1)',
-    tableHeadBg:  '#f1f5f9',
-    tableHeadText:'#475569',
-    rowHover:     '#f8fafc',
-    rowAlt:       '#fafbfc',
-    tooltipBg:    '#ffffff',
-    tooltipBorder:'rgba(0,0,0,0.1)',
-    gridStroke:   'rgba(0,0,0,0.045)',
-    posBg:  '#f0fdf4', posText:  '#15803d', posBorder:  '#bbf7d0',
-    negBg:  '#fef2f2', negText:  '#b91c1c', negBorder:  '#fecaca',
-    warnBg: '#fffbeb', warnText: '#92400e', warnBorder: '#fde68a',
-    tabActive:    'rgba(28,151,6,0.1)', tabActiveText: '#15803d',
-    tabBg:        '#f1f5f9',
-    selectBg:     '#ffffff',
-    accordionBg:  'rgba(0,0,0,0.015)',
+    cardBg:         '#ffffff',
+    border:         'rgba(0,0,0,0.065)',
+    borderCard:     'rgba(0,0,0,0.08)',
+    text:           '#0f172a',
+    textSub:        '#475569',
+    textMuted:      '#94a3b8',
+    textFaint:      '#cbd5e1',
+    inputBg:        'rgba(0,0,0,0.03)',
+    inputBorder:    'rgba(0,0,0,0.1)',
+    tableHeadBg:    '#f1f5f9',
+    tableHeadText:  '#475569',
+    rowHover:       '#f8fafc',
+    rowAlt:         '#fafbfc',
+    tooltipBg:      '#ffffff',
+    tooltipBorder:  'rgba(0,0,0,0.1)',
+    gridStroke:     'rgba(0,0,0,0.045)',
+    posBg:    '#f0fdf4', posText:  '#15803d', posBorder:  '#bbf7d0',
+    negBg:    '#fef2f2', negText:  '#b91c1c', negBorder:  '#fecaca',
+    warnBg:   '#fffbeb', warnText: '#92400e', warnBorder: '#fde68a',
+    tabActive:      'rgba(28,151,6,0.1)', tabActiveText: '#15803d',
+    tabBg:          '#f1f5f9',
+    selectBg:       '#ffffff',
+    accordionBg:    'rgba(0,0,0,0.015)',
     accordionHover: 'rgba(0,0,0,0.03)',
   },
 } as const;
@@ -74,11 +74,65 @@ const tk = {
 const CC = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#0d9488','#f97316','#ec4899'];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface AchRow    { salesman?: string; product?: string; city?: string; district?: string; category?: string; total_plan: number; total_actual: number; total_av_out: number; achievement_pct: number; outlet_count?: number; }
-interface TrendRow  { week: string; week_num: number; total_plan: number; total_actual: number; total_av_in: number; total_ec: number; total_av_out: number; outlet_count: number; }
-interface CovRow    { outlet_type: string; total_plan: number; total_actual: number; total_av_in: number; total_ec: number; total_av_out: number; outlet_count: number; achievement_pct: number; }
-interface CovSalRow { salesman: string; week_num: number; week: string; plan: number; actual: number; av_in: number; ec: number; av_out: number; achievement_pct: number; }
-interface Summary   { total_plan: number; total_actual: number; total_av_in: number; total_ec: number; total_av_out: number; total_outlets: number; total_salesmen: number; total_products: number; total_customers: number; overall_achievement: number; }
+interface AchRow {
+  salesman?:       string;
+  product?:        string;
+  city?:           string;
+  district?:       string;
+  category?:       string;
+  total_plan:      number;
+  total_actual:    number;
+  total_av_out:    number;
+  achievement_pct: number;
+  outlet_count?:   number;
+}
+interface TrendRow {
+  week:          string;
+  week_num:      number;
+  product?:      string;
+  total_plan:    number;
+  total_actual:  number;
+  total_av_in:   number;
+  total_ec:      number;
+  total_av_out:  number;
+  outlet_count:  number;
+}
+interface CovRow {
+  outlet_type:     string;
+  product?:        string;
+  total_plan:      number;
+  total_actual:    number;
+  total_av_in:     number;
+  total_ec:        number;
+  total_av_out:    number;
+  outlet_count:    number;
+  achievement_pct: number;
+}
+interface CovSalRow {
+  salesman:        string;
+  week_num:        number;
+  week:            string;
+  product?:        string;
+  outlet_type?:    string;
+  plan:            number;
+  actual:          number;
+  av_in:           number;
+  ec:              number;
+  av_out:          number;
+  achievement_pct: number;
+}
+interface Summary {
+  total_plan:          number;
+  total_actual:        number;
+  total_av_in:         number;
+  total_ec:            number;
+  total_av_out:        number;
+  total_outlets:       number;
+  total_salesmen:      number;
+  total_products:      number;
+  total_customers:     number;
+  overall_achievement: number;
+}
 
 interface DistData {
   summary:             Summary;
@@ -92,19 +146,18 @@ interface DistData {
 
 // ─── Props dari page.tsx ──────────────────────────────────────────────────────
 interface DistributionSectionProps {
-  theme?:           Theme;
-  areas?:           AreaConfig[];
-  areaFilter?:      string;
-  // Lifted state
-  weekStart?:       number;
-  weekEnd?:         number;
+  theme?:             Theme;
+  areas?:             AreaConfig[];
+  areaFilter?:        string;
+  weekStart?:         number;
+  weekEnd?:           number;
   onWeekStartChange?: (v: number) => void;
   onWeekEndChange?:   (v: number) => void;
-  cachedData?:      DistData | null;
-  onDataLoaded?:    (data: DistData) => void;
-  loaded?:          boolean;
-  loading?:         boolean;
-  onLoadingChange?: (v: boolean) => void;
+  cachedData?:        DistData | null;
+  onDataLoaded?:      (data: DistData) => void;
+  loaded?:            boolean;
+  loading?:           boolean;
+  onLoadingChange?:   (v: boolean) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,6 +173,190 @@ function normRows(rows: any[]): any[] {
     achievement_pct: parseFloat(r.achievement_pct ?? 0),
     outlet_count:    parseFloat(r.outlet_count    ?? 0),
   }));
+}
+
+// ─── Re-agregasi client-side berdasarkan semua filter aktif ──────────────────
+function reaggregate(
+  base:        DistData,
+  product:     string,
+  outletType:  string,
+  salesman:    string,
+): DistData {
+  // Matcher per dimensi — kosong = tidak difilter
+  const matchProduct   = (p?: string) => !product    || (p ?? '').toLowerCase().includes(product.toLowerCase());
+  const matchOutlet    = (o?: string) => !outletType || (o ?? '').toLowerCase() === outletType.toLowerCase();
+  const matchSalesman  = (s?: string) => !salesman   || (s ?? '').toLowerCase().includes(salesman.toLowerCase());
+
+  // ── Achievement Salesman ──────────────────────────────────────────────────
+  // field: salesman, product  |  tidak ada outlet_type → skip matchOutlet
+  const salMap = new Map<string, AchRow>();
+  base.achievementSalesman
+    .filter(r => matchProduct(r.product) && matchSalesman(r.salesman))
+    .forEach(r => {
+      const key = r.salesman ?? '';
+      const ex  = salMap.get(key);
+      if (!ex) {
+        salMap.set(key, { ...r });
+      } else {
+        ex.total_plan    += r.total_plan;
+        ex.total_actual  += r.total_actual;
+        ex.total_av_out  += r.total_av_out;
+        ex.outlet_count   = (ex.outlet_count ?? 0) + (r.outlet_count ?? 0);
+      }
+    });
+  const achievementSalesman = Array.from(salMap.values())
+    .map(r => ({
+      ...r,
+      achievement_pct: r.total_plan > 0
+        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
+        : 0,
+    }))
+    .sort((a, b) => b.achievement_pct - a.achievement_pct);
+
+  // ── Achievement Product ───────────────────────────────────────────────────
+  // field: product  |  tidak ada salesman/outlet_type → skip kedua filter itu
+  const achievementProduct = base.achievementProduct.filter(r => matchProduct(r.product));
+
+  // ── Achievement Area ──────────────────────────────────────────────────────
+  // tidak ada field product/salesman/outlet_type → tetap semua tampil
+  const achievementArea = base.achievementArea;
+
+  // ── Trend per minggu ──────────────────────────────────────────────────────
+  // field: product  |  tidak ada salesman/outlet_type → hanya filter produk
+  const trendMap = new Map<number, TrendRow>();
+  base.trend
+    .filter(r => matchProduct(r.product))
+    .forEach(r => {
+      const ex = trendMap.get(r.week_num);
+      if (!ex) {
+        trendMap.set(r.week_num, { ...r });
+      } else {
+        ex.total_plan    += r.total_plan;
+        ex.total_actual  += r.total_actual;
+        ex.total_av_in   += r.total_av_in;
+        ex.total_ec      += r.total_ec;
+        ex.total_av_out  += r.total_av_out;
+        ex.outlet_count  += r.outlet_count;
+      }
+    });
+
+  // Jika salesman aktif, override trend dari coverageSalesman yang sudah difilter
+  // agar trend mencerminkan salesman yang dipilih
+  let trend: TrendRow[];
+  if (salesman) {
+    const trendSalMap = new Map<number, TrendRow>();
+    base.coverageSalesman
+      .filter(r => matchProduct(r.product) && matchSalesman(r.salesman) && matchOutlet(r.outlet_type))
+      .forEach(r => {
+        const ex = trendSalMap.get(r.week_num);
+        if (!ex) {
+          trendSalMap.set(r.week_num, {
+            week:         r.week,
+            week_num:     r.week_num,
+            product:      r.product,
+            total_plan:   r.plan,
+            total_actual: r.actual,
+            total_av_in:  r.av_in,
+            total_ec:     r.ec,
+            total_av_out: r.av_out,
+            outlet_count: 0,
+          });
+        } else {
+          ex.total_plan    += r.plan;
+          ex.total_actual  += r.actual;
+          ex.total_av_in   += r.av_in;
+          ex.total_ec      += r.ec;
+          ex.total_av_out  += r.av_out;
+        }
+      });
+    trend = Array.from(trendSalMap.values()).sort((a, b) => a.week_num - b.week_num);
+  } else {
+    trend = Array.from(trendMap.values()).sort((a, b) => a.week_num - b.week_num);
+  }
+
+  // ── Coverage per tipe outlet ──────────────────────────────────────────────
+  // field: outlet_type, product  |  tidak ada salesman → skip matchSalesman
+  const covMap = new Map<string, CovRow>();
+  base.coverage
+    .filter(r => matchProduct(r.product) && matchOutlet(r.outlet_type))
+    .forEach(r => {
+      const key = r.outlet_type ?? '';
+      const ex  = covMap.get(key);
+      if (!ex) {
+        covMap.set(key, { ...r });
+      } else {
+        ex.total_plan    += r.total_plan;
+        ex.total_actual  += r.total_actual;
+        ex.total_av_in   += r.total_av_in;
+        ex.total_ec      += r.total_ec;
+        ex.total_av_out  += r.total_av_out;
+        ex.outlet_count  += r.outlet_count;
+      }
+    });
+  const coverage = Array.from(covMap.values())
+    .map(r => ({
+      ...r,
+      achievement_pct: r.total_plan > 0
+        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
+        : 0,
+    }))
+    .sort((a, b) => b.total_av_out - a.total_av_out);
+
+  // ── Coverage Salesman heatmap ─────────────────────────────────────────────
+  // field: salesman, week, product, outlet_type → semua filter berlaku
+  const covSalMap = new Map<string, CovSalRow>();
+  base.coverageSalesman
+    .filter(r => matchProduct(r.product) && matchSalesman(r.salesman) && matchOutlet(r.outlet_type))
+    .forEach(r => {
+      const key = `${r.salesman}||${r.week}`;
+      const ex  = covSalMap.get(key);
+      if (!ex) {
+        covSalMap.set(key, { ...r });
+      } else {
+        ex.plan    += r.plan;
+        ex.actual  += r.actual;
+        ex.av_in   += r.av_in;
+        ex.ec      += r.ec;
+        ex.av_out  += r.av_out;
+      }
+    });
+  const coverageSalesman = Array.from(covSalMap.values())
+    .map(r => ({
+      ...r,
+      achievement_pct: r.plan > 0
+        ? Math.round((r.av_out / r.plan) * 1000) / 10
+        : 0,
+    }));
+
+  // ── Summary: hitung ulang dari trend yang sudah difilter ─────────────────
+  const totalPlan   = trend.reduce((s, r) => s + r.total_plan,   0);
+  const totalActual = trend.reduce((s, r) => s + r.total_actual, 0);
+  const totalAvIn   = trend.reduce((s, r) => s + r.total_av_in,  0);
+  const totalEc     = trend.reduce((s, r) => s + r.total_ec,     0);
+  const totalAvOut  = trend.reduce((s, r) => s + r.total_av_out, 0);
+
+  const summary: Summary = {
+    ...base.summary,
+    total_plan:          totalPlan,
+    total_actual:        totalActual,
+    total_av_in:         totalAvIn,
+    total_ec:            totalEc,
+    total_av_out:        totalAvOut,
+    total_products:      achievementProduct.length,
+    overall_achievement: totalPlan > 0
+      ? Math.round((totalAvOut / totalPlan) * 1000) / 10
+      : 0,
+  };
+
+  return {
+    summary,
+    achievementSalesman,
+    achievementProduct,
+    achievementArea,
+    trend,
+    coverage,
+    coverageSalesman,
+  };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -184,66 +421,110 @@ function CT({ active, payload, label, theme }: any) {
   );
 }
 
+// ─── FilterBadge helper ───────────────────────────────────────────────────────
+function FilterBadge({ label, value, onClear, theme }: { label: string; value: string; onClear: () => void; theme: Theme }) {
+  const t = tk[theme];
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '1px 4px 1px 7px', borderRadius: 4,
+      background: 'rgba(28,151,6,0.12)', border: '1px solid rgba(28,151,6,0.25)',
+      fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: t.tabActiveText,
+    }}>
+      <b>{label}:</b> {value}
+      <button
+        onClick={onClear}
+        style={{ background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '0 2px', display: 'flex', alignItems: 'center' }}
+      >×</button>
+    </span>
+  );
+}
+
+// ─── SelectFilter helper ──────────────────────────────────────────────────────
+function SelectFilter({
+  label, value, options, onChange, theme, placeholder,
+}: {
+  label: string; value: string; options: string[];
+  onChange: (v: string) => void; theme: Theme; placeholder: string;
+}) {
+  const t = tk[theme];
+  const active = !!value;
+  return (
+    <>
+      <div style={{ width: 1, height: 16, background: t.border, margin: '0 2px' }} />
+      <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>{label}</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          height: 26, padding: '0 6px',
+          background: active ? t.tabActive : t.inputBg,
+          border: `1px solid ${active ? '#1c9706' : t.inputBorder}`,
+          borderRadius: 5, color: active ? t.tabActiveText : t.text,
+          fontSize: 10, fontFamily: 'IBM Plex Mono,monospace',
+          outline: 'none', maxWidth: 160, transition: 'all 0.15s',
+        }}
+      >
+        <option value="" style={{ background: t.selectBg }}>{placeholder}</option>
+        {options.map(o => (
+          <option key={o} value={o} style={{ background: t.selectBg }}>{o}</option>
+        ))}
+      </select>
+      {active && (
+        <button
+          onClick={() => onChange('')}
+          title={`Reset filter ${label}`}
+          style={{
+            height: 26, width: 26, borderRadius: 5,
+            background: t.negBg, border: `1px solid ${t.negBorder}`,
+            color: t.negText, fontSize: 14, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'IBM Plex Mono,monospace', flexShrink: 0,
+          }}
+        >×</button>
+      )}
+    </>
+  );
+}
+
 // ─── Distribution Tabs ────────────────────────────────────────────────────────
-function DistributionTabs({ data, theme }: { data: DistData; theme: Theme;  }) {
+function DistributionTabs({ data, theme }: { data: DistData; theme: Theme }) {
   const t = tk[theme];
   const [tabValue, setTabValue] = useState(0);
 
   const tabs = [
-    { label: 'Achievement', icon: Target,   color: '#10b981', content: <AchievementContent data={data} theme={theme} /> },
-    { label: 'Trend Mingguan',   icon: Activity, color: '#3b82f6', content: <TrendContent       data={data} theme={theme} /> },
-    { label: 'Outlet',  icon: Store,    color: '#f59e0b', content: <CoverageContent     data={data} theme={theme} /> },
+    { label: 'Achievement',    icon: Target,   color: '#10b981', content: <AchievementContent data={data} theme={theme} /> },
+    { label: 'Trend Mingguan', icon: Activity, color: '#3b82f6', content: <TrendContent       data={data} theme={theme} /> },
+    { label: 'Outlet',         icon: Store,    color: '#f59e0b', content: <CoverageContent     data={data} theme={theme} /> },
   ];
 
   return (
-    <div style={{
-      width: '100%',
-      background: t.cardBg,
-      border: `1px solid ${t.borderCard}`,
-      borderRadius: 12,
-      overflow: 'hidden',
-    }}>
-      {/* Tab header */}
-      <div style={{
-        display: 'flex',
-        borderBottom: `1px solid ${t.border}`,
-        background: t.tableHeadBg,
-        overflowX: 'auto',
-      }}>
+    <div style={{ width: '100%', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.border}`, background: t.tableHeadBg, overflowX: 'auto' }}>
         {tabs.map((tab, i) => {
-          const Icon = tab.icon;
+          const Icon     = tab.icon;
           const isActive = tabValue === i;
           return (
             <button
               key={i}
               onClick={() => setTabValue(i)}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '10px 18px',
-                background: 'transparent',
-                border: 'none',
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '10px 18px', background: 'transparent', border: 'none',
                 borderBottom: isActive ? `2px solid #1c9706` : '2px solid transparent',
-                cursor: 'pointer',
-                fontSize: 11,
+                cursor: 'pointer', fontSize: 11,
                 fontWeight: isActive ? 700 : 500,
                 fontFamily: 'IBM Plex Mono, monospace',
                 color: isActive ? t.tabActiveText : t.textMuted,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s',
-                marginBottom: -1, // supaya border bottom tab nutup border container
+                whiteSpace: 'nowrap', transition: 'all 0.15s',
+                marginBottom: -1,
               }}
             >
               <div style={{
-                width: 18,
-                height: 18,
-                borderRadius: 5,
+                width: 18, height: 18, borderRadius: 5,
                 background: isActive ? `${tab.color}22` : 'transparent',
                 border: isActive ? `1px solid ${tab.color}33` : '1px solid transparent',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.15s',
               }}>
                 <Icon size={10} color={isActive ? tab.color : t.textMuted} />
@@ -253,8 +534,6 @@ function DistributionTabs({ data, theme }: { data: DistData; theme: Theme;  }) {
           );
         })}
       </div>
-
-      {/* Tab content */}
       <div style={{ padding: 16 }}>
         {tabs[tabValue].content}
       </div>
@@ -262,11 +541,11 @@ function DistributionTabs({ data, theme }: { data: DistData; theme: Theme;  }) {
   );
 }
 
-// ─── Achievement Rate Content ─────────────────────────────────────────────────
+// ─── Achievement Content ──────────────────────────────────────────────────────
 function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
-  const t = tk[theme];
-  const [view, setView] = useState<'salesman' | 'product' | 'area'>('salesman');
+  const t  = tk[theme];
   const ts = { fontSize: 8, fill: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
+  const [view, setView] = useState<'salesman' | 'product' | 'area'>('salesman');
 
   const rows = view === 'salesman' ? data.achievementSalesman
              : view === 'product'  ? data.achievementProduct
@@ -282,14 +561,13 @@ function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
   }));
 
   const tabs = [
-    { id: 'salesman', label: 'Per Salesman', icon: Users },
-    { id: 'product',  label: 'Per Produk',   icon: Package },
+    { id: 'salesman', label: 'Per Salesman',  icon: Users },
+    { id: 'product',  label: 'Per Produk',    icon: Package },
     { id: 'area',     label: 'Per Area/Kota', icon: MapIcon },
   ] as const;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Sub-tab switcher */}
       <div style={{ display: 'flex', gap: 4, background: t.tabBg, borderRadius: 8, padding: 3, width: 'fit-content' }}>
         {tabs.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setView(id)}
@@ -299,15 +577,12 @@ function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
         ))}
       </div>
 
-      {/* Chart */}
       <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>
           Plan vs Av-Out — Top {chartData.length}
         </div>
         {chartData.length === 0 ? (
-          <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.textMuted, fontSize: 11, fontFamily: 'IBM Plex Mono,monospace' }}>
-            Belum ada data.
-          </div>
+          <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.textMuted, fontSize: 11, fontFamily: 'IBM Plex Mono,monospace' }}>Belum ada data.</div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
@@ -324,18 +599,16 @@ function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
         )}
       </div>
 
-      {/* Tabel */}
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
               <tr style={{ background: t.tableHeadBg }}>
-                
                 {(() => {
                   const headers =
                     view === 'salesman' ? ['#', 'Salesman', 'Plan', 'Av-Out', 'Achievement', 'Outlet'] :
                     view === 'product'  ? ['#', 'Produk', 'Kategori', 'Plan', 'Av-Out', 'Achievement'] :
-                                          ['#', 'Kota · Kecamatan', 'Plan', 'Av-Out', 'Achievement', 'Outlet'];
+                                         ['#', 'Kota · Kecamatan', 'Plan', 'Av-Out', 'Achievement', 'Outlet'];
                   return headers.map((h, i) => (
                     <th key={i} style={{ padding: '8px 12px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                   ));
@@ -354,10 +627,9 @@ function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
                   <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: t.text, whiteSpace: 'nowrap' }}>
                     {view === 'salesman' ? r.salesman : view === 'product' ? r.product : `${r.city} · ${r.district}`}
                   </td>
-                  
                   {view === 'product' && (
                     <td style={{ padding: '8px 12px', fontSize: 10, color: t.textSub }}>{r.category || '—'}</td>
-                  )} 
+                  )}
                   <td style={{ padding: '8px 12px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_plan)}</td>
                   <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(r.total_av_out)}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'right' }}><PBar pct={r.achievement_pct} theme={theme} /></td>
@@ -381,8 +653,8 @@ function AchievementContent({ data, theme }: { data: DistData; theme: Theme }) {
 
 // ─── Trend Content ────────────────────────────────────────────────────────────
 function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
-  const t   = tk[theme];
-  const ts  = { fontSize: 8, fill: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
+  const t     = tk[theme];
+  const ts    = { fontSize: 8, fill: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
   const trend = data.trend;
 
   const avgPlan  = trend.length ? trend.reduce((s, r) => s + r.total_plan,   0) / trend.length : 0;
@@ -400,7 +672,6 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Chart Plan vs Av-Out */}
       <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Plan vs Av-Out per Minggu</div>
@@ -427,7 +698,6 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
         )}
       </div>
 
-      {/* Chart Av-In / EC / Av-Out */}
       <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>Av-In · EC · Av-Out per Minggu</div>
         {chartData.length === 0 ? (
@@ -447,7 +717,6 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
         )}
       </div>
 
-      {/* Tabel mingguan */}
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
@@ -494,9 +763,9 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
   const cov = data.coverage;
 
   const salesmen = Array.from(new Set(data.coverageSalesman.map(r => r.salesman)));
-  const weeks    = Array.from(new Set(data.coverageSalesman.map(r => r.week))).sort((a, b) => {
-    return parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''));
-  });
+  const weeks    = Array.from(new Set(data.coverageSalesman.map(r => r.week))).sort((a, b) =>
+    parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''))
+  );
 
   const heatMap = useMemo(() => {
     const m = new Map<string, CovSalRow>();
@@ -512,7 +781,6 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {/* Pie + Bar */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>Distribusi Av-Out per Tipe</div>
@@ -551,7 +819,6 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
         </div>
       </div>
 
-      {/* Tabel per tipe */}
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}`, fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Detail per Tipe Outlet</div>
         <div style={{ overflowX: 'auto' }}>
@@ -586,7 +853,6 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
         </div>
       </div>
 
-      {/* Heatmap */}
       {salesmen.length > 0 && weeks.length > 0 && (
         <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}`, fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>
@@ -615,7 +881,8 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
                                  :              'rgba(239,68,68,0.15)';
                       const clr  = pct === null ? t.textFaint : achColor(pct);
                       return (
-                        <td key={w} title={pct !== null ? `${sal} ${w}: ${pct.toFixed(1)}%` : `${sal} ${w}: —`}
+                        <td key={w}
+                          title={pct !== null ? `${sal} ${w}: ${pct.toFixed(1)}%` : `${sal} ${w}: —`}
                           style={{ padding: '4px 6px', textAlign: 'center', background: bg, borderRadius: 4 }}>
                           <span style={{ fontSize: 9, fontWeight: 700, color: clr }}>
                             {pct !== null ? `${Math.round(pct)}%` : '—'}
@@ -629,7 +896,11 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
             </table>
           </div>
           <div style={{ padding: '6px 14px 10px', display: 'flex', gap: 12, fontSize: 9, fontFamily: 'IBM Plex Mono,monospace', color: t.textMuted }}>
-            {[{ clr: 'rgba(16,185,129,0.22)', txt: '≥100%' }, { clr: 'rgba(245,158,11,0.18)', txt: '80–99%' }, { clr: 'rgba(239,68,68,0.15)', txt: '<80%' }].map(({ clr, txt }) => (
+            {[
+              { clr: 'rgba(16,185,129,0.22)', txt: '≥100%' },
+              { clr: 'rgba(245,158,11,0.18)', txt: '80–99%' },
+              { clr: 'rgba(239,68,68,0.15)',  txt: '<80%'   },
+            ].map(({ clr, txt }) => (
               <div key={txt} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div style={{ width: 12, height: 12, borderRadius: 3, background: clr }} />
                 <span>{txt}</span>
@@ -642,9 +913,13 @@ function CoverageContent({ data, theme }: { data: DistData; theme: Theme }) {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const EMPTY_DATA: DistData = {
-  summary:             { total_plan:0, total_actual:0, total_av_in:0, total_ec:0, total_av_out:0, total_outlets:0, total_salesmen:0, total_products:0, total_customers:0, overall_achievement:0 },
+  summary: {
+    total_plan: 0, total_actual: 0, total_av_in: 0, total_ec: 0,
+    total_av_out: 0, total_outlets: 0, total_salesmen: 0,
+    total_products: 0, total_customers: 0, overall_achievement: 0,
+  },
   achievementSalesman: [],
   achievementProduct:  [],
   achievementArea:     [],
@@ -655,8 +930,11 @@ const EMPTY_DATA: DistData = {
 
 const WEEKS_ARR = Array.from({ length: 52 }, (_, i) => i + 1);
 
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function DistributionSection({
-  theme = 'dark', areas = [], areaFilter: areaFromPage = '',
+  theme = 'dark',
+  areas = [],
+  areaFilter: areaFromPage = '',
   weekStart: weekStartProp = 1,
   weekEnd:   weekEndProp   = 52,
   onWeekStartChange,
@@ -669,84 +947,149 @@ export default function DistributionSection({
 }: DistributionSectionProps) {
   const t = tk[theme];
 
-  // Pakai nilai dari props, setter ke parent
   const weekStart    = weekStartProp;
   const weekEnd      = weekEndProp;
   const setWeekStart = onWeekStartChange ?? (() => {});
   const setWeekEnd   = onWeekEndChange   ?? (() => {});
   const setLoading   = onLoadingChange   ?? (() => {});
+  const areaFilter   = areaFromPage;
 
-  const data    = cachedData ?? EMPTY_DATA;
-  const areaFilter = areaFromPage;
+  // ── Filter state — lokal, tidak perlu ke parent ──────────────────────────
+  const [productFilter,    setProductFilter]    = useState('');
+  const [outletTypeFilter, setOutletTypeFilter] = useState('');
+  const [salesmanFilter,   setSalesmanFilter]   = useState('');
 
-  
+  // Reset semua filter saat area berubah
+  useEffect(() => {
+    setProductFilter('');
+    setOutletTypeFilter('');
+    setSalesmanFilter('');
+  }, [areaFilter]);
 
+  // Reset semua filter saat data baru dimuat (dipanggil dari loadData)
+  const resetFilters = useCallback(() => {
+    setProductFilter('');
+    setOutletTypeFilter('');
+    setSalesmanFilter('');
+  }, []);
+
+  // ── Opsi dropdown — dari raw cachedData ──────────────────────────────────
+  const productOptions = useMemo(() => {
+    if (!cachedData) return [];
+    return Array.from(
+      new Set(cachedData.achievementProduct.map(r => r.product).filter(Boolean))
+    ).sort() as string[];
+  }, [cachedData]);
+
+  const outletTypeOptions = useMemo(() => {
+    if (!cachedData) return [];
+    return Array.from(
+      new Set(cachedData.coverage.map(r => r.outlet_type).filter(Boolean))
+    ).sort() as string[];
+  }, [cachedData]);
+
+  const salesmanOptions = useMemo(() => {
+    if (!cachedData) return [];
+    return Array.from(
+      new Set(cachedData.achievementSalesman.map(r => r.salesman).filter(Boolean))
+    ).sort() as string[];
+  }, [cachedData]);
+
+  // ── Data render — re-agregasi instan via useMemo, zero fetch ─────────────
+  const data = useMemo((): DistData => {
+    const base = cachedData ?? EMPTY_DATA;
+    if (!productFilter && !outletTypeFilter && !salesmanFilter) return base;
+    return reaggregate(base, productFilter, outletTypeFilter, salesmanFilter);
+  }, [cachedData, productFilter, outletTypeFilter, salesmanFilter]);
+
+  const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
+
+  // ── Fetch data dari server ───────────────────────────────────────────────
   const loadData = useCallback(async () => {
-  // Guard: jangan fetch jika area belum dipilih di filter utama
-  if (!areaFilter) return;
-
-  setLoading(true);
-  try {
-    const p = new URLSearchParams({ weekStart: String(weekStart), weekEnd: String(weekEnd) });
-    if (areaFilter) p.append('area', areaFilter);
-    const r = await fetch(`/api/distribution?${p}`);
-    if (r.ok) {
-      const j = await r.json();
-      if (j.success) {
-        const raw = j.data;
-        raw.summary = {
-          ...raw.summary,
-          total_plan:          parseFloat(raw.summary.total_plan          ?? 0),
-          total_actual:        parseFloat(raw.summary.total_actual        ?? 0),
-          total_av_in:         parseFloat(raw.summary.total_av_in         ?? 0),
-          total_ec:            parseFloat(raw.summary.total_ec            ?? 0),
-          total_av_out:        parseFloat(raw.summary.total_av_out        ?? 0),
-          total_outlets:       parseFloat(raw.summary.total_outlets       ?? 0),
-          total_salesmen:      parseFloat(raw.summary.total_salesmen      ?? 0),
-          total_products:      parseFloat(raw.summary.total_products      ?? 0),
-          total_customers:     parseFloat(raw.summary.total_customers     ?? 0),
-          overall_achievement: parseFloat(raw.summary.overall_achievement ?? 0),
-        };
-        raw.achievementSalesman = normRows(raw.achievementSalesman);
-        raw.achievementProduct  = normRows(raw.achievementProduct);
-        raw.achievementArea     = normRows(raw.achievementArea);
-        raw.coverage            = normRows(raw.coverage);
-        raw.coverageSalesman    = raw.coverageSalesman.map((r: any) => ({
-          ...r,
-          plan:            parseFloat(r.plan            ?? 0),
-          actual:          parseFloat(r.actual          ?? 0),
-          av_in:           parseFloat(r.av_in           ?? 0),
-          ec:              parseFloat(r.ec              ?? 0),
-          av_out:          parseFloat(r.av_out          ?? 0),
-          achievement_pct: parseFloat(r.achievement_pct ?? 0),
-        }));
-        raw.trend = raw.trend.map((r: any) => ({
-          ...r,
-          total_plan:    parseFloat(r.total_plan    ?? 0),
-          total_actual:  parseFloat(r.total_actual  ?? 0),
-          total_av_in:   parseFloat(r.total_av_in   ?? 0),
-          total_ec:      parseFloat(r.total_ec      ?? 0),
-          total_av_out:  parseFloat(r.total_av_out  ?? 0),
-          outlet_count:  parseFloat(r.outlet_count  ?? 0),
-        }));
-        onDataLoaded?.(raw);
+    if (!areaFilter) return;
+    setLoading(true);
+    try {
+      const p = new URLSearchParams({ weekStart: String(weekStart), weekEnd: String(weekEnd) });
+      if (areaFilter) p.append('area', areaFilter);
+      const r = await fetch(`/api/distribution?${p}`);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.success) {
+          const raw = j.data;
+          raw.summary = {
+            ...raw.summary,
+            total_plan:          parseFloat(raw.summary.total_plan          ?? 0),
+            total_actual:        parseFloat(raw.summary.total_actual        ?? 0),
+            total_av_in:         parseFloat(raw.summary.total_av_in         ?? 0),
+            total_ec:            parseFloat(raw.summary.total_ec            ?? 0),
+            total_av_out:        parseFloat(raw.summary.total_av_out        ?? 0),
+            total_outlets:       parseFloat(raw.summary.total_outlets       ?? 0),
+            total_salesmen:      parseFloat(raw.summary.total_salesmen      ?? 0),
+            total_products:      parseFloat(raw.summary.total_products      ?? 0),
+            total_customers:     parseFloat(raw.summary.total_customers     ?? 0),
+            overall_achievement: parseFloat(raw.summary.overall_achievement ?? 0),
+          };
+          raw.achievementSalesman = normRows(raw.achievementSalesman);
+          raw.achievementProduct  = normRows(raw.achievementProduct);
+          raw.achievementArea     = normRows(raw.achievementArea);
+          raw.coverage            = normRows(raw.coverage);
+          raw.coverageSalesman    = raw.coverageSalesman.map((r: any) => ({
+            ...r,
+            plan:            parseFloat(r.plan            ?? 0),
+            actual:          parseFloat(r.actual          ?? 0),
+            av_in:           parseFloat(r.av_in           ?? 0),
+            ec:              parseFloat(r.ec              ?? 0),
+            av_out:          parseFloat(r.av_out          ?? 0),
+            achievement_pct: parseFloat(r.achievement_pct ?? 0),
+          }));
+          raw.trend = raw.trend.map((r: any) => ({
+            ...r,
+            total_plan:    parseFloat(r.total_plan    ?? 0),
+            total_actual:  parseFloat(r.total_actual  ?? 0),
+            total_av_in:   parseFloat(r.total_av_in   ?? 0),
+            total_ec:      parseFloat(r.total_ec      ?? 0),
+            total_av_out:  parseFloat(r.total_av_out  ?? 0),
+            outlet_count:  parseFloat(r.outlet_count  ?? 0),
+          }));
+          resetFilters();
+          onDataLoaded?.(raw);
+        }
       }
+    } finally {
+      setLoading(false);
     }
-  } finally { setLoading(false); }
-}, [weekStart, weekEnd, areaFilter]);
+  }, [weekStart, weekEnd, areaFilter, resetFilters]);
 
-  // Tidak auto-load saat mount — hanya load saat tombol "Terapkan" diklik
-  // kecuali kalau mau load sekali di awal, uncomment baris berikut:
-  // useEffect(() => { loadData(); }, []);
-
-  const s = data.summary;
+  const s        = data.summary;
   const areaName = areas.find(a => a.id === areaFilter)?.name;
+
+  // ── Select filter props helper ────────────────────────────────────────────
+  const selectStyle = (active: boolean) => ({
+    height: 26, padding: '0 6px',
+    background: active ? t.tabActive : t.inputBg,
+    border: `1px solid ${active ? '#1c9706' : t.inputBorder}`,
+    borderRadius: 5,
+    color: active ? t.tabActiveText : t.text,
+    fontSize: 10, fontFamily: 'IBM Plex Mono,monospace',
+    outline: 'none', maxWidth: 160, transition: 'all 0.15s',
+  });
+
+  const clearBtnStyle = {
+    height: 26, width: 26, borderRadius: 5,
+    background: t.negBg, border: `1px solid ${t.negBorder}`,
+    color: t.negText, fontSize: 14, cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: 'IBM Plex Mono,monospace', flexShrink: 0,
+  } as const;
+
+  const divider = <div style={{ width: 1, height: 16, background: t.border, margin: '0 2px' }} />;
+  const labelStyle = { fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans,sans-serif' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* Header + Filter lokal */}
+      {/* ── Header + Filter ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Distribusi</div>
@@ -761,25 +1104,104 @@ export default function DistributionSection({
         </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>Minggu</span>
+
+          {/* ── Filter Minggu ──────────────────────────────────────────────── */}
+          <span style={labelStyle}>Minggu</span>
           <select value={weekStart} onChange={e => setWeekStart(+e.target.value)}
             style={{ height: 26, padding: '0 6px', background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 5, color: t.text, fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', outline: 'none' }}>
             {WEEKS_ARR.map(w => <option key={w} value={w} style={{ background: t.selectBg }}>W{w}</option>)}
           </select>
-          <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>—</span>
+          <span style={labelStyle}>—</span>
           <select value={weekEnd} onChange={e => setWeekEnd(+e.target.value)}
             style={{ height: 26, padding: '0 6px', background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 5, color: t.text, fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', outline: 'none' }}>
             {WEEKS_ARR.map(w => <option key={w} value={w} style={{ background: t.selectBg }}>W{w}</option>)}
           </select>
+
+          {/* ── Filter Produk ──────────────────────────────────────────────── */}
+          {loaded && productOptions.length > 0 && (
+            <>
+              {divider}
+              <span style={labelStyle}>Produk</span>
+              <select value={productFilter} onChange={e => setProductFilter(e.target.value)} style={selectStyle(!!productFilter)}>
+                <option value="" style={{ background: t.selectBg }}>Semua Produk</option>
+                {productOptions.map(p => <option key={p} value={p} style={{ background: t.selectBg }}>{p}</option>)}
+              </select>
+              {productFilter && (
+                <button onClick={() => setProductFilter('')} title="Reset filter produk" style={clearBtnStyle}>×</button>
+              )}
+            </>
+          )}
+
+          {/* ── Filter Tipe Outlet ─────────────────────────────────────────── */}
+          {loaded && outletTypeOptions.length > 0 && (
+            <>
+              {divider}
+              <span style={labelStyle}>Tipe Outlet</span>
+              <select value={outletTypeFilter} onChange={e => setOutletTypeFilter(e.target.value)} style={selectStyle(!!outletTypeFilter)}>
+                <option value="" style={{ background: t.selectBg }}>Semua Tipe</option>
+                {outletTypeOptions.map(o => <option key={o} value={o} style={{ background: t.selectBg }}>{o}</option>)}
+              </select>
+              {outletTypeFilter && (
+                <button onClick={() => setOutletTypeFilter('')} title="Reset filter tipe outlet" style={clearBtnStyle}>×</button>
+              )}
+            </>
+          )}
+
+          {/* ── Filter Salesman ────────────────────────────────────────────── */}
+          {loaded && salesmanOptions.length > 0 && (
+            <>
+              {divider}
+              <span style={labelStyle}>Salesman</span>
+              <select value={salesmanFilter} onChange={e => setSalesmanFilter(e.target.value)} style={selectStyle(!!salesmanFilter)}>
+                <option value="" style={{ background: t.selectBg }}>Semua Salesman</option>
+                {salesmanOptions.map(s => <option key={s} value={s} style={{ background: t.selectBg }}>{s}</option>)}
+              </select>
+              {salesmanFilter && (
+                <button onClick={() => setSalesmanFilter('')} title="Reset filter salesman" style={clearBtnStyle}>×</button>
+              )}
+            </>
+          )}
+
+          {/* ── Tombol Terapkan ────────────────────────────────────────────── */}
           <button onClick={loadData} disabled={loading}
             style={{ height: 26, padding: '0 12px', borderRadius: 5, background: '#1c9706', border: 'none', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-            {loading ? <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> : null}
+            {loading && <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />}
             {loading ? 'Memuat...' : 'Terapkan'}
           </button>
         </div>
       </div>
 
-      {/* Belum pernah load */}
+      {/* ── Active filter indicator ──────────────────────────────────────────── */}
+      {loaded && hasActiveFilter && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+          padding: '6px 12px', borderRadius: 8,
+          background: t.tabActive, border: `1px solid rgba(28,151,6,0.2)`,
+          fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: t.tabActiveText,
+        }}>
+          <Activity size={11} />
+          <span style={{ color: t.textSub }}>Filter aktif:</span>
+
+          {productFilter && (
+            <FilterBadge label="Produk" value={productFilter} onClear={() => setProductFilter('')} theme={theme} />
+          )}
+          {outletTypeFilter && (
+            <FilterBadge label="Tipe Outlet" value={outletTypeFilter} onClear={() => setOutletTypeFilter('')} theme={theme} />
+          )}
+          {salesmanFilter && (
+            <FilterBadge label="Salesman" value={salesmanFilter} onClear={() => setSalesmanFilter('')} theme={theme} />
+          )}
+
+          <button
+            onClick={resetFilters}
+            style={{ marginLeft: 'auto', background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 11, padding: '0 4px', fontFamily: 'IBM Plex Mono,monospace' }}
+          >
+            Reset Semua
+          </button>
+        </div>
+      )}
+
+      {/* ── Belum pernah load ────────────────────────────────────────────────── */}
       {!loaded && !loading && (
         <div style={{ padding: '32px', textAlign: 'center', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, color: t.textMuted, fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <Target size={28} color={t.textFaint} />
@@ -790,19 +1212,21 @@ export default function DistributionSection({
         </div>
       )}
 
-      {/* KPI Summary — tampil setelah data dimuat */}
+      {/* ── KPI Summary + Tabs ───────────────────────────────────────────────── */}
       {loaded && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-            <KpiCard label="Overall Achievement" value={`${s.overall_achievement.toFixed(1)}%`} sub={`Plan: ${fmtN(s.total_plan)}`}   icon={Target}      color={achColor(s.overall_achievement)} theme={theme} />
-            <KpiCard label="Total Av-Out"         value={fmtN(s.total_av_out)}                  sub="Av-Out"                          icon={CheckCircle} color="#10b981" theme={theme} />
-            <KpiCard label="Total Outlet"         value={fmtN(s.total_outlets)}                 sub="Outlet terjangkau"               icon={Store}       color="#3b82f6" theme={theme} />
-            <KpiCard label="Total Salesman"       value={fmtN(s.total_salesmen)}                sub="Salesman aktif"                  icon={Users}       color="#8b5cf6" theme={theme} />
-            <KpiCard label="Total Produk"         value={fmtN(s.total_products)}                sub="terdistribusi"                   icon={Package}     color="#f59e0b" theme={theme} />
-            <KpiCard label="EC"                   value={fmtN(s.total_ec)}                      sub="Effective Call"                  icon={TrendingUp}  color="#0d9488" theme={theme} />
+            <KpiCard label="Total Plan"           value={fmtN(s.total_plan)}                     sub="Plan distribusi"    icon={ClipboardList}  color="#3b82f6" theme={theme} />
+            <KpiCard label="Total Actual"         value={fmtN(s.total_actual)}                   sub="Aktual distribusi"  icon={ClipboardCheck} color="#10b981" theme={theme} />
+            <KpiCard label="Total Av-In"          value={fmtN(s.total_av_in)}                    sub="Av-In"              icon={Download}       color="#3b82f6" theme={theme} />
+            <KpiCard label="EC"                   value={fmtN(s.total_ec)}                       sub="Effective Call"     icon={TrendingUp}     color="#0d9488" theme={theme} />
+            <KpiCard label="Total Av-Out"         value={fmtN(s.total_av_out)}                   sub="Av-Out"             icon={CheckCircle}    color="#10b981" theme={theme} />
+            <KpiCard label="Total Outlet"         value={fmtN(s.total_outlets)}                  sub="Outlet terjangkau"  icon={Store}          color="#3b82f6" theme={theme} />
+            <KpiCard label="Total Salesman"       value={fmtN(s.total_salesmen)}                 sub="Salesman aktif"     icon={Users}          color="#8b5cf6" theme={theme} />
+            <KpiCard label="Total Produk"         value={fmtN(s.total_products)}                 sub="terdistribusi"      icon={Package}        color="#f59e0b" theme={theme} />
+            <KpiCard label="Overall Achievement"  value={`${s.overall_achievement.toFixed(1)}%`} sub="Av-Out / Plan"      icon={Target}         color={achColor(s.overall_achievement)} theme={theme} />
           </div>
 
-          {/* Accordion sections */}
           <DistributionTabs data={data} theme={theme} />
         </>
       )}
