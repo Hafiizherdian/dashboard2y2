@@ -1077,11 +1077,20 @@ export default function OutletContributionSection({ data, theme: themeProp }: Ou
   const totalB = useMemo(() => dataB.reduce((s, r) => s + (r.dozNet || 0), 0), [dataB]);
 
   const sharedWeekRange = useMemo(() => {
-    const allWeeks: number[] = [];
-    [...dataA, ...dataB].forEach(r => { if (r.week != null) allWeeks.push(r.week); });
-    if (allWeeks.length === 0) return { min: 1, max: 52 };
-    return { min: Math.min(...allWeeks), max: Math.max(...allWeeks) };
-  }, [dataA, dataB]);
+  const allWeeks: number[] = [];
+  
+  // Mengumpulkan data secara aman
+  dataA.forEach(r => { if (r.week != null) allWeeks.push(r.week); });
+  dataB.forEach(r => { if (r.week != null) allWeeks.push(r.week); });
+
+  if (allWeeks.length === 0) return { min: 1, max: 52 };
+
+  // Mencari min dan max menggunakan reduce (Hanya satu properti min dan max)
+  return {
+    min: allWeeks.reduce((prev, curr) => (curr < prev ? curr : prev), allWeeks[0]),
+    max: allWeeks.reduce((prev, curr) => (curr > prev ? curr : prev), allWeeks[0])
+  };
+}, [dataA, dataB]);
 
   const hasDropdownFilter = [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman].some(v => v !== 'all') || !!selCustomerNo;
   const hasFilter = hasDropdownFilter || !!globalSearch;
