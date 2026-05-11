@@ -1,19 +1,5 @@
 /**
  * app/api/distribution/route.ts
- *
- * API Route untuk modul Distribusi:
- *  - GET  : Mengambil data distribusi dari DB dengan berbagai filter
- *  - POST : Upload file Excel distribusi dan menyimpan ke DB
- *  - DELETE: Menghapus file distribusi beserta semua record-nya
- *
- * CATATAN PERUBAHAN (filter produk client-side):
- *  - achievementSalesman : ditambah GROUP BY product agar bisa di-reaggregate per produk di client
- *  - trend               : ditambah GROUP BY product
- *  - coverage            : ditambah GROUP BY product
- *  - coverageSalesman    : ditambah GROUP BY product
- *  - achievementProduct  : tidak berubah (sudah GROUP BY product)
- *  - achievementArea     : tidak berubah (tidak ada field product)
- *  - summary             : tidak berubah (tetap total keseluruhan)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -21,7 +7,6 @@ import { pool } from '@/lib/db';
 import { withAuth } from '@/lib/auth/session';
 import * as XLSX from 'xlsx';
 
-// ─── Helper: Parse angka dari berbagai format input ───────────────────────────
 function parseNum(raw: unknown): number {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw !== 'string') return 0;
@@ -30,7 +15,6 @@ function parseNum(raw: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ─── Helper: Parse nomor minggu dari string seperti "W1", "Minggu 1", atau angka langsung ──
 function parseWeekNum(raw: unknown): number {
   if (typeof raw === 'number') return raw;
   if (typeof raw === 'string') {
@@ -40,7 +24,6 @@ function parseWeekNum(raw: unknown): number {
   return 1;
 }
 
-// ─── Logger ──────────────────────────────────────────────────────────────────
 function log(step: string, detail?: Record<string, unknown>) {
   const ts = new Date().toISOString();
   if (detail) {
@@ -56,7 +39,7 @@ function logError(step: string, err: unknown, detail?: Record<string, unknown>) 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GET — Ambil data distribusi dengan filter
+// GET
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
@@ -70,7 +53,7 @@ export async function GET(request: NextRequest) {
       const city      = searchParams.get('city') || '';
       const fileId    = searchParams.get('fileId') || '';
 
-      // ── Bangun WHERE clause ───────────────────────────────────────────────
+      // ── WHERE dengan semua filter (dipakai mayoritas query) ────────────────
       const params: any[] = [];
       let idx = 1;
       const conditions: string[] = ['1=1'];
@@ -84,8 +67,6 @@ export async function GET(request: NextRequest) {
       }
 
       if (salesman) { conditions.push(`salesman ILIKE $${idx++}`); params.push(`%${salesman}%`); }
-      // CATATAN: filter product di sini tetap ada untuk kebutuhan server-side filtering
-      // tapi untuk client-side useMemo filter, query tidak memakai filter ini
       if (product)  { conditions.push(`product ILIKE $${idx++}`);  params.push(`%${product}%`);  }
       if (city)     { conditions.push(`city ILIKE $${idx++}`);     params.push(`%${city}%`);     }
       if (fileId)   { conditions.push(`dist_file_id = $${idx++}`); params.push(parseInt(fileId)); }
@@ -95,7 +76,52 @@ export async function GET(request: NextRequest) {
 
       const where = conditions.join(' AND ');
 
-      // ── Jalankan semua query secara paralel ───────────────────────────────
+      // ── WHERE tanpa filter salesman ────────────────────────────────────────
+      // Dipakai untuk query referensi total (outletCountByType, achievementArea base, dll)
+      const baseConditions: string[] = ['1=1'];
+      const baseParams: any[] = [];
+      let baseIdx = 1;
+
+      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
+        baseConditions.push(`area = ANY($${baseIdx++})`);
+        baseParams.push(session.allowed_areas);
+      } else if (area) {
+        baseConditions.push(`area = $${baseIdx++}`);
+        baseParams.push(area);
+      }
+
+      if (product)  { baseConditions.push(`product ILIKE $${baseIdx++}`);  baseParams.push(`%${product}%`);  }
+      if (city)     { baseConditions.push(`city ILIKE $${baseIdx++}`);     baseParams.push(`%${city}%`);     }
+      if (fileId)   { baseConditions.push(`dist_file_id = $${baseIdx++}`); baseParams.push(parseInt(fileId)); }
+
+      baseConditions.push(`week_num BETWEEN $${baseIdx++} AND $${baseIdx++}`);
+      baseParams.push(weekStart, weekEnd);
+
+      const whereBase = baseConditions.join(' AND ');
+
+      // ── WHERE tanpa filter salesman DAN tanpa filter product ───────────────
+      // Dipakai untuk achievementAreaOutletType agar bisa difilter semua kombinasi
+      // di client (salesman, product, outlet_type)
+      const noSalNoProdConditions: string[] = ['1=1'];
+      const noSalNoProdParams: any[] = [];
+      let noSalNoProdIdx = 1;
+
+      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
+        noSalNoProdConditions.push(`area = ANY($${noSalNoProdIdx++})`);
+        noSalNoProdParams.push(session.allowed_areas);
+      } else if (area) {
+        noSalNoProdConditions.push(`area = $${noSalNoProdIdx++}`);
+        noSalNoProdParams.push(area);
+      }
+
+      if (city)   { noSalNoProdConditions.push(`city ILIKE $${noSalNoProdIdx++}`);   noSalNoProdParams.push(`%${city}%`);   }
+      if (fileId) { noSalNoProdConditions.push(`dist_file_id = $${noSalNoProdIdx++}`); noSalNoProdParams.push(parseInt(fileId)); }
+
+      noSalNoProdConditions.push(`week_num BETWEEN $${noSalNoProdIdx++} AND $${noSalNoProdIdx++}`);
+      noSalNoProdParams.push(weekStart, weekEnd);
+
+      const whereNoSalNoProd = noSalNoProdConditions.join(' AND ');
+
       const [
         achSalesmanQ,
         achProductQ,
@@ -105,10 +131,17 @@ export async function GET(request: NextRequest) {
         coverageSalesmanQ,
         summaryQ,
         filesQ,
+        outletCountByTypeQ,
+        totalOutletsQ,
+        outletCountByTypeSalesmanQ,
+        // ── Query area per dimensi lengkap ─────────────────────────────────
+        // Digunakan client-side untuk filter area yang akurat per kombinasi filter
+        achAreaSalesmanQ,      // salesman × city × district  (filter: salesman)
+        achAreaProductQ,       // product × city × district   (filter: product)
+        achAreaOutletTypeQ,    // outlet_type × city × district (filter: outlet_type)
       ] = await Promise.all([
 
         // Achievement per salesman × product
-        // GROUP BY salesman, product → client bisa reaggregate per produk
         pool.query(`
           SELECT
             salesman,
@@ -128,7 +161,7 @@ export async function GET(request: NextRequest) {
           ORDER BY achievement_pct DESC
         `, params),
 
-        // Achievement per produk — tidak berubah
+        // Achievement per produk
         pool.query(`
           SELECT
             product,
@@ -147,7 +180,7 @@ export async function GET(request: NextRequest) {
           ORDER BY total_av_out DESC
         `, params),
 
-        // Achievement per area — tidak ada product field, tetap sama
+        // Achievement per area (base — tanpa filter salesman)
         pool.query(`
           SELECT
             city,
@@ -162,14 +195,13 @@ export async function GET(request: NextRequest) {
               ELSE 0
             END AS achievement_pct
           FROM distribution_records
-          WHERE ${where}
+          WHERE ${whereBase}
           GROUP BY city, district
           ORDER BY total_av_out DESC
-          LIMIT 30
-        `, params),
+          LIMIT 50
+        `, baseParams),
 
         // Trend mingguan × product
-        // GROUP BY week, week_num, product → client bisa reaggregate per produk
         pool.query(`
           SELECT
             week,
@@ -187,8 +219,7 @@ export async function GET(request: NextRequest) {
           ORDER BY week_num ASC, product ASC
         `, params),
 
-        // Coverage per tipe outlet × product
-        // GROUP BY outlet_type, product → client bisa reaggregate per produk
+        // Coverage per tipe outlet × product (tanpa filter salesman)
         pool.query(`
           SELECT
             outlet_type,
@@ -198,6 +229,30 @@ export async function GET(request: NextRequest) {
             SUM(av_in)  AS total_av_in,
             SUM(ec)     AS total_ec,
             SUM(av_out) AS total_av_out,
+            CASE
+              WHEN SUM(plan) > 0
+              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              ELSE 0
+            END AS achievement_pct
+          FROM distribution_records
+          WHERE ${whereBase}
+          GROUP BY outlet_type, product
+          ORDER BY total_av_out DESC
+        `, baseParams),
+
+        // Coverage salesman per minggu × product × outlet_type (heatmap)
+        pool.query(`
+          SELECT
+            salesman,
+            week_num,
+            week,
+            product,
+            outlet_type,
+            SUM(plan)   AS plan,
+            SUM(actual) AS actual,
+            SUM(av_in)  AS av_in,
+            SUM(ec)     AS ec,
+            SUM(av_out) AS av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
               WHEN SUM(plan) > 0
@@ -206,46 +261,21 @@ export async function GET(request: NextRequest) {
             END AS achievement_pct
           FROM distribution_records
           WHERE ${where}
-          GROUP BY outlet_type, product
-          ORDER BY total_av_out DESC
-        `, params),
-
-        // Coverage salesman per minggu × product (heatmap)
-        // GROUP BY salesman, week_num, week, product → client bisa reaggregate per produk
-        pool.query(`
-          SELECT
-            salesman,
-            week_num,
-            week,
-            product,
-            SUM(plan)   AS plan,
-            SUM(actual) AS actual,
-            SUM(av_in)  AS av_in,
-            SUM(ec)     AS ec,
-            SUM(av_out) AS av_out,
-            CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
-              ELSE 0
-            END AS achievement_pct
-          FROM distribution_records
-          WHERE ${where}
-          GROUP BY salesman, week_num, week, product
+          GROUP BY salesman, week_num, week, product, outlet_type
           ORDER BY salesman, week_num, product
         `, params),
 
-        // Summary keseluruhan — tetap total, tidak per produk
-        // KPI cards menampilkan total; useMemo override ini saat filter produk aktif
+        // Summary keseluruhan
         pool.query(`
           SELECT
-            SUM(plan)                  AS total_plan,
-            SUM(actual)                AS total_actual,
-            SUM(av_in)                 AS total_av_in,
-            SUM(ec)                    AS total_ec,
-            SUM(av_out)                AS total_av_out,
-            COUNT(DISTINCT outlet)     AS total_outlets,
-            COUNT(DISTINCT salesman)   AS total_salesmen,
-            COUNT(DISTINCT product)    AS total_products,
+            SUM(plan)                   AS total_plan,
+            SUM(actual)                 AS total_actual,
+            SUM(av_in)                  AS total_av_in,
+            SUM(ec)                     AS total_ec,
+            SUM(av_out)                 AS total_av_out,
+            COUNT(DISTINCT outlet)      AS total_outlets,
+            COUNT(DISTINCT salesman)    AS total_salesmen,
+            COUNT(DISTINCT product)     AS total_products,
             COUNT(DISTINCT customer_id) AS total_customers,
             CASE
               WHEN SUM(plan) > 0
@@ -264,19 +294,126 @@ export async function GET(request: NextRequest) {
           ORDER BY created_at DESC
           LIMIT 50
         `),
+
+        // Outlet count per tipe — TANPA filter salesman
+        pool.query(`
+          SELECT
+            outlet_type,
+            COUNT(DISTINCT outlet) AS outlet_count
+          FROM distribution_records
+          WHERE ${whereBase}
+          GROUP BY outlet_type
+        `, baseParams),
+
+        // Total outlet — TANPA filter salesman
+        pool.query(`
+          SELECT COUNT(DISTINCT outlet) AS total_outlets
+          FROM distribution_records
+          WHERE ${whereBase}
+        `, baseParams),
+
+        // Outlet count per outlet_type per salesman
+        pool.query(`
+          SELECT
+            salesman,
+            outlet_type,
+            COUNT(DISTINCT outlet) AS outlet_count
+          FROM distribution_records
+          WHERE ${where}
+          GROUP BY salesman, outlet_type
+          ORDER BY salesman, outlet_type
+        `, params),
+
+        // ── BARU 1: Achievement area per SALESMAN × city × district ────────
+        // WHERE: semua filter kecuali — tidak ada pengecualian, pakai `where` penuh
+        // Client filter: matchSalesman (product sudah difilter server via WHERE)
+        pool.query(`
+          SELECT
+            salesman,
+            city,
+            district,
+            SUM(plan)   AS total_plan,
+            SUM(actual) AS total_actual,
+            SUM(av_out) AS total_av_out,
+            COUNT(DISTINCT outlet) AS outlet_count,
+            CASE
+              WHEN SUM(plan) > 0
+              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              ELSE 0
+            END AS achievement_pct
+          FROM distribution_records
+          WHERE ${where}
+          GROUP BY salesman, city, district
+          ORDER BY total_av_out DESC
+        `, params),
+
+        // ── BARU 2: Achievement area per PRODUCT × city × district ─────────
+        // WHERE: tanpa filter salesman & tanpa filter product (whereNoSalNoProd)
+        //        agar client bisa filter product secara bebas dari cache
+        // Client filter: matchProduct, matchSalesman
+        pool.query(`
+          SELECT
+            product,
+            city,
+            district,
+            SUM(plan)   AS total_plan,
+            SUM(actual) AS total_actual,
+            SUM(av_out) AS total_av_out,
+            COUNT(DISTINCT outlet) AS outlet_count,
+            CASE
+              WHEN SUM(plan) > 0
+              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              ELSE 0
+            END AS achievement_pct
+          FROM distribution_records
+          WHERE ${whereNoSalNoProd}
+          GROUP BY product, city, district
+          ORDER BY total_av_out DESC
+        `, noSalNoProdParams),
+
+        // ── BARU 3: Achievement area per OUTLET_TYPE × city × district ─────
+        // WHERE: tanpa filter salesman & tanpa filter product (whereNoSalNoProd)
+        //        agar client bisa filter outlet_type secara bebas dari cache
+        // Client filter: matchOutlet, matchSalesman, matchProduct
+        pool.query(`
+          SELECT
+            outlet_type,
+            city,
+            district,
+            SUM(plan)   AS total_plan,
+            SUM(actual) AS total_actual,
+            SUM(av_out) AS total_av_out,
+            COUNT(DISTINCT outlet) AS outlet_count,
+            CASE
+              WHEN SUM(plan) > 0
+              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              ELSE 0
+            END AS achievement_pct
+          FROM distribution_records
+          WHERE ${whereNoSalNoProd}
+          GROUP BY outlet_type, city, district
+          ORDER BY total_av_out DESC
+        `, noSalNoProdParams),
       ]);
 
       return NextResponse.json({
         success: true,
         data: {
-          summary:             summaryQ.rows[0] ?? {},
-          achievementSalesman: achSalesmanQ.rows,
-          achievementProduct:  achProductQ.rows,
-          achievementArea:     achAreaQ.rows,
-          trend:               trendQ.rows,
-          coverage:            coverageQ.rows,
-          coverageSalesman:    coverageSalesmanQ.rows,
-          files:               filesQ.rows,
+          summary:                    summaryQ.rows[0] ?? {},
+          achievementSalesman:        achSalesmanQ.rows,
+          achievementProduct:         achProductQ.rows,
+          achievementArea:            achAreaQ.rows,
+          trend:                      trendQ.rows,
+          coverage:                   coverageQ.rows,
+          coverageSalesman:           coverageSalesmanQ.rows,
+          files:                      filesQ.rows,
+          outletCountByType:          outletCountByTypeQ.rows,
+          totalOutlets:               parseInt(totalOutletsQ.rows[0]?.total_outlets ?? '0'),
+          outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,
+          // ── Data area per dimensi (untuk filter client-side yang akurat) ──
+          achievementAreaSalesman:    achAreaSalesmanQ.rows,
+          achievementAreaProduct:     achAreaProductQ.rows,
+          achievementAreaOutletType:  achAreaOutletTypeQ.rows,
         },
       });
 
@@ -519,7 +656,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DELETE — Hapus file distribusi beserta semua record-nya
+// DELETE
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function DELETE(request: NextRequest) {
   return withAuth(request, 'delete_file', async () => {
