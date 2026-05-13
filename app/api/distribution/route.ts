@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
           FROM distribution_files
           WHERE status = 'completed'
           ORDER BY created_at DESC
-          LIMIT 50
+          
         `);
         return NextResponse.json({
           success: true,
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
       const where = conditions.join(' AND ');
 
-      // ── WHERE tanpa filter salesman ────────────────────────────────────────
+      // ── WHERE tanpa filter salesman (untuk query area/coverage) ───────────
       const baseConditions: string[] = ['1=1'];
       const baseParams: any[] = [];
       let baseIdx = 1;
@@ -136,6 +136,29 @@ export async function GET(request: NextRequest) {
       noSalNoProdParams.push(weekStart, weekEnd);
 
       const whereNoSalNoProd = noSalNoProdConditions.join(' AND ');
+
+      // ── WHERE dengan salesman tapi TANPA filter product ────────────────────
+      // Dipakai untuk outletCountByType & totalOutlets agar ikut filter salesman
+      const withSalConditions: string[] = ['1=1'];
+      const withSalParams: any[] = [];
+      let withSalIdx = 1;
+
+      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
+        withSalConditions.push(`area = ANY($${withSalIdx++})`);
+        withSalParams.push(session.allowed_areas);
+      } else if (area) {
+        withSalConditions.push(`area = $${withSalIdx++}`);
+        withSalParams.push(area);
+      }
+
+      if (salesman) { withSalConditions.push(`salesman ILIKE $${withSalIdx++}`); withSalParams.push(`%${salesman}%`); }
+      if (city)     { withSalConditions.push(`city ILIKE $${withSalIdx++}`);     withSalParams.push(`%${city}%`);     }
+      if (fileId)   { withSalConditions.push(`dist_file_id = $${withSalIdx++}`); withSalParams.push(parseInt(fileId)); }
+
+      withSalConditions.push(`week_num BETWEEN $${withSalIdx++} AND $${withSalIdx++}`);
+      withSalParams.push(weekStart, weekEnd);
+
+      const whereWithSal = withSalConditions.join(' AND ');
 
       const [
         achSalesmanQ,
@@ -211,7 +234,7 @@ export async function GET(request: NextRequest) {
           WHERE ${whereBase}
           GROUP BY city, district
           ORDER BY total_av_out DESC
-          LIMIT 50
+          
         `, baseParams),
 
         // Trend mingguan × product
@@ -305,25 +328,25 @@ export async function GET(request: NextRequest) {
           FROM distribution_files
           WHERE status = 'completed'
           ORDER BY created_at DESC
-          LIMIT 50
+          
         `),
 
-        // Outlet count per tipe — TANPA filter salesman
+        // Outlet count per tipe — ikut filter salesman (pakai whereWithSal)
         pool.query(`
           SELECT
             outlet_type,
             COUNT(DISTINCT outlet) AS outlet_count
           FROM distribution_records
-          WHERE ${whereBase}
+          WHERE ${whereWithSal}
           GROUP BY outlet_type
-        `, baseParams),
+        `, withSalParams),
 
-        // Total outlet — TANPA filter salesman
+        // Total outlet — ikut filter salesman (pakai whereWithSal)
         pool.query(`
           SELECT COUNT(DISTINCT outlet) AS total_outlets
           FROM distribution_records
-          WHERE ${whereBase}
-        `, baseParams),
+          WHERE ${whereWithSal}
+        `, withSalParams),
 
         // Outlet count per outlet_type per salesman
         pool.query(`
@@ -411,7 +434,7 @@ export async function GET(request: NextRequest) {
           trend:                      trendQ.rows,
           coverage:                   coverageQ.rows,
           coverageSalesman:           coverageSalesmanQ.rows,
-          files:                      filesQ.rows,
+          // files:                      filesQ.rows,
           outletCountByType:          outletCountByTypeQ.rows,
           totalOutlets:               parseInt(totalOutletsQ.rows[0]?.total_outlets ?? '0'),
           outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,

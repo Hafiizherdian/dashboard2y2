@@ -125,7 +125,12 @@ interface OutletCountByType {
   outlet_type:  string;
   outlet_count: number;
 }
-// ── BARU: tipe untuk achievementAreaSalesman ──────────────────────────────────
+// ── Tipe untuk outletCountByTypeSalesman (dari backend) ───────────────────────
+interface OutletCountByTypeSalesman {
+  salesman:     string;
+  outlet_type:  string;
+  outlet_count: number;
+}
 interface AchAreaSalesmanRow {
   salesman:        string;
   city:            string;
@@ -148,7 +153,6 @@ interface Summary {
   total_customers:     number;
   overall_achievement: number;
 }
-
 interface AchAreaProductRow {
   product:         string;
   city:            string;
@@ -161,19 +165,20 @@ interface AchAreaProductRow {
 }
 
 interface DistData {
-  summary:                   Summary;
-  achievementSalesman:       AchRow[];
-  achievementProduct:        AchRow[];
-  achievementArea:           AchRow[];
-  trend:                     TrendRow[];
-  coverage:                  CovRow[];
-  coverageSalesman:          CovSalRow[];
-  outletCountByType:         OutletCountByType[];
-  totalOutlets:              number;
-  // ── BARU ─────────────────────────────────────────────────────────────────
-  achievementAreaSalesman:   AchAreaSalesmanRow[];
-  achievementAreaProduct:    AchAreaProductRow[];
-  achievementAreaOutletType: any[];
+  summary:                      Summary;
+  achievementSalesman:          AchRow[];
+  achievementProduct:           AchRow[];
+  achievementArea:              AchRow[];
+  trend:                        TrendRow[];
+  coverage:                     CovRow[];
+  coverageSalesman:             CovSalRow[];
+  outletCountByType:            OutletCountByType[];
+  // ── TAMBAHAN: outlet count per salesman × tipe ─────────────────────────────
+  outletCountByTypeSalesman:    OutletCountByTypeSalesman[];
+  totalOutlets:                 number;
+  achievementAreaSalesman:      AchAreaSalesmanRow[];
+  achievementAreaProduct:       AchAreaProductRow[];
+  achievementAreaOutletType:    any[];
 }
 
 // ─── Props dari page.tsx ──────────────────────────────────────────────────────
@@ -205,7 +210,7 @@ function normRows(rows: any[]): any[] {
     total_ec:        parseFloat(r.total_ec        ?? 0),
     total_av_out:    parseFloat(r.total_av_out    ?? 0),
     achievement_pct: parseFloat(r.achievement_pct ?? 0),
-    outlet_count:    parseFloat(r.outlet_count    ?? 0),
+    outlet_count:    parseInt(r.outlet_count      ?? 0, 10),
   }));
 }
 
@@ -220,10 +225,7 @@ function reaggregate(
   const matchOutlet   = (o?: string) => !outletType || (o ?? '').toLowerCase() === outletType.toLowerCase();
   const matchSalesman = (s?: string) => !salesman   || (s ?? '').toLowerCase().includes(salesman.toLowerCase());
 
-  // ── "Source of truth" untuk semua kombinasi filter ───────────────────────
-  // coverageSalesman adalah satu-satunya dataset yang memiliki semua 4 dimensi:
-  // salesman × product × outlet_type × week_num
-  // Semua filter diterapkan sekaligus di sini, hasilnya di-share ke semua seksi.
+  // ── "Source of truth" — semua 4 dimensi: salesman × product × outlet_type × week_num
   const covFiltered = base.coverageSalesman.filter(r =>
     matchProduct(r.product) &&
     matchSalesman(r.salesman) &&
@@ -231,16 +233,26 @@ function reaggregate(
   );
 
   const hasFilter   = !!(product || outletType || salesman);
-  const needCovPath = !!(outletType || salesman); // harus lewat covFiltered
+  const needCovPath = !!(outletType || salesman);
+
+  // ── Lookup helper: outletCountByTypeSalesman → Map<"salesman||outlet_type", count>
+  // Dipakai untuk mengisi outlet_count yang akurat saat filter salesman aktif.
+  const outletCountSalTypeMap = new Map<string, number>();
+  (base.outletCountByTypeSalesman ?? []).forEach(r => {
+    const key = `${r.salesman}||${r.outlet_type}`;
+    outletCountSalTypeMap.set(key, (outletCountSalTypeMap.get(key) ?? 0) + r.outlet_count);
+  });
+
+  // Lookup global per outlet_type (tanpa filter salesman) — untuk kasus tanpa filter salesman
+  const outletCountMap = new Map<string, number>(
+    base.outletCountByType.map(r => [r.outlet_type, r.outlet_count])
+  );
 
   // ── Achievement Salesman ──────────────────────────────────────────────────
-  // Jika ada outletType: WAJIB rebuild dari covFiltered (base.achievementSalesman
-  // tidak punya kolom outlet_type sehingga tidak bisa difilter).
-  // Jika tidak: filter dari base.achievementSalesman (granularitas lebih baik
-  // karena di-group per salesman×product oleh server, bukan per minggu).
   const salMap = new Map<string, AchRow>();
 
   if (needCovPath) {
+    // Rebuild dari covFiltered (sudah include filter outletType/salesman)
     covFiltered.forEach(r => {
       const key = r.salesman ?? '';
       const ex  = salMap.get(key);
@@ -259,6 +271,22 @@ function reaggregate(
         ex.total_av_out += r.av_out;
       }
     });
+
+    // Isi outlet_count dari outletCountByTypeSalesman
+    // Jika filter outletType aktif: sum hanya untuk outlet_type yang cocok
+    // Jika tidak: sum semua outlet_type per salesman yang termasuk di covFiltered
+    const covSalesmenSet = new Set(covFiltered.map(r => r.salesman));
+    salMap.forEach((row, sal) => {
+      if (!covSalesmenSet.has(sal)) return;
+      let count = 0;
+      (base.outletCountByTypeSalesman ?? []).forEach(r => {
+        if (r.salesman !== sal) return;
+        if (outletType && r.outlet_type.toLowerCase() !== outletType.toLowerCase()) return;
+        count += r.outlet_count;
+      });
+      row.outlet_count = count;
+    });
+
   } else {
     base.achievementSalesman
       .filter(r => matchProduct(r.product) && matchSalesman(r.salesman))
@@ -286,7 +314,6 @@ function reaggregate(
     .sort((a, b) => b.achievement_pct - a.achievement_pct);
 
   // ── Achievement Product ───────────────────────────────────────────────────
-  // Sama dengan salesman: jika ada outletType wajib lewat covFiltered.
   const prodMap = new Map<string, AchRow>();
 
   if (needCovPath) {
@@ -341,38 +368,13 @@ function reaggregate(
     .sort((a, b) => b.total_av_out - a.total_av_out);
 
   // ── Achievement Area ──────────────────────────────────────────────────────
-  // Matriks sumber data:
-  //
-  //  Filter aktif            | Sumber terbaik
-  //  ────────────────────────|──────────────────────────────────────────────
-  //  (tidak ada)             | base.achievementArea          (server-aggregated)
-  //  product saja            | base.achievementAreaProduct   (server, per product×city×district)
-  //  outletType saja         | base.achievementAreaOutletType (server, per outlet_type×city×district)
-  //  salesman saja           | base.achievementAreaSalesman  (server, per salesman×city×district)
-  //  salesman + product      | base.achievementAreaSalesman  (server sudah filter product via WHERE)
-  //  outletType + *          | Distribusi proporsional: covFiltered → achievementAreaSalesman
-  //  salesman + outletType   | idem
-  //  semua 3                 | idem
-  //
-  // Catatan: covFiltered tidak punya kolom city/district. Untuk kasus yang
-  // melibatkan outletType, kita distribusikan nilai covFiltered ke area secara
-  // proporsional berdasarkan total_plan dari achievementAreaSalesman.
-
   const areaMap = new Map<string, AchRow>();
 
   if (!hasFilter) {
-    // ── Kasus 1: Tidak ada filter sama sekali ────────────────────────────
     base.achievementArea.forEach(r => {
       areaMap.set(`${r.city}||${r.district}`, { ...r });
     });
-
   } else if (outletType) {
-    // ── Kasus 2: Ada outletType (dengan atau tanpa salesman/product) ─────
-    // covFiltered sudah menerapkan semua filter tapi tidak punya city/district.
-    // Gunakan achievementAreaSalesman sebagai peta (salesman → area) lalu
-    // distribusikan nilai dari covFiltered secara proporsional berdasarkan plan.
-
-    // Agregasi covFiltered per salesman
     const covBySal = new Map<string, { plan: number; actual: number; av_out: number }>();
     covFiltered.forEach(r => {
       const ex = covBySal.get(r.salesman);
@@ -385,16 +387,14 @@ function reaggregate(
       }
     });
 
-    // Buat lookup: salesman → list of area rows (dari achievementAreaSalesman)
     const salAreaLookup = new Map<string, AchAreaSalesmanRow[]>();
     (base.achievementAreaSalesman ?? []).forEach(r => {
       if (!salAreaLookup.has(r.salesman)) salAreaLookup.set(r.salesman, []);
       salAreaLookup.get(r.salesman)!.push(r);
     });
 
-    // Distribusikan nilai covBySal ke area berdasarkan proporsi plan per area
     covBySal.forEach((totals, sal) => {
-      const areaRows    = salAreaLookup.get(sal) ?? [];
+      const areaRows     = salAreaLookup.get(sal) ?? [];
       const totalPlanSal = areaRows.reduce((s, r) => s + r.total_plan, 0);
       if (totalPlanSal === 0) return;
 
@@ -425,17 +425,12 @@ function reaggregate(
       });
     });
 
-    // Fallback jika achievementAreaSalesman kosong (data lama): tampilkan base
     if (areaMap.size === 0) {
       base.achievementArea.forEach(r => {
         areaMap.set(`${r.city}||${r.district}`, { ...r });
       });
     }
-
   } else if (salesman) {
-    // ── Kasus 3: Ada salesman, tidak ada outletType ──────────────────────
-    // achievementAreaSalesman (server) sudah difilter product via WHERE clause.
-    // Client hanya perlu filter salesman.
     const areaRows = (base.achievementAreaSalesman ?? [])
       .filter(r => matchSalesman(r.salesman));
 
@@ -461,16 +456,12 @@ function reaggregate(
         }
       });
     } else {
-      // Fallback data lama
       base.achievementArea.forEach(r => {
         areaMap.set(`${r.city}||${r.district}`, { ...r });
       });
     }
-
   } else {
-    // ── Kasus 4: Hanya product (tidak ada salesman, tidak ada outletType) ─
     const areaProductData = base.achievementAreaProduct ?? [];
-
     if (areaProductData.length > 0) {
       areaProductData
         .filter(r => matchProduct(r.product))
@@ -495,7 +486,6 @@ function reaggregate(
           }
         });
     } else {
-      // Fallback data lama
       base.achievementArea.forEach(r => {
         areaMap.set(`${r.city}||${r.district}`, { ...r });
       });
@@ -512,8 +502,6 @@ function reaggregate(
     .sort((a, b) => b.total_av_out - a.total_av_out);
 
   // ── Trend per minggu ──────────────────────────────────────────────────────
-  // needCovPath = ada outletType atau salesman → gunakan covFiltered.
-  // Jika hanya product → gunakan base.trend (lebih akurat, sudah agregat).
   let trend: TrendRow[];
 
   if (needCovPath) {
@@ -604,22 +592,33 @@ function reaggregate(
       });
   }
 
-  const outletCountMap = new Map<string, number>(
-    base.outletCountByType.map(r => [r.outlet_type, r.outlet_count])
-  );
-
+  // Isi outlet_count per tipe outlet:
+  // - Ada filter salesman: jumlahkan outletCountByTypeSalesman untuk salesman yang cocok
+  // - Tidak ada filter salesman: pakai outletCountByType global
   const coverage = Array.from(covMap.values())
-    .map(r => ({
-      ...r,
-      outlet_count:    salesman ? 0 : (outletCountMap.get(r.outlet_type) ?? 0),
-      achievement_pct: r.total_plan > 0
-        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
-        : 0,
-    }))
+    .map(r => {
+      let outletCount = 0;
+      if (salesman) {
+        // Jumlahkan outlet_count dari semua salesman yang cocok filter untuk tipe ini
+        (base.outletCountByTypeSalesman ?? []).forEach(ocr => {
+          if (ocr.outlet_type !== r.outlet_type) return;
+          if (!matchSalesman(ocr.salesman)) return;
+          outletCount += ocr.outlet_count;
+        });
+      } else {
+        outletCount = outletCountMap.get(r.outlet_type) ?? 0;
+      }
+      return {
+        ...r,
+        outlet_count:    outletCount,
+        achievement_pct: r.total_plan > 0
+          ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
+          : 0,
+      };
+    })
     .sort((a, b) => b.total_av_out - a.total_av_out);
 
   // ── Coverage Salesman heatmap ─────────────────────────────────────────────
-  // Gunakan kembali covFiltered — tidak perlu filter ulang.
   const covSalMap = new Map<string, CovSalRow>();
   covFiltered.forEach(r => {
     const key = `${r.salesman}||${r.week}`;
@@ -649,24 +648,32 @@ function reaggregate(
   const totalEc     = trend.reduce((s, r) => s + r.total_ec,     0);
   const totalAvOut  = trend.reduce((s, r) => s + r.total_av_out, 0);
 
+  // Total outlets — hitung dari sumber yang benar sesuai kombinasi filter
   let totalOutlets: number;
 
   if (!hasFilter) {
+    // Tidak ada filter sama sekali → pakai nilai server
     totalOutlets = base.totalOutlets;
-  } else if (outletType && !salesman && !product) {
-    totalOutlets = outletCountMap.get(outletType) ?? 0;
+  } else if (salesman && outletType) {
+    // Keduanya aktif: jumlahkan outlet_count untuk salesman × tipe yang cocok
+    totalOutlets = 0;
+    (base.outletCountByTypeSalesman ?? []).forEach(r => {
+      if (matchSalesman(r.salesman) && r.outlet_type.toLowerCase() === outletType.toLowerCase()) {
+        totalOutlets += r.outlet_count;
+      }
+    });
   } else if (salesman) {
-    totalOutlets = achievementSalesman.reduce((s, r) => s + (r.outlet_count ?? 0), 0);
-    if (outletType) {
-      totalOutlets = Math.min(totalOutlets, outletCountMap.get(outletType) ?? Infinity);
-    }
-  } else if (product && !outletType) {
-    // Hanya filter product: total outlet keseluruhan (tidak bisa pisah per product dari DB)
-    totalOutlets = base.totalOutlets;
+    // Hanya filter salesman: jumlahkan semua tipe untuk salesman yang cocok
+    totalOutlets = 0;
+    (base.outletCountByTypeSalesman ?? []).forEach(r => {
+      if (matchSalesman(r.salesman)) totalOutlets += r.outlet_count;
+    });
+  } else if (outletType) {
+    // Hanya filter tipe outlet: pakai outletCountByType global
+    totalOutlets = outletCountMap.get(outletType) ?? 0;
   } else {
-    totalOutlets = outletType
-      ? (outletCountMap.get(outletType) ?? 0)
-      : base.totalOutlets;
+    // Hanya filter product: total outlet keseluruhan (tidak bisa filter per product dari DB)
+    totalOutlets = base.totalOutlets;
   }
 
   const totalSalesmen = new Set(achievementSalesman.map(r => r.salesman)).size;
@@ -695,11 +702,12 @@ function reaggregate(
     trend,
     coverage,
     coverageSalesman,
-    outletCountByType:         base.outletCountByType,
-    totalOutlets:              base.totalOutlets,
-    achievementAreaSalesman:   base.achievementAreaSalesman   ?? [],
-    achievementAreaProduct:    base.achievementAreaProduct    ?? [],
-    achievementAreaOutletType: base.achievementAreaOutletType ?? [],
+    outletCountByType:            base.outletCountByType,
+    outletCountByTypeSalesman:    base.outletCountByTypeSalesman,
+    totalOutlets:                 base.totalOutlets,
+    achievementAreaSalesman:      base.achievementAreaSalesman   ?? [],
+    achievementAreaProduct:       base.achievementAreaProduct    ?? [],
+    achievementAreaOutletType:    base.achievementAreaOutletType ?? [],
   };
 }
 
@@ -784,12 +792,10 @@ function FilterBadge({ label, value, onClear, theme }: { label: string; value: s
 function DistributionTabs({
   data,
   theme,
-  hasSalesmanFilter,
   hasAreaFilterWarning,
 }: {
   data: DistData;
   theme: Theme;
-  hasSalesmanFilter: boolean;
   hasAreaFilterWarning: boolean;
 }) {
   const t = tk[theme];
@@ -798,12 +804,7 @@ function DistributionTabs({
   const tabs = [
     { label: 'Achievement',    icon: Target,   color: '#10b981', content: <AchievementContent data={data} theme={theme} hasAreaFilterWarning={hasAreaFilterWarning} /> },
     { label: 'Trend Mingguan', icon: Activity, color: '#3b82f6', content: <TrendContent       data={data} theme={theme} /> },
-    {
-      label: 'Outlet',
-      icon: Store,
-      color: '#f59e0b',
-      content: <CoverageContent data={data} theme={theme} hasSalesmanFilter={hasSalesmanFilter} />,
-    },
+    { label: 'Outlet',         icon: Store,    color: '#f59e0b', content: <CoverageContent    data={data} theme={theme} /> },
   ];
 
   return (
@@ -890,7 +891,6 @@ function AchievementContent({
         ))}
       </div>
 
-      {/* ── Peringatan akurasi area jika achievementAreaSalesman tidak tersedia ── */}
       {view === 'area' && hasAreaFilterWarning && (
         <div style={{
           padding: '8px 12px', borderRadius: 8,
@@ -900,8 +900,7 @@ function AchievementContent({
         }}>
           <Activity size={12} />
           <span>
-            Data area ditampilkan dari referensi keseluruhan (tanpa filter salesman/produk).
-            Reload data terbaru dari server untuk mendapatkan data area yang akurat per filter.
+            Data area ditampilkan dari referensi keseluruhan. Reload untuk mendapatkan data area yang akurat per filter.
           </span>
         </div>
       )}
@@ -963,7 +962,9 @@ function AchievementContent({
                   <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(r.total_av_out)}</td>
                   <td style={{ padding: '8px 12px', textAlign: 'right' }}><PBar pct={r.achievement_pct} theme={theme} /></td>
                   {view !== 'product' && (
-                    <td style={{ padding: '8px 12px', fontSize: 10, color: t.textSub, textAlign: 'right' }}>{r.outlet_count ?? '—'}</td>
+                    <td style={{ padding: '8px 12px', fontSize: 10, color: t.textSub, textAlign: 'right' }}>
+                      {(r.outlet_count ?? 0) > 0 ? fmtN(r.outlet_count!) : '—'}
+                    </td>
                   )}
                 </tr>
               ))}
@@ -1089,11 +1090,9 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
 function CoverageContent({
   data,
   theme,
-  hasSalesmanFilter,
 }: {
   data: DistData;
   theme: Theme;
-  hasSalesmanFilter: boolean;
 }) {
   const t   = tk[theme];
   const ts  = { fontSize: 8, fill: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
@@ -1118,21 +1117,6 @@ function CoverageContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {hasSalesmanFilter && (
-        <div style={{
-          padding: '8px 12px', borderRadius: 8,
-          background: 'rgba(245,158,11,0.09)', border: '1px solid rgba(245,158,11,0.2)',
-          fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: '#fbbf24',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <Activity size={12} />
-          <span>
-            Filter salesman aktif. Data Plan/Av-Out sudah difilter per salesman.
-            Kolom <b>Outlet</b> tidak tersedia karena COUNT(DISTINCT) per-tipe tidak dapat difilter per salesman dari DB — tampil sebagai <b>N/A</b>.
-          </span>
-        </div>
-      )}
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>Distribusi Av-Out per Tipe</div>
@@ -1198,11 +1182,7 @@ function CoverageContent({
                   <td style={{ padding: '7px 12px', fontSize: 11, color: '#10b981', textAlign: 'right' }}>{fmtN(r.total_ec)}</td>
                   <td style={{ padding: '7px 12px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_actual)}</td>
                   <td style={{ padding: '7px 12px', fontSize: 10, color: t.textSub, textAlign: 'right' }}>
-                    {hasSalesmanFilter ? (
-                      <span style={{ color: t.textFaint, fontStyle: 'italic' }}>N/A</span>
-                    ) : (
-                      r.outlet_count
-                    )}
+                    {r.outlet_count > 0 ? fmtN(r.outlet_count) : '—'}
                   </td>
                 </tr>
               ))}
@@ -1278,16 +1258,17 @@ const EMPTY_DATA: DistData = {
     total_av_out: 0, total_outlets: 0, total_salesmen: 0,
     total_products: 0, total_customers: 0, overall_achievement: 0,
   },
-  achievementSalesman:     [],
-  achievementProduct:      [],
-  achievementArea:         [],
-  trend:                   [],
-  coverage:                [],
-  coverageSalesman:        [],
-  outletCountByType:       [],
-  totalOutlets:            0,
-  achievementAreaSalesman: [],
-  achievementAreaProduct:  [],
+  achievementSalesman:       [],
+  achievementProduct:        [],
+  achievementArea:           [],
+  trend:                     [],
+  coverage:                  [],
+  coverageSalesman:          [],
+  outletCountByType:         [],
+  outletCountByTypeSalesman: [],
+  totalOutlets:              0,
+  achievementAreaSalesman:   [],
+  achievementAreaProduct:    [],
   achievementAreaOutletType: [],
 };
 
@@ -1333,7 +1314,6 @@ export default function DistributionSection({
     setSalesmanFilter('');
   }, []);
 
-  // ── Opsi dropdown dari raw cachedData ─────────────────────────────────────
   const productOptions = useMemo(() => {
     if (!cachedData) return [];
     return Array.from(
@@ -1355,24 +1335,19 @@ export default function DistributionSection({
     ).sort() as string[];
   }, [cachedData]);
 
-  // ── Data render — selalu reaggregate via useMemo ──────────────────────────
   const data = useMemo((): DistData => {
     const base = cachedData ?? EMPTY_DATA;
     return reaggregate(base, productFilter, outletTypeFilter, salesmanFilter);
   }, [cachedData, productFilter, outletTypeFilter, salesmanFilter]);
 
-  // ── Deteksi apakah perlu tampil peringatan akurasi area ───────────────────
-  // Peringatan muncul jika ada filter salesman/product TAPI achievementAreaSalesman kosong
   const hasAreaFilterWarning = useMemo(() => {
-    const hasFilter = !!(productFilter || salesmanFilter);
+    const hasFilter  = !!(productFilter || salesmanFilter);
     const hasSalData = (cachedData?.achievementAreaSalesman?.length ?? 0) > 0;
     return hasFilter && !hasSalData;
   }, [productFilter, salesmanFilter, cachedData]);
 
-  const hasActiveFilter    = !!(productFilter || outletTypeFilter || salesmanFilter);
-  const hasSalesmanFilter  = !!salesmanFilter;
+  const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
 
-  // ── Fetch data dari server ─────────────────────────────────────────────────
   const loadData = useCallback(async () => {
     if (!areaFilter) return;
     setLoading(true);
@@ -1440,8 +1415,6 @@ export default function DistributionSection({
             outlet_count: parseInt(r.outlet_count ?? 0),
           }));
           raw.totalOutlets = parseInt(raw.totalOutlets ?? 0);
-
-          // ── BARU: Normalize achievementAreaSalesman ────────────────────────
           raw.achievementAreaSalesman = (raw.achievementAreaSalesman ?? []).map((r: any) => ({
             ...r,
             total_plan:      parseFloat(r.total_plan      ?? 0),
@@ -1449,6 +1422,12 @@ export default function DistributionSection({
             total_av_out:    parseFloat(r.total_av_out    ?? 0),
             achievement_pct: parseFloat(r.achievement_pct ?? 0),
             outlet_count:    parseInt(r.outlet_count      ?? 0),
+          }));
+          // ── TAMBAHAN: Normalize outletCountByTypeSalesman ──────────────────
+          raw.outletCountByTypeSalesman = (raw.outletCountByTypeSalesman ?? []).map((r: any) => ({
+            salesman:     r.salesman,
+            outlet_type:  r.outlet_type,
+            outlet_count: parseInt(r.outlet_count ?? 0),
           }));
 
           resetFilters();
@@ -1487,7 +1466,6 @@ export default function DistributionSection({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans,sans-serif' }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {/* ── Header + Filter ─────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Distribusi</div>
@@ -1502,7 +1480,6 @@ export default function DistributionSection({
         </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Filter Minggu */}
           <span style={labelStyle}>Minggu</span>
           <select value={weekStart} onChange={e => setWeekStart(+e.target.value)}
             style={{ height: 26, padding: '0 6px', background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 5, color: t.text, fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', outline: 'none' }}>
@@ -1514,7 +1491,6 @@ export default function DistributionSection({
             {WEEKS_ARR.map(w => <option key={w} value={w} style={{ background: t.selectBg }}>W{w}</option>)}
           </select>
 
-          {/* Filter Produk */}
           {loaded && productOptions.length > 0 && (
             <>
               {divider}
@@ -1529,7 +1505,6 @@ export default function DistributionSection({
             </>
           )}
 
-          {/* Filter Tipe Outlet */}
           {loaded && outletTypeOptions.length > 0 && (
             <>
               {divider}
@@ -1544,7 +1519,6 @@ export default function DistributionSection({
             </>
           )}
 
-          {/* Filter Salesman */}
           {loaded && salesmanOptions.length > 0 && (
             <>
               {divider}
@@ -1559,7 +1533,6 @@ export default function DistributionSection({
             </>
           )}
 
-          {/* Tombol Terapkan */}
           <button onClick={loadData} disabled={loading}
             style={{ height: 26, padding: '0 12px', borderRadius: 5, background: '#1c9706', border: 'none', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
             {loading && <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />}
@@ -1568,7 +1541,6 @@ export default function DistributionSection({
         </div>
       </div>
 
-      {/* ── Active filter indicator ──────────────────────────────────────────── */}
       {loaded && hasActiveFilter && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
@@ -1587,7 +1559,6 @@ export default function DistributionSection({
         </div>
       )}
 
-      {/* ── Belum pernah load ────────────────────────────────────────────────── */}
       {!loaded && !loading && (
         <div style={{ padding: '32px', textAlign: 'center', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, color: t.textMuted, fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <Target size={28} color={t.textFaint} />
@@ -1598,7 +1569,6 @@ export default function DistributionSection({
         </div>
       )}
 
-      {/* ── KPI Summary + Tabs ───────────────────────────────────────────────── */}
       {loaded && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
@@ -1616,7 +1586,6 @@ export default function DistributionSection({
           <DistributionTabs
             data={data}
             theme={theme}
-            hasSalesmanFilter={hasSalesmanFilter}
             hasAreaFilterWarning={hasAreaFilterWarning}
           />
         </>
