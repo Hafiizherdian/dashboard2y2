@@ -391,7 +391,7 @@ function DashboardContent() {
       const [fRes, sRes, dRes] = await Promise.all([
         fetch('/api/files'),
         fetch('/api/stats'),
-        fetch('/api/distribution?weekStart=1&weekEnd=52'),
+        fetch('/api/distribution?mode=files'),
       ]);
       if (fRes.ok) { const d = await fRes.json(); setUploadedFiles(d.data || []); }
       if (sRes.ok) { const d = await sRes.json(); setDbStats(d.data); }

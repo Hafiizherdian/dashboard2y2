@@ -45,6 +45,24 @@ export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
     try {
       const { searchParams } = new URL(request.url);
+
+      // ── Early return: hanya daftar file (untuk admin page load awal) ──────
+      const mode = searchParams.get('mode');
+      if (mode === 'files') {
+        const filesQ = await pool.query(`
+          SELECT id, original_name, record_count, area, created_at
+          FROM distribution_files
+          WHERE status = 'completed'
+          ORDER BY created_at DESC
+          LIMIT 50
+        `);
+        return NextResponse.json({
+          success: true,
+          data: { files: filesQ.rows },
+        });
+      }
+
+      // ── Query lengkap ─────────────────────────────────────────────────────
       const area      = searchParams.get('area') || '';
       const salesman  = searchParams.get('salesman') || '';
       const product   = searchParams.get('product') || '';
@@ -77,7 +95,6 @@ export async function GET(request: NextRequest) {
       const where = conditions.join(' AND ');
 
       // ── WHERE tanpa filter salesman ────────────────────────────────────────
-      // Dipakai untuk query referensi total (outletCountByType, achievementArea base, dll)
       const baseConditions: string[] = ['1=1'];
       const baseParams: any[] = [];
       let baseIdx = 1;
@@ -100,8 +117,6 @@ export async function GET(request: NextRequest) {
       const whereBase = baseConditions.join(' AND ');
 
       // ── WHERE tanpa filter salesman DAN tanpa filter product ───────────────
-      // Dipakai untuk achievementAreaOutletType agar bisa difilter semua kombinasi
-      // di client (salesman, product, outlet_type)
       const noSalNoProdConditions: string[] = ['1=1'];
       const noSalNoProdParams: any[] = [];
       let noSalNoProdIdx = 1;
@@ -134,11 +149,9 @@ export async function GET(request: NextRequest) {
         outletCountByTypeQ,
         totalOutletsQ,
         outletCountByTypeSalesmanQ,
-        // ── Query area per dimensi lengkap ─────────────────────────────────
-        // Digunakan client-side untuk filter area yang akurat per kombinasi filter
-        achAreaSalesmanQ,      // salesman × city × district  (filter: salesman)
-        achAreaProductQ,       // product × city × district   (filter: product)
-        achAreaOutletTypeQ,    // outlet_type × city × district (filter: outlet_type)
+        achAreaSalesmanQ,
+        achAreaProductQ,
+        achAreaOutletTypeQ,
       ] = await Promise.all([
 
         // Achievement per salesman × product
@@ -324,9 +337,7 @@ export async function GET(request: NextRequest) {
           ORDER BY salesman, outlet_type
         `, params),
 
-        // ── BARU 1: Achievement area per SALESMAN × city × district ────────
-        // WHERE: semua filter kecuali — tidak ada pengecualian, pakai `where` penuh
-        // Client filter: matchSalesman (product sudah difilter server via WHERE)
+        // Achievement area per SALESMAN × city × district
         pool.query(`
           SELECT
             salesman,
@@ -347,10 +358,7 @@ export async function GET(request: NextRequest) {
           ORDER BY total_av_out DESC
         `, params),
 
-        // ── BARU 2: Achievement area per PRODUCT × city × district ─────────
-        // WHERE: tanpa filter salesman & tanpa filter product (whereNoSalNoProd)
-        //        agar client bisa filter product secara bebas dari cache
-        // Client filter: matchProduct, matchSalesman
+        // Achievement area per PRODUCT × city × district
         pool.query(`
           SELECT
             product,
@@ -371,10 +379,7 @@ export async function GET(request: NextRequest) {
           ORDER BY total_av_out DESC
         `, noSalNoProdParams),
 
-        // ── BARU 3: Achievement area per OUTLET_TYPE × city × district ─────
-        // WHERE: tanpa filter salesman & tanpa filter product (whereNoSalNoProd)
-        //        agar client bisa filter outlet_type secara bebas dari cache
-        // Client filter: matchOutlet, matchSalesman, matchProduct
+        // Achievement area per OUTLET_TYPE × city × district
         pool.query(`
           SELECT
             outlet_type,
@@ -410,7 +415,6 @@ export async function GET(request: NextRequest) {
           outletCountByType:          outletCountByTypeQ.rows,
           totalOutlets:               parseInt(totalOutletsQ.rows[0]?.total_outlets ?? '0'),
           outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,
-          // ── Data area per dimensi (untuk filter client-side yang akurat) ──
           achievementAreaSalesman:    achAreaSalesmanQ.rows,
           achievementAreaProduct:     achAreaProductQ.rows,
           achievementAreaOutletType:  achAreaOutletTypeQ.rows,
