@@ -625,7 +625,7 @@ function KpiMini({ bg, border, labelColor, label, value, sub, badge, theme, acce
   );
 }
 
-const mkTick=(theme:Theme)=>({fontSize:8,fill:tk[theme].textMuted,fontFamily:'IBM Plex Mono,monospace'});
+const mkTick=(theme:Theme)=>({fontSize:8,fill:tk[theme].text,fontFamily:'IBM Plex Mono,monospace'});
 
 const UNIT_OPTIONS = [
   { value: 'units_dos', label: 'Dos',  fullLabel: 'Jual (Dos Net)'  },
