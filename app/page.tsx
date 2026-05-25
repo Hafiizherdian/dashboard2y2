@@ -104,8 +104,8 @@ const WEEKS = Array.from({length:52},(_,i)=>i+1);
 const fmtK = (v:number) => v>=1e9?`${(v/1e9).toFixed(1)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:v>=1e3?`${(v/1e3).toFixed(0)}K`:String(Math.round(v));
 
 // FIX: 2 desimal, tanpa pembulatan
-const fmtU  = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-const fmtUF = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtU  = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtUF = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function getDetailUnitValue(d: any, unit: string, field: 'actual' | 'target'): number {
   const ud = d[unit] as { target?: number; actual?: number } | undefined;
@@ -627,7 +627,7 @@ function KpiMini({ bg, border, labelColor, label, value, sub, badge, theme, acce
   );
 }
 
-const mkTick=(theme:Theme)=>({fontSize:8,fill:tk[theme].textMuted,fontFamily:'IBM Plex Mono,monospace'});
+const mkTick=(theme:Theme)=>({fontSize:8,fill:tk[theme].text,fontFamily:'IBM Plex Mono,monospace'});
 
 const UNIT_OPTIONS = [
   { value: 'units_dos', label: 'Dos',  fullLabel: 'Jual (Dos Net)'  },
