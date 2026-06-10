@@ -101,10 +101,15 @@ const YEARS = [2022,2023,2024,2025,2026,2027,2028];
 const WEEKS = Array.from({length:52},(_,i)=>i+1);
 
 const fmtK = (v:number) => v>=1e9?`${(v/1e9).toFixed(1)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:v>=1e3?`${(v/1e3).toFixed(0)}K`:String(Math.round(v));
+<<<<<<< HEAD
 
 // FIX: 2 desimal, tanpa pembulatan
 const fmtU  = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtUF = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+=======
+const fmtU  = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const fmtUF = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+>>>>>>> 10bea66 (update filter bar)
 
 function getDetailUnitValue(d: any, unit: string, field: 'actual' | 'target'): number {
   const ud = d[unit] as { target?: number; actual?: number } | undefined;
@@ -166,13 +171,13 @@ function SessionGuard({ children }:{ children:React.ReactNode }) {
             <path d="M32 4 a28 28 0 0 1 24.2 14" stroke="#1c9706" strokeWidth="2.5" strokeLinecap="round"/>
           </svg>
           <div style={{
-  position: 'absolute', inset: 10, borderRadius: 12,
-  background: 'rgba(28,151,6,0.12)', border: '1px solid rgba(28,151,6,0.25)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  animation: 'sgPulse 2s ease-in-out infinite',
-}}>
-  <img src="/logo-cgkn.png" alt="CGKN" style={{width:28,height:28,objectFit:'contain'}}/>
-</div>
+            position: 'absolute', inset: 10, borderRadius: 12,
+            background: 'rgba(28,151,6,0.12)', border: '1px solid rgba(28,151,6,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'sgPulse 2s ease-in-out infinite',
+          }}>
+            <img src="/logo-cgkn.png" alt="CGKN" style={{width:28,height:28,objectFit:'contain'}}/>
+          </div>
         </div>
         <div style={{ textAlign: 'center', animation: 'sgFadeUp 0.5s 0.1s ease both', opacity: 0 }}>
           <div style={{ fontSize: 20, fontWeight: 800, color: 'rgba(255,255,255,0.9)', letterSpacing: '-0.03em', lineHeight: 1 }}>CGKN</div>
@@ -214,6 +219,7 @@ function ThemeToggle({ theme, setTheme, compact=false }:{ theme:Theme; setTheme:
 }
 
 const TABS=[
+<<<<<<< HEAD
   {id:'overview',  label:'Ringkasan',  shortLabel:'Ringkasan', Icon:TrendingUp},
   {id:'weekly',    label:'Mingguan',   shortLabel:'Mingguan',  Icon:Calendar  },
   {id:'quarterly', label:'Kuartal',    shortLabel:'Kuartal',   Icon:BarChart3 },
@@ -221,6 +227,16 @@ const TABS=[
   {id:'yoy',      label:'YoY Growth', shortLabel:'YoY',       Icon:PieChart  },
   {id:'outlet',   label:'Outlet',     shortLabel:'Outlet',    Icon:Store     },
   {id:'analysis', label:'Brand Performance',   shortLabel:'Brand Performance',  Icon:FileText  },
+=======
+  {id:'overview',      label:'Ringkasan',       shortLabel:'Ringkasan',  Icon:TrendingUp},
+  {id:'weekly',        label:'Mingguan',        shortLabel:'Mingguan',   Icon:Calendar  },
+  {id:'quarterly',     label:'Kuartal',         shortLabel:'Kuartal',    Icon:BarChart3 },
+  {id:'l4wc4w',        label:'L4W vs C1W',      shortLabel:'L4W',        Icon:Activity  },
+  {id:'yoy',           label:'YoY Growth',      shortLabel:'YoY',        Icon:PieChart  },
+  {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
+  {id:'analysis',      label:'Brand Performance',shortLabel:'Brand',     Icon:FileText  },
+  {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Filter    },
+>>>>>>> 10bea66 (update filter bar)
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -235,8 +251,8 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, theme, setT
       <div style={{display:'flex',alignItems:'center',justifyContent:collapsed?'center':'space-between',padding:collapsed?'0':'0 8px 0 12px',borderBottom:`1px solid ${t.border}`,flexShrink:0,minHeight:46}}>
         {collapsed ? (
           <button onClick={()=>setCollapsed(false)} style={{background:'none',border:'none',cursor:'pointer',padding:6,display:'flex'}}>
-  <img src="/logo-cgkn.png" alt="CGKN" style={{width:26,height:26,borderRadius:7,objectFit:'contain'}}/>
-</button>
+            <img src="/logo-cgkn.png" alt="CGKN" style={{width:26,height:26,borderRadius:7,objectFit:'contain'}}/>
+          </button>
         ) : (
           <>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -343,53 +359,128 @@ function Sel({ value, onChange, options, theme, style }:{ value:string|number; o
   );
 }
 
-function DesktopFilterBar({ y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onReset,loading,theme }:{
-  y1:number;sY1:(v:number)=>void;w1:number;sW1:(v:number)=>void;
-  y2:number;sY2:(v:number)=>void;w2:number;sW2:(v:number)=>void;
-  af:string;sAf:(v:string)=>void;areas:AreaConfig[];
-  onApply:()=>void;onReset:()=>void;loading:boolean;theme:Theme;
+// ─── DesktopFilterBar ────────────────────────────────────────────────────────
+function DesktopFilterBar({
+  y1,sY1,wStart1,sWStart1,w1,sW1,
+  y2,sY2,wStart2,sWStart2,w2,sW2,
+  af,sAf,areas,onApply,onReset,loading,theme,
+}:{
+  y1:number; sY1:(v:number)=>void;
+  wStart1:number; sWStart1:(v:number)=>void;
+  w1:number; sW1:(v:number)=>void;
+  y2:number; sY2:(v:number)=>void;
+  wStart2:number; sWStart2:(v:number)=>void;
+  w2:number; sW2:(v:number)=>void;
+  af:string; sAf:(v:string)=>void; areas:AreaConfig[];
+  onApply:()=>void; onReset:()=>void; loading:boolean; theme:Theme;
 }) {
-  const t=tk[theme]; const dirty=w1!==0||w2!==0||!!af;
+  const t=tk[theme];
+  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af;
   const yO=YEARS.map(y=>({value:y,label:String(y)}));
-  const wO=[{value:0,label:'Semua'},...WEEKS.map(w=>({value:w,label:`W${w}`}))];
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
+
+  // weekStart options: hanya tampilkan minggu <= weekEnd (jika weekEnd sudah dipilih)
+  const wStartOpts = (end:number) => [
+    {value:0, label:'W1'},
+    ...WEEKS.filter(w => end===0 || w<end).map(w=>({value:w, label:`W${w}`})),
+  ];
+  // weekEnd options: hanya tampilkan minggu >= weekStart
+  const wEndOpts = (start:number) => [
+    {value:0, label:'Semua'},
+    ...WEEKS.filter(w => w>(start||0)).map(w=>({value:w, label:`W${w}`})),
+  ];
+
   const Sep=()=><div style={{width:1,height:12,background:t.border,margin:'0 1px',flexShrink:0}}/>;
   const Lbl=({c}:{c:string})=><span style={{fontSize:8,fontWeight:700,color:t.textFaint,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.1em',flexShrink:0}}>{c}</span>;
+
   const [dotStep, setDotStep] = useState(0);
   useEffect(() => {
     if (loading) {
-      const t = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
-      return () => clearInterval(t);
+      const id = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
+      return () => clearInterval(id);
     }
   }, [loading]);
+
   return (
     <div style={{flexShrink:0,background:t.filterbg,borderBottom:`1px solid ${t.border}`}}>
       <div style={{display:'flex',alignItems:'center',padding:'0 14px',height:36,gap:4}}>
+
+        {/* P1 */}
         <Lbl c="P1"/>
         <Sel value={y1} onChange={v=>sY1(+v)} options={yO} theme={theme} style={{width:60}}/>
-        <Sel value={w1} onChange={v=>sW1(+v)} options={wO} theme={theme} style={{width:68}}/>
-        <Sep/><span style={{fontSize:8,fontWeight:800,color:t.textFaint,fontFamily:'monospace',letterSpacing:'0.12em',flexShrink:0}}>VS</span><Sep/>
+        <Sel
+          value={wStart1}
+          onChange={v=>{
+            const s=+v; sWStart1(s);
+            // jika start > end, reset end
+            if(w1>0 && s>=w1) sW1(0);
+          }}
+          options={wStartOpts(w1)}
+          theme={theme}
+          style={{width:60}}
+        />
+        <span style={{fontSize:9,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>–</span>
+        <Sel
+          value={w1}
+          onChange={v=>{
+            const e=+v; sW1(e);
+            // jika end < start, reset start
+            if(e>0 && wStart1>=e) sWStart1(0);
+          }}
+          options={wEndOpts(wStart1)}
+          theme={theme}
+          style={{width:68}}
+        />
+
+        <Sep/>
+        <span style={{fontSize:8,fontWeight:800,color:t.textFaint,fontFamily:'monospace',letterSpacing:'0.12em',flexShrink:0}}>VS</span>
+        <Sep/>
+
+        {/* P2 */}
         <Lbl c="P2"/>
         <Sel value={y2} onChange={v=>sY2(+v)} options={yO} theme={theme} style={{width:60}}/>
-        <Sel value={w2} onChange={v=>sW2(+v)} options={wO} theme={theme} style={{width:68}}/>
+        <Sel
+          value={wStart2}
+          onChange={v=>{
+            const s=+v; sWStart2(s);
+            if(w2>0 && s>=w2) sW2(0);
+          }}
+          options={wStartOpts(w2)}
+          theme={theme}
+          style={{width:60}}
+        />
+        <span style={{fontSize:9,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>–</span>
+        <Sel
+          value={w2}
+          onChange={v=>{
+            const e=+v; sW2(e);
+            if(e>0 && wStart2>=e) sWStart2(0);
+          }}
+          options={wEndOpts(wStart2)}
+          theme={theme}
+          style={{width:68}}
+        />
+
         <Sep/>
         <Sel value={af} onChange={v=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:106}}/>
+
         <div style={{flex:1}}/>
+
         {loading && (
-  <>
-    <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-      {[0,1,2].map(i=>(
-        <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
-          transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
-      ))}
-    </div>
-    <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
-      background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
-      borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
-      mengambil data
-    </div>
-  </>
-)}
+          <>
+            <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
+              {[0,1,2].map(i=>(
+                <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
+                  transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
+              ))}
+            </div>
+            <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
+              background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
+              borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
+              mengambil data
+            </div>
+          </>
+        )}
         {dirty&&<button onClick={onReset} style={{height:22,padding:'0 7px',borderRadius:4,fontSize:10,fontFamily:'monospace',background:'transparent',border:`1px solid ${t.borderInput}`,color:t.textMuted,cursor:'pointer'}}>Reset</button>}
         <button onClick={onApply} disabled={loading}
           style={{height:22,padding:'0 11px',borderRadius:4,fontSize:10,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',background:'#1c9706',border:'none',color:'#fff',cursor:loading?'not-allowed':'pointer',opacity:loading?0.5:1,flexShrink:0,boxShadow:'0 1px 4px rgba(28,151,6,0.3)'}}>
@@ -400,9 +491,15 @@ function DesktopFilterBar({ y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onR
   );
 }
 
-function MobileFilterBar({ y1,w1,y2,w2,af,areas,onOpen,loading,theme }:{ 
-  y1:number;w1:number;y2:number;w2:number;af:string;
-  areas:AreaConfig[];onOpen:()=>void;loading:boolean;theme:Theme 
+// ─── MobileFilterBar ─────────────────────────────────────────────────────────
+function MobileFilterBar({
+  y1,wStart1,w1,
+  y2,wStart2,w2,
+  af,areas,onOpen,loading,theme,
+}:{
+  y1:number; wStart1:number; w1:number;
+  y2:number; wStart2:number; w2:number;
+  af:string; areas:AreaConfig[]; onOpen:()=>void; loading:boolean; theme:Theme;
 }) {
   const t=tk[theme];
   const [dotStep, setDotStep] = useState(0);
@@ -422,59 +519,54 @@ function MobileFilterBar({ y1,w1,y2,w2,af,areas,onOpen,loading,theme }:{
       <span style={{
         padding:'1px 5px',borderRadius:4,fontSize:9,fontWeight:600,
         fontFamily:'IBM Plex Mono,monospace',background:c.bg,color:c.text,
-        border:`1px solid ${c.border}`,whiteSpace:'nowrap'
+        border:`1px solid ${c.border}`,whiteSpace:'nowrap',
       }}>{v}</span>
     );
   };
+
+  const rangeLabel = (start:number, end:number) =>
+    end > 0 ? `W${start > 0 ? start : 1}–W${end}` : 'Semua';
 
   const aName=areas.find(a=>a.id===af)?.name;
 
   return (
     <div style={{
       background:t.filterbg,borderBottom:`1px solid ${t.border}`,
-      height:32,display:'flex',alignItems:'center',padding:'0 10px',gap:6
+      height:32,display:'flex',alignItems:'center',padding:'0 10px',gap:6,
     }}>
-      {/* Tombol buka filter */}
       <button
         onClick={onOpen}
         style={{
           display:'flex',alignItems:'center',gap:4,height:20,padding:'0 7px',
           borderRadius:4,background:t.inputBg,border:`1px solid ${t.borderInput}`,
-          color:t.textSub,fontSize:9,fontFamily:'monospace',cursor:'pointer',flexShrink:0
+          color:t.textSub,fontSize:9,fontFamily:'monospace',cursor:'pointer',flexShrink:0,
         }}
       >
         <Filter size={8}/>Filter
       </button>
 
-      {/* Chips periode & area */}
-      <div style={{
-        display:'flex',gap:4,flex:1,overflowX:'auto',alignItems:'center',scrollbarWidth:'none'
-      }}>
-        <Chip v={`${y1}${w1>0?` W${w1}`:''}`} ch="blue"/>
+      <div style={{display:'flex',gap:4,flex:1,overflowX:'auto',alignItems:'center',scrollbarWidth:'none'}}>
+        <Chip v={`${y1} ${rangeLabel(wStart1,w1)}`} ch="blue"/>
         <span style={{fontSize:8,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>vs</span>
-        <Chip v={`${y2}${w2>0?` W${w2}`:''}`} ch="slate"/>
+        <Chip v={`${y2} ${rangeLabel(wStart2,w2)}`} ch="slate"/>
         {aName&&<Chip v={aName} ch="orange"/>}
       </div>
 
-      {/* Loading — sama persis dengan desktop */}
       {loading && (
         <>
           <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
             {[0,1,2].map(i=>(
-              <div
-                key={i}
-                style={{
-                  width:4,height:4,borderRadius:'50%',background:'#4ade80',
-                  transition:'opacity 0.2s',opacity:i===dotStep?1:0.25
-                }}
-              />
+              <div key={i} style={{
+                width:4,height:4,borderRadius:'50%',background:'#4ade80',
+                transition:'opacity 0.2s',opacity:i===dotStep?1:0.25,
+              }}/>
             ))}
           </div>
           <div style={{
             fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
             background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
             borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center',
-            flexShrink:0
+            flexShrink:0,
           }}>
             mengambil data
           </div>
@@ -484,23 +576,35 @@ function MobileFilterBar({ y1,w1,y2,w2,af,areas,onOpen,loading,theme }:{
   );
 }
 
-function MobileFilterSheet({ open,onClose,y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,areas,onApply,onReset,loading,theme }:{
-  open:boolean;onClose:()=>void;
-  y1:number;sY1:(v:number)=>void;w1:number;sW1:(v:number)=>void;
-  y2:number;sY2:(v:number)=>void;w2:number;sW2:(v:number)=>void;
-  af:string;sAf:(v:string)=>void;areas:AreaConfig[];
-  onApply:()=>void;onReset:()=>void;loading:boolean;theme:Theme;
+// ─── MobileFilterSheet ───────────────────────────────────────────────────────
+function MobileFilterSheet({
+  open,onClose,
+  y1,sY1,wStart1,sWStart1,w1,sW1,
+  y2,sY2,wStart2,sWStart2,w2,sW2,
+  af,sAf,areas,onApply,onReset,loading,theme,
+}:{
+  open:boolean; onClose:()=>void;
+  y1:number; sY1:(v:number)=>void;
+  wStart1:number; sWStart1:(v:number)=>void;
+  w1:number; sW1:(v:number)=>void;
+  y2:number; sY2:(v:number)=>void;
+  wStart2:number; sWStart2:(v:number)=>void;
+  w2:number; sW2:(v:number)=>void;
+  af:string; sAf:(v:string)=>void; areas:AreaConfig[];
+  onApply:()=>void; onReset:()=>void; loading:boolean; theme:Theme;
 }) {
-  const t=tk[theme]; const dirty=w1!==0||w2!==0||!!af;
+  const t=tk[theme];
+  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af;
   const yO=YEARS.map(y=>({value:y,label:String(y)}));
-  const wO=[{value:0,label:'Semua'},...WEEKS.map(w=>({value:w,label:`Minggu ${w}`}))];
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
+
   const Row=({l,children}:{l:string;children:React.ReactNode})=>(
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',minHeight:38,borderBottom:`1px solid ${t.border}`}}>
       <span style={{fontSize:13,color:t.textSub}}>{l}</span>
       {children}
     </div>
   );
+
   return (
     <>
       {open&&<div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:10000}}/>}
@@ -513,22 +617,63 @@ function MobileFilterSheet({ open,onClose,y1,sY1,w1,sW1,y2,sY2,w2,sW2,af,sAf,are
         transition:'transform 0.22s cubic-bezier(0.32,0.72,0,1)',
         maxHeight:'80vh', display:'flex', flexDirection:'column',
       }}>
-        <div style={{display:'flex',justifyContent:'center',padding:'8px 0 0'}}><div style={{width:24,height:3,borderRadius:2,background:t.textFaint}}/></div>
+        <div style={{display:'flex',justifyContent:'center',padding:'8px 0 0'}}>
+          <div style={{width:24,height:3,borderRadius:2,background:t.textFaint}}/>
+        </div>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 14px',borderBottom:`1px solid ${t.border}`,flexShrink:0}}>
           <span style={{fontSize:13,fontWeight:700,color:t.text}}>Filter Data</span>
           <button onClick={onClose} style={{width:24,height:24,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',background:t.inputBg,border:`1px solid ${t.borderInput}`,color:t.textMuted}}><X size={11}/></button>
         </div>
+
         <div style={{flex:1,overflowY:'auto',padding:'0 14px 4px'}}>
-          {([['P1',y1,sY1,w1,sW1],['P2',y2,sY2,w2,sW2]] as any[]).map(([lbl,y,sY,w,sW])=>(
+          {([
+            ['P1', y1, sY1, wStart1, sWStart1, w1, sW1],
+            ['P2', y2, sY2, wStart2, sWStart2, w2, sW2],
+          ] as any[]).map(([lbl,y,sY,wS,sWS,w,sW])=>(
             <div key={lbl}>
               <div style={{paddingTop:10,fontSize:8,fontWeight:800,color:t.textMuted,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.12em'}}>{lbl}</div>
-              <Row l="Tahun"><Sel value={y} onChange={(v:any)=>sY(+v)} options={yO} theme={theme}/></Row>
-              <Row l="Minggu"><Sel value={w} onChange={(v:any)=>sW(+v)} options={wO} theme={theme} style={{minWidth:130}}/></Row>
+              <Row l="Tahun">
+                <Sel value={y} onChange={(v:any)=>sY(+v)} options={yO} theme={theme}/>
+              </Row>
+              <Row l="Minggu Awal">
+                <Sel
+                  value={wS}
+                  onChange={(v:any)=>{
+                    const s=+v; sWS(s);
+                    if(w>0 && s>=w) sW(0);
+                  }}
+                  options={[
+                    {value:0, label:'W1 (awal)'},
+                    ...WEEKS.filter((x:number)=>w===0||x<w).map((x:number)=>({value:x,label:`Minggu ${x}`})),
+                  ]}
+                  theme={theme}
+                  style={{minWidth:130}}
+                />
+              </Row>
+              <Row l="Minggu Akhir">
+                <Sel
+                  value={w}
+                  onChange={(v:any)=>{
+                    const e=+v; sW(e);
+                    if(e>0 && wS>=e) sWS(0);
+                  }}
+                  options={[
+                    {value:0, label:'Semua'},
+                    ...WEEKS.filter((x:number)=>x>(wS||0)).map((x:number)=>({value:x,label:`Minggu ${x}`})),
+                  ]}
+                  theme={theme}
+                  style={{minWidth:130}}
+                />
+              </Row>
             </div>
           ))}
+
           <div style={{paddingTop:10,fontSize:8,fontWeight:800,color:t.textMuted,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.12em'}}>Area</div>
-          <Row l="Filter Area"><Sel value={af} onChange={(v:any)=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:130}}/></Row>
+          <Row l="Filter Area">
+            <Sel value={af} onChange={(v:any)=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:130}}/>
+          </Row>
         </div>
+
         <div style={{
           padding:'8px 14px',
           paddingBottom:'calc(env(safe-area-inset-bottom,0px) + 12px)',
@@ -553,7 +698,6 @@ function CT({ active, payload, label, theme }:any) {
     p.name?.includes('Target') || p.name?.includes('Actual') ||
     p.name?.includes('Dos') || p.name?.includes('Bks') || p.name?.includes('Slop') || p.name?.includes('Bal')
   );
-  // FIX: tooltip juga pakai 2 desimal
   const formatValue = (value: any) => {
     if (typeof value !== 'number') return value;
     return isUnitChart ? fmtU(value) : fmtK(value);
@@ -655,9 +799,9 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:0, width:'100%' }}>
           {[
-            { n:1, title:'Pilih Periode',   desc:'Atur tahun & minggu untuk P1 dan P2 di filter bar atas',                  last:false },
-            { n:2, title:'Pilih Area',      badge:'opsional', desc:'Kosongkan untuk semua area, atau pilih area tertentu',   last:false },
-            { n:3, title:'Klik "Terapkan"', desc:'Dashboard akan memuat data sesuai filter yang dipilih',                   last:true  },
+            { n:1, title:'Pilih Periode',   desc:'Atur tahun & range minggu untuk P1 dan P2 di filter bar atas', last:false },
+            { n:2, title:'Pilih Area',      badge:'opsional', desc:'Kosongkan untuk semua area, atau pilih area tertentu', last:false },
+            { n:3, title:'Klik "Terapkan"', desc:'Dashboard akan memuat data sesuai filter yang dipilih', last:true },
           ].map(({ n, title, badge, desc, last }) => (
             <div key={n} style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
@@ -749,14 +893,12 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
         <Card theme={theme} accent="#3b82f6" title={`Mingguan — ${pL} vs ${cL}`} icon={<Calendar size={10} color="#3b82f6"/>} color="#3b82f6" sub={`${posW}/${wc.length} minggu positif`}>
           <ResponsiveContainer width="100%" height={MOBILE_CHART_H}>
             <ComposedChart data={weekData} margin={{top:2,right:4,left:0,bottom:0}}>
-              {/* <defs><linearGradient id="gCwM" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs> */}
               <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
               <XAxis dataKey="w" tick={ts} axisLine={false} tickLine={false} interval={9}/>
               <YAxis yAxisId="l" tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false} width={32}/>
               <YAxis yAxisId="r" orientation="right" tickFormatter={v=>`${v.toFixed(0)}%`} tick={ts} axisLine={false} tickLine={false} width={26}/>
               <Tooltip content={<CT theme={theme}/>}/>
               <Bar yAxisId="l" dataKey="p" name={String(pL)} fill="#3b82f6" opacity={0.35} radius={[2,2,0,0]} maxBarSize={9}/>
-              {/* <Area yAxisId="l" type="monotone" dataKey="c" name={String(cL)} fill="url(#gCwM)" stroke="#10b981" strokeWidth={1.8} dot={false}/> */}
               <Bar yAxisId="l" dataKey="c" name={String(cL)} fill="#10b981" opacity={0.7} radius={[2,2,0,0]} maxBarSize={9}/>
               <Line yAxisId="r" type="monotone" dataKey="g" name="Growth %" stroke="#f59e0b" strokeWidth={1.2} dot={false} strokeDasharray="3 2"/>
               <ReferenceLine yAxisId="r" y={0} stroke="rgba(239,68,68,0.3)" strokeWidth={1} strokeDasharray="3 3"/>
@@ -777,17 +919,7 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             <ComposedChart data={lData} margin={{top:2,right:4,left:0,bottom:0}}>
               <defs><linearGradient id="gLwM" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={lc} stopOpacity={0.25}/><stop offset="95%" stopColor={lc} stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
-              <XAxis 
-  dataKey="week"           // pastikan ini sesuai dengan key di data
-  tick={ts} 
-  axisLine={false} 
-  tickLine={false}
-  interval={0}
-  angle={-45}
-  textAnchor="end"
-  height={55}
-  dy={12}
-/>
+              <XAxis dataKey="week" tick={ts} axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={55} dy={12}/>
               <YAxis tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false} width={32}/>
               <Tooltip content={<CT theme={theme}/>}/>
               <Area type="monotone" dataKey="v" name={`${unitLabel} ${cL}`} fill="url(#gLwM)" stroke={lc} strokeWidth={2} dot={{fill:lc,r:2.5,strokeWidth:0}}/>
@@ -818,7 +950,6 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
           )}
         </Card>
 
-        {/* FIX mobile: YoY dulu, baru Kuartal */}
         <Card theme={theme} accent={isPos?'#10b981':'#ef4444'} title={`YoY — ${pL} vs ${cL}`} icon={<TrendingUp size={10} color={isPos?'#10b981':'#ef4444'}/>} color={isPos?'#10b981':'#ef4444'} sub={`${isPos?'+':''}${gPct.toFixed(1)}% pertumbuhan tahunan`}>
           <ResponsiveContainer width="100%" height={MOBILE_CHART_H}>
             <ComposedChart data={mData} margin={{top:2,right:4,left:0,bottom:0}}>
@@ -937,94 +1068,72 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             { name:'Gap',    value:achGap,      fill:t.borderCard },
           ];
           return (
-            <div style={{
-  borderRadius:12, padding:'10px 12px', background:t.cardbg,
-  border:`1px solid ${t.borderCard}`, display:'flex', alignItems:'center',
-  gap:10, overflow:'hidden', position:'relative',
-  minWidth:0, // ← TAMBAH INI
-}}>
-  <div style={{position:'absolute',top:0,left:12,right:12,height:2,borderRadius:'0 0 2px 2px',background:`linear-gradient(90deg,${achColor}55,${achColor}22)`}}/>
-
-  {/* Pie chart — kurangi dari 88 → 72 */}
-  <div style={{position:'relative', flexShrink:0, width:72, height:72}}>
-    <ResponsiveContainer width="100%" height="100%">
-      <RechartsPieChart>
-        <Pie data={pieAchKpi} cx="50%" cy="50%" innerRadius="38%" outerRadius="82%"
-             dataKey="value" paddingAngle={2} strokeWidth={0} startAngle={90} endAngle={-270}>
-          {pieAchKpi.map((entry,i)=><Cell key={i} fill={entry.fill}/>)}
-        </Pie>
-        <Tooltip content={({active,payload})=>{
-          if (!active||!payload?.length) return null;
-          const d=payload[0].payload;
-          return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:6,padding:'4px 8px',fontSize:9,fontFamily:'IBM Plex Mono,monospace'}}><div style={{fontWeight:700,color:t.textSub}}>{d.name}</div><div style={{color:t.text}}>{fmtU(d.value)} {unitLabel}</div></div>;
-        }}/>
-      </RechartsPieChart>
-    </ResponsiveContainer>
-    <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
-      <div style={{fontSize:16,fontWeight:800,color:achColor,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{achPct}%</div>
-      <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.04em',marginTop:2}}>ach.</div>
-    </div>
-  </div>
-
-  <div style={{width:1,height:60,background:t.border,flexShrink:0}}/>
-
-  {/* Quarterly bars — GANTI width:200 jadi flex:1 minWidth:0 */}
-  <div style={{display:'flex',flexDirection:'column',gap:0, flex:1, minWidth:0}}>
-    <div style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:7}}>
-      Achievement {cL}
-    </div>
-    {qDataComputed.map((q:any,i:number)=>{
-      const pct=q.t>0?Math.min(100,Math.round((q.a/q.t)*100)):0;
-      const clr=pct>=100?'#10b981':pct>=80?'#f59e0b':'#ef4444';
-      return (
-        <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:i<qDataComputed.length-1?6:0}}>
-          <span style={{width:20,fontSize:9,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',color:clr,flexShrink:0}}>{q.n}</span>
-
-          {/* GANTI width:100 jadi flex:1 */}
-          <div style={{flex:1,height:4,borderRadius:2,background:t.borderCard,overflow:'hidden'}}>
-            <div style={{height:'100%',width:`${pct}%`,background:clr,borderRadius:2,transition:'width 0.5s ease'}}/>
-          </div>
-
-          <span style={{width:32,textAlign:'right',fontSize:9,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',color:clr,flexShrink:0}}>{pct}%</span>
-        </div>
-      );
-    })}
-  </div>
-
-  <div style={{width:1,height:60,background:t.border,flexShrink:0}}/>
-
-  {/* Actual/Target — sudah flex:1 tapi kurangi font size */}
-  <div style={{display:'flex',flexDirection:'column',gap:8,flex:1,minWidth:0}}>
-    <div style={{display:'flex',flexDirection:'column',gap:2}}>
-      <span style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em'}}>Actual</span>
-      <span style={{fontSize:16,fontWeight:800,color:achColor,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtU(totalActual)}</span>
-    </div>
-    <div style={{width:'100%',height:1,background:t.border}}/>
-    <div style={{display:'flex',flexDirection:'column',gap:2}}>
-      <span style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em'}}>Target</span>
-      <span style={{fontSize:12,fontWeight:700,color:t.textSub,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtU(totalTarget)}</span>
-    </div>
-  </div>
-</div>
+            <div style={{borderRadius:12,padding:'10px 12px',background:t.cardbg,border:`1px solid ${t.borderCard}`,display:'flex',alignItems:'center',gap:10,overflow:'hidden',position:'relative',minWidth:0}}>
+              <div style={{position:'absolute',top:0,left:12,right:12,height:2,borderRadius:'0 0 2px 2px',background:`linear-gradient(90deg,${achColor}55,${achColor}22)`}}/>
+              <div style={{position:'relative',flexShrink:0,width:72,height:72}}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Pie data={pieAchKpi} cx="50%" cy="50%" innerRadius="38%" outerRadius="82%" dataKey="value" paddingAngle={2} strokeWidth={0} startAngle={90} endAngle={-270}>
+                      {pieAchKpi.map((entry,i)=><Cell key={i} fill={entry.fill}/>)}
+                    </Pie>
+                    <Tooltip content={({active,payload})=>{
+                      if (!active||!payload?.length) return null;
+                      const d=payload[0].payload;
+                      return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:6,padding:'4px 8px',fontSize:9,fontFamily:'IBM Plex Mono,monospace'}}><div style={{fontWeight:700,color:t.textSub}}>{d.name}</div><div style={{color:t.text}}>{fmtU(d.value)} {unitLabel}</div></div>;
+                    }}/>
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+                <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
+                  <div style={{fontSize:16,fontWeight:800,color:achColor,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{achPct}%</div>
+                  <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.04em',marginTop:2}}>ach.</div>
+                </div>
+              </div>
+              <div style={{width:1,height:60,background:t.border,flexShrink:0}}/>
+              <div style={{display:'flex',flexDirection:'column',gap:0,flex:1,minWidth:0}}>
+                <div style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:7}}>Achievement {cL}</div>
+                {qDataComputed.map((q:any,i:number)=>{
+                  const pct=q.t>0?Math.min(100,Math.round((q.a/q.t)*100)):0;
+                  const clr=pct>=100?'#10b981':pct>=80?'#f59e0b':'#ef4444';
+                  return (
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:i<qDataComputed.length-1?6:0}}>
+                      <span style={{width:20,fontSize:9,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',color:clr,flexShrink:0}}>{q.n}</span>
+                      <div style={{flex:1,height:4,borderRadius:2,background:t.borderCard,overflow:'hidden'}}>
+                        <div style={{height:'100%',width:`${pct}%`,background:clr,borderRadius:2,transition:'width 0.5s ease'}}/>
+                      </div>
+                      <span style={{width:32,textAlign:'right',fontSize:9,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',color:clr,flexShrink:0}}>{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{width:1,height:60,background:t.border,flexShrink:0}}/>
+              <div style={{display:'flex',flexDirection:'column',gap:8,flex:1,minWidth:0}}>
+                <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                  <span style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em'}}>Actual</span>
+                  <span style={{fontSize:16,fontWeight:800,color:achColor,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtU(totalActual)}</span>
+                </div>
+                <div style={{width:'100%',height:1,background:t.border}}/>
+                <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                  <span style={{fontSize:8,fontWeight:700,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',textTransform:'uppercase',letterSpacing:'0.08em'}}>Target</span>
+                  <span style={{fontSize:12,fontWeight:700,color:t.textSub,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtU(totalTarget)}</span>
+                </div>
+              </div>
+            </div>
           );
         })()}
       </div>
 
       <div style={{flex:1,minHeight:0,display:'grid',gridTemplateColumns:bodyGrid,gap:GAP}}>
-
-        {/* Kolom kiri — chart mingguan + L4W + tipe produk */}
+        {/* Kolom kiri */}
         <div style={{display:'flex',flexDirection:'column',gap:GAP,minHeight:0,overflow:'hidden'}}>
           <Card theme={theme} accent="#3b82f6" title={`Mingguan — ${pL} vs ${cL}`} icon={<Calendar size={10} color="#3b82f6"/>} color="#3b82f6" sub={`${posW}/${wc.length} minggu positif`} style={{flex:'1 1 0'}}>
             <ResponsiveContainer width="100%" height={cH}>
               <ComposedChart data={weekData} margin={{top:2,right:4,left:0,bottom:0}}>
-                {/* <defs><linearGradient id="gCw" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs> */}
                 <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
                 <XAxis dataKey="w" tick={ts} axisLine={false} tickLine={false} interval={5}/>
                 <YAxis yAxisId="l" tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false} width={32}/>
                 <YAxis yAxisId="r" orientation="right" tickFormatter={v=>`${v.toFixed(0)}%`} tick={ts} axisLine={false} tickLine={false} width={26}/>
                 <Tooltip content={<CT theme={theme}/>}/>
                 <Bar yAxisId="l" dataKey="p" name={String(pL)} fill="#3b82f6" opacity={0.35} radius={[2,2,0,0]} maxBarSize={9}/>
-                {/* <Area yAxisId="l" type="monotone" dataKey="c" name={String(cL)} fill="url(#gCw)" stroke="#10b981" strokeWidth={1.8} dot={false}/> */}
                 <Bar yAxisId="l" dataKey="c" name={String(cL)} fill="#10b981" opacity={0.7} radius={[2,2,0,0]} maxBarSize={9}/>
                 <Line yAxisId="r" type="monotone" dataKey="g" name="Growth %" stroke="#f59e0b" strokeWidth={1.2} dot={false} strokeDasharray="3 2"/>
                 <ReferenceLine yAxisId="r" y={0} stroke="rgba(239,68,68,0.3)" strokeWidth={1} strokeDasharray="3 3"/>
@@ -1081,10 +1190,8 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
           </div>
         </div>
 
-        {/* Kolom tengah — FIX: YoY dulu, baru Kuartal */}
+        {/* Kolom tengah */}
         <div style={{display:'flex',flexDirection:'column',gap:GAP,minHeight:0,overflow:'hidden'}}>
-
-          {/* FIX: YoY naik ke atas */}
           <Card theme={theme} accent={isPos?'#10b981':'#ef4444'} title={`YoY — ${pL} vs ${cL}`} icon={<TrendingUp size={10} color={isPos?'#10b981':'#ef4444'}/>} color={isPos?'#10b981':'#ef4444'} sub={`${isPos?'+':''}${gPct.toFixed(1)}% pertumbuhan tahunan`} style={{flex:'1 1 0'}}>
             <ResponsiveContainer width="100%" height={cH}>
               <ComposedChart data={mData} margin={{top:2,right:4,left:0,bottom:0}}>
@@ -1102,74 +1209,70 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             </ResponsiveContainer>
           </Card>
 
-          {/* FIX: Kuartal turun ke bawah */}
-          
           <Card theme={theme} accent="#8b5cf6" title={`Outlet Kontribusi ${cL}`} icon={<Store size={10} color="#8b5cf6"/>} color="#8b5cf6" sub={`${oTypes.length} tipe · ${fmtK(totDoz)} DOZ`} style={{flex:'1 1 0'}}>
-              {oTypes.length===0 ? (
-                <div style={{color:t.textMuted,fontSize:10,textAlign:'center',paddingTop:16}}>Tidak ada data</div>
-              ) : (
-                <div style={{display:'flex',alignItems:'center',gap:10,flex:1,minHeight:0}}>
-                  <div style={{position:'relative',flexShrink:0,width:'52%'}}>
-                    <ResponsiveContainer width="100%" height={Math.floor(bodyH*0.32)}>
-                      <RechartsPieChart>
-                        <Pie data={dData} cx="50%" cy="50%" innerRadius="38%" outerRadius="65%" dataKey="v" paddingAngle={2} strokeWidth={0}>
-                          {dData.map((_:any,i:number)=><Cell key={i} fill={dData[i].fill}/>)}
-                        </Pie>
-                        <Tooltip content={({active,payload})=>{
-                          if (!active||!payload?.length) return null; const d=payload[0].payload;
-                          const p=totDoz>0?((d.v/totDoz)*100).toFixed(1):'0';
-                          return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtK(d.v)} DOZ</div><div style={{color:t.textMuted}}>{p}%</div></div>;
-                        }}/>
-                      </RechartsPieChart>
-                    </ResponsiveContainer>
-                    <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
-                      <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtK(totDoz)}</div>
-                      <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>DOZ</div>
-                    </div>
-                  </div>
-                  <div style={{flex:1,display:'flex',flexDirection:'column',gap:7,minWidth:0}}>
-                    {dData.map((d:any,i:number)=>{
-                      const pct=totDoz>0?(d.v/totDoz)*100:0;
-                      return (
-                        <div key={i} style={{display:'flex',flexDirection:'column',gap:2}}>
-                          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:4}}>
-                            <div style={{display:'flex',alignItems:'center',gap:5,minWidth:0}}>
-                              <span style={{width:7,height:7,borderRadius:2,background:d.fill,flexShrink:0}}/>
-                              <span style={{color:t.textSub,fontSize:9,fontFamily:'IBM Plex Mono,monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.n}</span>
-                            </div>
-                            <span style={{fontWeight:700,color:d.fill,fontSize:9,fontFamily:'IBM Plex Mono,monospace',flexShrink:0}}>{pct.toFixed(1)}%</span>
-                          </div>
-                          <div style={{height:2,borderRadius:2,background:t.borderCard,overflow:'hidden'}}>
-                            <div style={{height:'100%',width:`${pct}%`,backgroundColor:d.fill,borderRadius:2,transition:'width 0.4s ease'}}/>
-                          </div>
-                        </div>
-                      );
-                    })}
+            {oTypes.length===0 ? (
+              <div style={{color:t.textMuted,fontSize:10,textAlign:'center',paddingTop:16}}>Tidak ada data</div>
+            ) : (
+              <div style={{display:'flex',alignItems:'center',gap:10,flex:1,minHeight:0}}>
+                <div style={{position:'relative',flexShrink:0,width:'52%'}}>
+                  <ResponsiveContainer width="100%" height={Math.floor(bodyH*0.32)}>
+                    <RechartsPieChart>
+                      <Pie data={dData} cx="50%" cy="50%" innerRadius="38%" outerRadius="65%" dataKey="v" paddingAngle={2} strokeWidth={0}>
+                        {dData.map((_:any,i:number)=><Cell key={i} fill={dData[i].fill}/>)}
+                      </Pie>
+                      <Tooltip content={({active,payload})=>{
+                        if (!active||!payload?.length) return null; const d=payload[0].payload;
+                        const p=totDoz>0?((d.v/totDoz)*100).toFixed(1):'0';
+                        return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtK(d.v)} DOZ</div><div style={{color:t.textMuted}}>{p}%</div></div>;
+                      }}/>
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                  <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
+                    <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtK(totDoz)}</div>
+                    <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>DOZ</div>
                   </div>
                 </div>
-              )}
-            </Card>
-
+                <div style={{flex:1,display:'flex',flexDirection:'column',gap:7,minWidth:0}}>
+                  {dData.map((d:any,i:number)=>{
+                    const pct=totDoz>0?(d.v/totDoz)*100:0;
+                    return (
+                      <div key={i} style={{display:'flex',flexDirection:'column',gap:2}}>
+                        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:4}}>
+                          <div style={{display:'flex',alignItems:'center',gap:5,minWidth:0}}>
+                            <span style={{width:7,height:7,borderRadius:2,background:d.fill,flexShrink:0}}/>
+                            <span style={{color:t.textSub,fontSize:9,fontFamily:'IBM Plex Mono,monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{d.n}</span>
+                          </div>
+                          <span style={{fontWeight:700,color:d.fill,fontSize:9,fontFamily:'IBM Plex Mono,monospace',flexShrink:0}}>{pct.toFixed(1)}%</span>
+                        </div>
+                        <div style={{height:2,borderRadius:2,background:t.borderCard,overflow:'hidden'}}>
+                          <div style={{height:'100%',width:`${pct}%`,backgroundColor:d.fill,borderRadius:2,transition:'width 0.4s ease'}}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
 
-        {/* Kolom kanan — Outlet + Top Produk */}
+        {/* Kolom kanan */}
         {!isMobile&&(
           <div style={{display:'flex',flexDirection:'column',gap:GAP,minHeight:0,overflow:'hidden'}}>
-
             <Card theme={theme} accent="#10b981" title={`Kuartal ${cL} · ${unitLabel}`} icon={<BarChart3 size={10} color="#10b981"/>} color="#10b981" sub={`${hitQ}/${qd.length} hit target`} style={{flex:'1 1 0'}}>
-            <ResponsiveContainer width="100%" height={cH}>
-              <BarChart data={qDataComputed} margin={{top:2,right:2,left:0,bottom:0}} barGap={3}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
-                <XAxis dataKey="n" tick={ts} axisLine={false} tickLine={false}/>
-                <YAxis tickFormatter={fmtU} tick={ts} axisLine={false} tickLine={false} width={30}/>
-                <Tooltip content={<CT theme={theme}/>}/>
-                <Bar dataKey="t" name="Target" fill="#3b82f6" opacity={0.32} radius={[2,2,0,0]} maxBarSize={28}/>
-                <Bar dataKey="a" name="Actual" radius={[2,2,0,0]} maxBarSize={28}>
-                  {qDataComputed.map((e:any,i:number)=><Cell key={i} fill={e.pct>=100?'#10b981':e.pct>=80?'#f59e0b':'#ef4444'}/>)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
+              <ResponsiveContainer width="100%" height={cH}>
+                <BarChart data={qDataComputed} margin={{top:2,right:2,left:0,bottom:0}} barGap={3}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
+                  <XAxis dataKey="n" tick={ts} axisLine={false} tickLine={false}/>
+                  <YAxis tickFormatter={fmtU} tick={ts} axisLine={false} tickLine={false} width={30}/>
+                  <Tooltip content={<CT theme={theme}/>}/>
+                  <Bar dataKey="t" name="Target" fill="#3b82f6" opacity={0.32} radius={[2,2,0,0]} maxBarSize={28}/>
+                  <Bar dataKey="a" name="Actual" radius={[2,2,0,0]} maxBarSize={28}>
+                    {qDataComputed.map((e:any,i:number)=><Cell key={i} fill={e.pct>=100?'#10b981':e.pct>=80?'#f59e0b':'#ef4444'}/>)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
 
             <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={String(cL)} style={{flex:'1 1 0'}}>
               {topP.length>0 ? (
@@ -1188,7 +1291,6 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
                 <div style={{color:t.textMuted,fontSize:10,textAlign:'center',paddingTop:16}}>Tidak ada data</div>
               )}
             </Card>
-
           </div>
         )}
       </div>
@@ -1227,11 +1329,13 @@ function DashboardInner() {
   const {isMobile,isTablet} = useBreakpoint();
   const {user} = useAuth();
 
-  const [y1, sY1] = useState(2025);
-  const [y2, sY2] = useState(2026);
-  const [w1, sW1] = useState(0);
-  const [w2, sW2] = useState(0);
-  const [af, sAf] = useState('');
+  const [y1,    sY1]    = useState(2025);
+  const [wStart1, sWStart1] = useState(0);   // ← baru
+  const [w1,    sW1]    = useState(0);
+  const [y2,    sY2]    = useState(2026);
+  const [wStart2, sWStart2] = useState(0);   // ← baru
+  const [w2,    sW2]    = useState(0);
+  const [af,    sAf]    = useState('');
   const [selectedUnit, setSelectedUnit] = useState('units_dos');
   const [areas,setAreas]=useState<AreaConfig[]>([]);
   const [loading,setLoading]=useState(false);
@@ -1282,10 +1386,21 @@ function DashboardInner() {
       const p = new URLSearchParams();
       p.append('year1', String(y1));
       p.append('year2', String(y2));
-      if (w1 > 0) { p.append('weekStart1', '1'); p.append('weekEnd1', String(w1)); }
-      if (w2 > 0) { p.append('weekStart2', '1'); p.append('weekEnd2', String(w2)); }
+
+      // P1 — kirim weekStart1 jika range dipilih
+      if (w1 > 0) {
+        p.append('weekStart1', String(wStart1 > 0 ? wStart1 : 1));
+        p.append('weekEnd1',   String(w1));
+      }
+      // P2 — kirim weekStart2 jika range dipilih
+      if (w2 > 0) {
+        p.append('weekStart2', String(wStart2 > 0 ? wStart2 : 1));
+        p.append('weekEnd2',   String(w2));
+      }
+
       if (af.trim()) p.append('area', af.trim());
       p.append('selectedUnit', selectedUnit);
+
       const r = await fetch(`/api/sales-analysis?${p}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
@@ -1299,8 +1414,8 @@ function DashboardInner() {
   };
 
   const doReset = () => {
-    sW1(0);
-    sW2(0);
+    sWStart1(0); sW1(0);
+    sWStart2(0); sW2(0);
     sAf('');
     setSelectedUnit('units_dos');
     setData(EMPTY_DATA);
@@ -1318,7 +1433,21 @@ function DashboardInner() {
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
+<<<<<<< HEAD
       default:          return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
+=======
+      case 'distribution': return (
+        <DistributionSection
+          theme={theme} areas={areas} areaFilter={af}
+          weekStart={distWeekStart} weekEnd={distWeekEnd}
+          onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
+          cachedData={distData}
+          onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }}
+          loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}
+        />
+      );
+      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
+>>>>>>> 10bea66 (update filter bar)
     }
   };
 
@@ -1355,11 +1484,26 @@ function DashboardInner() {
 
           {isMobile?(
             <>
-              <MobileFilterBar y1={y1} w1={w1} y2={y2} w2={w2} af={af} areas={areas} onOpen={()=>setSheet(true)} loading={loading} theme={theme}/>
-              <MobileFilterSheet open={sheetOpen} onClose={()=>setSheet(false)} y1={y1} sY1={sY1} w1={w1} sW1={sW1} y2={y2} sY2={sY2} w2={w2} sW2={sW2} af={af} sAf={sAf} areas={areas} onApply={doApply} onReset={doReset} loading={loading} theme={theme}/>
+              <MobileFilterBar
+                y1={y1} wStart1={wStart1} w1={w1}
+                y2={y2} wStart2={wStart2} w2={w2}
+                af={af} areas={areas} onOpen={()=>setSheet(true)} loading={loading} theme={theme}
+              />
+              <MobileFilterSheet
+                open={sheetOpen} onClose={()=>setSheet(false)}
+                y1={y1} sY1={sY1} wStart1={wStart1} sWStart1={sWStart1} w1={w1} sW1={sW1}
+                y2={y2} sY2={sY2} wStart2={wStart2} sWStart2={sWStart2} w2={w2} sW2={sW2}
+                af={af} sAf={sAf} areas={areas}
+                onApply={doApply} onReset={doReset} loading={loading} theme={theme}
+              />
             </>
           ):(
-            <DesktopFilterBar y1={y1} sY1={sY1} w1={w1} sW1={sW1} y2={y2} sY2={sY2} w2={w2} sW2={sW2} af={af} sAf={sAf} areas={areas} onApply={doApply} onReset={doReset} loading={loading} theme={theme}/>
+            <DesktopFilterBar
+              y1={y1} sY1={sY1} wStart1={wStart1} sWStart1={sWStart1} w1={w1} sW1={sW1}
+              y2={y2} sY2={sY2} wStart2={wStart2} sWStart2={sWStart2} w2={w2} sW2={sW2}
+              af={af} sAf={sAf} areas={areas}
+              onApply={doApply} onReset={doReset} loading={loading} theme={theme}
+            />
           )}
 
           <main
