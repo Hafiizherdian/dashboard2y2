@@ -101,15 +101,10 @@ const YEARS = [2022,2023,2024,2025,2026,2027,2028];
 const WEEKS = Array.from({length:52},(_,i)=>i+1);
 
 const fmtK = (v:number) => v>=1e9?`${(v/1e9).toFixed(1)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:v>=1e3?`${(v/1e3).toFixed(0)}K`:String(Math.round(v));
-<<<<<<< HEAD
 
 // FIX: 2 desimal, tanpa pembulatan
 const fmtU  = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtUF = (v:number) => v.toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
-=======
-const fmtU  = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const fmtUF = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
->>>>>>> 10bea66 (update filter bar)
 
 function getDetailUnitValue(d: any, unit: string, field: 'actual' | 'target'): number {
   const ud = d[unit] as { target?: number; actual?: number } | undefined;
@@ -219,7 +214,6 @@ function ThemeToggle({ theme, setTheme, compact=false }:{ theme:Theme; setTheme:
 }
 
 const TABS=[
-<<<<<<< HEAD
   {id:'overview',  label:'Ringkasan',  shortLabel:'Ringkasan', Icon:TrendingUp},
   {id:'weekly',    label:'Mingguan',   shortLabel:'Mingguan',  Icon:Calendar  },
   {id:'quarterly', label:'Kuartal',    shortLabel:'Kuartal',   Icon:BarChart3 },
@@ -227,16 +221,6 @@ const TABS=[
   {id:'yoy',      label:'YoY Growth', shortLabel:'YoY',       Icon:PieChart  },
   {id:'outlet',   label:'Outlet',     shortLabel:'Outlet',    Icon:Store     },
   {id:'analysis', label:'Brand Performance',   shortLabel:'Brand Performance',  Icon:FileText  },
-=======
-  {id:'overview',      label:'Ringkasan',       shortLabel:'Ringkasan',  Icon:TrendingUp},
-  {id:'weekly',        label:'Mingguan',        shortLabel:'Mingguan',   Icon:Calendar  },
-  {id:'quarterly',     label:'Kuartal',         shortLabel:'Kuartal',    Icon:BarChart3 },
-  {id:'l4wc4w',        label:'L4W vs C1W',      shortLabel:'L4W',        Icon:Activity  },
-  {id:'yoy',           label:'YoY Growth',      shortLabel:'YoY',        Icon:PieChart  },
-  {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
-  {id:'analysis',      label:'Brand Performance',shortLabel:'Brand',     Icon:FileText  },
-  {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Filter    },
->>>>>>> 10bea66 (update filter bar)
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -1433,21 +1417,7 @@ function DashboardInner() {
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
-<<<<<<< HEAD
       default:          return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
-=======
-      case 'distribution': return (
-        <DistributionSection
-          theme={theme} areas={areas} areaFilter={af}
-          weekStart={distWeekStart} weekEnd={distWeekEnd}
-          onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
-          cachedData={distData}
-          onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }}
-          loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}
-        />
-      );
-      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
->>>>>>> 10bea66 (update filter bar)
     }
   };
 
