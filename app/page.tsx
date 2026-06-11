@@ -364,14 +364,15 @@ function DesktopFilterBar({
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
 
   // weekStart options: hanya tampilkan minggu <= weekEnd (jika weekEnd sudah dipilih)
-  const wStartOpts = (end:number) => [
-    {value:0, label:'W1'},
-    ...WEEKS.filter(w => end===0 || w<end).map(w=>({value:w, label:`W${w}`})),
+  const wStartOpts = (end: number) => [
+  { value: 0, label: 'W1' },
+  ...WEEKS.filter(w => end === 0 || w <= end).map(w => ({ value: w, label: `W${w}` })),
   ];
+
   // weekEnd options: hanya tampilkan minggu >= weekStart
-  const wEndOpts = (start:number) => [
-    {value:0, label:'Semua'},
-    ...WEEKS.filter(w => w>(start||0)).map(w=>({value:w, label:`W${w}`})),
+  const wEndOpts = (start: number) => [
+  { value: 0, label: 'Semua' },
+  ...WEEKS.filter(w => w >= (start || 1)).map(w => ({ value: w, label: `W${w}` })),
   ];
 
   const Sep=()=><div style={{width:1,height:12,background:t.border,margin:'0 1px',flexShrink:0}}/>;
@@ -409,7 +410,7 @@ function DesktopFilterBar({
           onChange={v=>{
             const e=+v; sW1(e);
             // jika end < start, reset start
-            if(e>0 && wStart1>=e) sWStart1(0);
+            if(e>0 && wStart1>e) sWStart1(0);
           }}
           options={wEndOpts(wStart1)}
           theme={theme}
@@ -438,7 +439,7 @@ function DesktopFilterBar({
           value={w2}
           onChange={v=>{
             const e=+v; sW2(e);
-            if(e>0 && wStart2>=e) sWStart2(0);
+            if(e>0 && wStart2>e) sWStart2(0);
           }}
           options={wEndOpts(wStart2)}
           theme={theme}
@@ -624,11 +625,11 @@ function MobileFilterSheet({
                   value={wS}
                   onChange={(v:any)=>{
                     const s=+v; sWS(s);
-                    if(w>0 && s>=w) sW(0);
+                    if(w>0 && s>w) sW(0);
                   }}
                   options={[
                     {value:0, label:'W1 (awal)'},
-                    ...WEEKS.filter((x:number)=>w===0||x<w).map((x:number)=>({value:x,label:`Minggu ${x}`})),
+                    ...WEEKS.filter((x:number)=>w===0||x<=w).map((x:number)=>({value:x,label:`Minggu ${x}`})),
                   ]}
                   theme={theme}
                   style={{minWidth:130}}
@@ -639,11 +640,11 @@ function MobileFilterSheet({
                   value={w}
                   onChange={(v:any)=>{
                     const e=+v; sW(e);
-                    if(e>0 && wS>=e) sWS(0);
+                    if(e>0 && wS>e) sWS(0);
                   }}
                   options={[
                     {value:0, label:'Semua'},
-                    ...WEEKS.filter((x:number)=>x>(wS||0)).map((x:number)=>({value:x,label:`Minggu ${x}`})),
+                    ...WEEKS.filter((x:number)=>w===0||x<=w).map((x:number)=>({value:x,label:`Minggu ${x}`})),
                   ]}
                   theme={theme}
                   style={{minWidth:130}}
@@ -1371,37 +1372,34 @@ function DashboardInner() {
   },[]);
 
   const doApply = async () => {
-    setLoading(true);
-    try {
-      const p = new URLSearchParams();
-      p.append('year1', String(y1));
-      p.append('year2', String(y2));
+  setLoading(true);
+  try {
+    const p = new URLSearchParams();
+    p.append('year1', String(y1));
+    p.append('year2', String(y2));
 
-      // P1 — kirim weekStart1 jika range dipilih
-      if (w1 > 0) {
-        p.append('weekStart1', String(wStart1 > 0 ? wStart1 : 1));
-        p.append('weekEnd1',   String(w1));
-      }
-      // P2 — kirim weekStart2 jika range dipilih
-      if (w2 > 0) {
-        p.append('weekStart2', String(wStart2 > 0 ? wStart2 : 1));
-        p.append('weekEnd2',   String(w2));
-      }
+    // P1
+    if (wStart1 > 0) p.append('weekStart1', String(wStart1));
+    if (w1 > 0)      p.append('weekEnd1',   String(w1));
 
-      if (af.trim()) p.append('area', af.trim());
-      p.append('selectedUnit', selectedUnit);
+    // P2
+    if (wStart2 > 0) p.append('weekStart2', String(wStart2));
+    if (w2 > 0)      p.append('weekEnd2',   String(w2));
 
-      const r = await fetch(`/api/sales-analysis?${p}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      if (j.success) setData(j.data);
-      else console.error('API error:', j.error);
-    } catch (e) {
-      console.error('doApply failed:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (af.trim()) p.append('area', af.trim());
+    p.append('selectedUnit', selectedUnit);
+
+    const r = await fetch(`/api/sales-analysis?${p}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    if (j.success) setData(j.data);
+    else console.error('API error:', j.error);
+  } catch (e) {
+    console.error('doApply failed:', e);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const doReset = () => {
     sWStart1(0); sW1(0);
