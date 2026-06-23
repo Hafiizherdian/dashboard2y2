@@ -8,6 +8,7 @@ import YearOnYearGrowth from '@/components/YearOnYearGrowth';
 import AnalysisSection from '@/components/AnalysisSection';
 import OutletContributionSection from '@/components/OutletContributionSection';
 import DistributionSection from '@/components/DistributionSection';
+import PiutangComponent from '@/components/PiutangSections';
 import { SalesData } from '@/types/sales';
 import { AreaConfig } from '@/lib/areaConfig';
 import { useAuth, AuthProvider } from '@/lib/auth/AuthContext';
@@ -101,9 +102,18 @@ const CC = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#0d9488','#f97316
 const YEARS = [2022,2023,2024,2025,2026,2027,2028];
 const WEEKS = Array.from({length:52},(_,i)=>i+1);
 
-const fmtK = (v:number) => v>=1e9?`${(v/1e9).toFixed(1)}B`:v>=1e6?`${(v/1e6).toFixed(1)}M`:v>=1e3?`${(v/1e3).toFixed(0)}K`:String(Math.round(v));
+const fmtK = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const fmtU  = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const fmtUF = (v:number) => v.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtUF = (v:number) => {
+  // Potong desimal murni tanpa pembulatan ke atas
+  const truncated = Math.floor(v * 100) / 100;
+  return truncated.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const fmtRp = (v:number) =>
+  v >= 1e9  ? `Rp ${(v/1e9).toFixed(1)}M`
+  // : v >= 1e6 ? `Rp ${(v/1e6).toFixed(1)}jt`
+  // : v >= 1e3 ? `Rp ${(v/1e3).toFixed(0)}rb`
+  : `Rp ${Math.round(v)}`;
 
 function getDetailUnitValue(d: any, unit: string, field: 'actual' | 'target'): number {
   const ud = d[unit] as { target?: number; actual?: number } | undefined;
@@ -221,6 +231,7 @@ const TABS=[
   {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
   {id:'analysis',      label:'Brand Performance',shortLabel:'Brand',     Icon:FileText  },
   {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Filter    },
+  {id:'piutang',       label:'Piutang',         shortLabel:'Piutang',    Icon:Store}
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -348,6 +359,9 @@ function DesktopFilterBar({
   y1,sY1,wStart1,sWStart1,w1,sW1,
   y2,sY2,wStart2,sWStart2,w2,sW2,
   af,sAf,areas,onApply,onReset,loading,theme,
+  sSelectedUnit,
+  selectedUnit,
+  unapplied,
 }:{
   y1:number; sY1:(v:number)=>void;
   wStart1:number; sWStart1:(v:number)=>void;
@@ -356,23 +370,28 @@ function DesktopFilterBar({
   wStart2:number; sWStart2:(v:number)=>void;
   w2:number; sW2:(v:number)=>void;
   af:string; sAf:(v:string)=>void; areas:AreaConfig[];
+  selectedUnit:string; sSelectedUnit:(v:string)=>void;
+  unapplied:boolean; // ← beda dari snapshot terakhir yang sukses di-fetch (untuk warning)
   onApply:()=>void; onReset:()=>void; loading:boolean; theme:Theme;
+
 }) {
   const t=tk[theme];
-  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af;
+  // "dirty" = beda dari DEFAULT (untuk tombol Reset). FIX: sebelumnya pakai !!selectedUnit
+  // yang selalu true karena default-nya 'units_dos' (bukan string kosong).
+  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af || selectedUnit!=='units_dos';
   const yO=YEARS.map(y=>({value:y,label:String(y)}));
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
 
   // weekStart options: hanya tampilkan minggu <= weekEnd (jika weekEnd sudah dipilih)
   const wStartOpts = (end: number) => [
-  { value: 0, label: 'W1' },
-  ...WEEKS.filter(w => end === 0 || w <= end).map(w => ({ value: w, label: `W${w}` })),
+    { value: 0, label: 'W1' },
+    ...WEEKS.filter(w => end === 0 || w <= end).map(w => ({ value: w, label: `W${w}` })),
   ];
 
   // weekEnd options: hanya tampilkan minggu >= weekStart
   const wEndOpts = (start: number) => [
-  { value: 0, label: 'Semua' },
-  ...WEEKS.filter(w => w >= (start || 1)).map(w => ({ value: w, label: `W${w}` })),
+    { value: 0, label: 'Semua' },
+    ...WEEKS.filter(w => w >= (start || 1)).map(w => ({ value: w, label: `W${w}` })),
   ];
 
   const Sep=()=><div style={{width:1,height:12,background:t.border,margin:'0 1px',flexShrink:0}}/>;
@@ -388,7 +407,8 @@ function DesktopFilterBar({
 
   return (
     <div style={{flexShrink:0,background:t.filterbg,borderBottom:`1px solid ${t.border}`}}>
-      <div style={{display:'flex',alignItems:'center',padding:'0 14px',height:36,gap:4}}>
+      <style>{`@keyframes fbPulseDot{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
+      <div style={{display:'flex',alignItems:'center',padding:'0 14px',height:36,gap:4,overflowX:'auto',scrollbarWidth:'none'}}>
 
         {/* P1 */}
         <Lbl c="P1"/>
@@ -397,7 +417,6 @@ function DesktopFilterBar({
           value={wStart1}
           onChange={v=>{
             const s=+v; sWStart1(s);
-            // jika start > end, reset end
             if(w1>0 && s>=w1) sW1(0);
           }}
           options={wStartOpts(w1)}
@@ -409,7 +428,6 @@ function DesktopFilterBar({
           value={w1}
           onChange={v=>{
             const e=+v; sW1(e);
-            // jika end < start, reset start
             if(e>0 && wStart1>e) sWStart1(0);
           }}
           options={wEndOpts(wStart1)}
@@ -447,30 +465,86 @@ function DesktopFilterBar({
         />
 
         <Sep/>
+        {/* Dropdown Area */}
+        <Lbl c="Area"/>
         <Sel value={af} onChange={v=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:106}}/>
+
+        <Sep/>
+
+        {/* Unit selector */}
+        <Lbl c="Value"/>
+        <div style={{display:'flex',alignItems:'center',gap:0,background:t.toggleBg,border:`1px solid ${t.toggleBorder}`,borderRadius:5,padding:1,flexShrink:0}}>
+          {UNIT_OPTIONS.map(opt=>{
+            const active = selectedUnit === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={()=>sSelectedUnit(opt.value)}
+                title={opt.fullLabel}
+                style={{
+                  height:20,
+                  padding:'0 7px',
+                  borderRadius:4,
+                  border:'none',
+                  background: active ? '#1c9706' : 'transparent',
+                  color: active ? '#fff' : t.textMuted,
+                  fontSize:9,
+                  fontWeight: active ? 700 : 400,
+                  fontFamily:'IBM Plex Mono,monospace',
+                  cursor:'pointer',
+                  transition:'all 0.12s',
+                  flexShrink:0,
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div style={{flex:1}}/>
 
-        {loading && (
-          <>
-            <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-              {[0,1,2].map(i=>(
-                <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
-                  transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
-              ))}
+        {/* ── Klaster kanan: sticky agar Terapkan/warning selalu kelihatan walau filter di-scroll ── */}
+        <div style={{
+          display:'flex', alignItems:'center', gap:6, flexShrink:0,
+          position:'sticky', right:0, paddingLeft:8, background:t.filterbg,
+          boxShadow: theme==='dark' ? '-14px 0 12px -10px rgba(0,0,0,0.45)' : '-14px 0 12px -10px rgba(0,0,0,0.08)',
+        }}>
+          {loading ? (
+            <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
+              <div style={{display:'flex',gap:3,alignItems:'center'}}>
+                {[0,1,2].map(i=>(
+                  <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
+                    transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
+                ))}
+              </div>
+              <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
+                background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
+                borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
+                mengambil data
+              </div>
             </div>
-            <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
-              background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
-              borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
-              mengambil data
+          ) : unapplied ? (
+            <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0,
+              background:t.warnBg,border:`1px solid ${t.warnBorder}`,
+              borderRadius:3,padding:'0 7px',height:18}}>
+              <span style={{width:5,height:5,borderRadius:'50%',background:t.warnText,animation:'fbPulseDot 1.3s ease-in-out infinite'}}/>
+              <span style={{fontSize:9,fontFamily:'monospace',color:t.warnText,fontWeight:700,letterSpacing:'0.02em'}}>Belum diterapkan</span>
             </div>
-          </>
-        )}
-        {dirty&&<button onClick={onReset} style={{height:22,padding:'0 7px',borderRadius:4,fontSize:10,fontFamily:'monospace',background:'transparent',border:`1px solid ${t.borderInput}`,color:t.textMuted,cursor:'pointer'}}>Reset</button>}
-        <button onClick={onApply} disabled={loading}
-          style={{height:22,padding:'0 11px',borderRadius:4,fontSize:10,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',background:'#1c9706',border:'none',color:'#fff',cursor:loading?'not-allowed':'pointer',opacity:loading?0.5:1,flexShrink:0,boxShadow:'0 1px 4px rgba(28,151,6,0.3)'}}>
-          Terapkan
-        </button>
+          ) : null}
+
+          {dirty&&<button onClick={onReset} style={{height:22,padding:'0 7px',borderRadius:4,fontSize:10,fontFamily:'monospace',background:'transparent',border:`1px solid ${t.borderInput}`,color:t.textMuted,cursor:'pointer'}}>Reset</button>}
+
+          <div style={{position:'relative'}}>
+            <button onClick={onApply} disabled={loading}
+              style={{height:22,padding:'0 11px',borderRadius:4,fontSize:10,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',background:'#1c9706',border:'none',color:'#fff',cursor:loading?'not-allowed':'pointer',opacity:loading?0.5:1,flexShrink:0,boxShadow:'0 1px 4px rgba(28,151,6,0.3)'}}>
+              Terapkan
+            </button>
+            {unapplied && !loading && (
+              <span style={{position:'absolute',top:-3,right:-3,width:7,height:7,borderRadius:'50%',background:t.warnText,border:`1.5px solid ${t.filterbg}`}}/>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -478,13 +552,12 @@ function DesktopFilterBar({
 
 // ─── MobileFilterBar ─────────────────────────────────────────────────────────
 function MobileFilterBar({
-  y1,wStart1,w1,
-  y2,wStart2,w2,
-  af,areas,onOpen,loading,theme,
+  applied, unapplied, areas, onOpen, loading, theme,
 }:{
-  y1:number; wStart1:number; w1:number;
-  y2:number; wStart2:number; w2:number;
-  af:string; areas:AreaConfig[]; onOpen:()=>void; loading:boolean; theme:Theme;
+  applied: { y1:number; wStart1:number; w1:number; y2:number; wStart2:number; w2:number; af:string; unit:string };
+  unapplied: boolean;
+  areas:AreaConfig[];
+  onOpen:()=>void; loading:boolean; theme:Theme;
 }) {
   const t=tk[theme];
   const [dotStep, setDotStep] = useState(0);
@@ -512,29 +585,47 @@ function MobileFilterBar({
   const rangeLabel = (start:number, end:number) =>
     end > 0 ? `W${start > 0 ? start : 1}–W${end}` : 'Semua';
 
-  const aName=areas.find(a=>a.id===af)?.name;
+  const aName=areas.find(a=>a.id===applied.af)?.name;
 
   return (
     <div style={{
       background:t.filterbg,borderBottom:`1px solid ${t.border}`,
       height:32,display:'flex',alignItems:'center',padding:'0 10px',gap:6,
     }}>
+      <style>{`@keyframes fbPulseDot{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
       <button
         onClick={onOpen}
         style={{
+          position:'relative',
           display:'flex',alignItems:'center',gap:4,height:20,padding:'0 7px',
           borderRadius:4,background:t.inputBg,border:`1px solid ${t.borderInput}`,
           color:t.textSub,fontSize:9,fontFamily:'monospace',cursor:'pointer',flexShrink:0,
         }}
       >
         <Filter size={8}/>Filter
+        {unapplied && (
+          <span style={{position:'absolute',top:-3,right:-3,width:6,height:6,borderRadius:'50%',background:t.warnText,border:`1.5px solid ${t.filterbg}`}}/>
+        )}
       </button>
 
       <div style={{display:'flex',gap:4,flex:1,overflowX:'auto',alignItems:'center',scrollbarWidth:'none'}}>
-        <Chip v={`${y1} ${rangeLabel(wStart1,w1)}`} ch="blue"/>
+        {unapplied && (
+          <span style={{
+            display:'flex',alignItems:'center',gap:4,padding:'1px 6px',borderRadius:4,fontSize:9,fontWeight:700,
+            fontFamily:'IBM Plex Mono,monospace',background:t.warnBg,color:t.warnText,border:`1px solid ${t.warnBorder}`,
+            whiteSpace:'nowrap',flexShrink:0,
+          }}>
+            <span style={{width:5,height:5,borderRadius:'50%',background:t.warnText,animation:'fbPulseDot 1.3s ease-in-out infinite'}}/>
+            Belum diterapkan
+          </span>
+        )}
+        <Chip v={`${applied.y1} ${rangeLabel(applied.wStart1,applied.w1)}`} ch="blue"/>
         <span style={{fontSize:8,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>vs</span>
-        <Chip v={`${y2} ${rangeLabel(wStart2,w2)}`} ch="slate"/>
+        <Chip v={`${applied.y2} ${rangeLabel(applied.wStart2,applied.w2)}`} ch="slate"/>
         {aName&&<Chip v={aName} ch="orange"/>}
+        {applied.unit!=='units_dos'&&(
+          <Chip v={UNIT_OPTIONS.find(o=>o.value===applied.unit)?.label??applied.unit} ch="orange"/>
+        )}
       </div>
 
       {loading && (
@@ -567,6 +658,9 @@ function MobileFilterSheet({
   y1,sY1,wStart1,sWStart1,w1,sW1,
   y2,sY2,wStart2,sWStart2,w2,sW2,
   af,sAf,areas,onApply,onReset,loading,theme,
+  sSelectedUnit,
+  selectedUnit,
+  unapplied,
 }:{
   open:boolean; onClose:()=>void;
   y1:number; sY1:(v:number)=>void;
@@ -576,10 +670,14 @@ function MobileFilterSheet({
   wStart2:number; sWStart2:(v:number)=>void;
   w2:number; sW2:(v:number)=>void;
   af:string; sAf:(v:string)=>void; areas:AreaConfig[];
+  selectedUnit:string; sSelectedUnit:(v:string)=>void;
+  unapplied:boolean;
   onApply:()=>void; onReset:()=>void; loading:boolean; theme:Theme;
 }) {
+
   const t=tk[theme];
-  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af;
+  // "dirty" = beda dari DEFAULT (untuk tombol Reset) — beda konsep dengan "unapplied"
+  const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af || selectedUnit!=='units_dos';
   const yO=YEARS.map(y=>({value:y,label:String(y)}));
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
 
@@ -602,6 +700,7 @@ function MobileFilterSheet({
         transition:'transform 0.22s cubic-bezier(0.32,0.72,0,1)',
         maxHeight:'80vh', display:'flex', flexDirection:'column',
       }}>
+        <style>{`@keyframes fbPulseDot{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
         <div style={{display:'flex',justifyContent:'center',padding:'8px 0 0'}}>
           <div style={{width:24,height:3,borderRadius:2,background:t.textFaint}}/>
         </div>
@@ -644,7 +743,7 @@ function MobileFilterSheet({
                   }}
                   options={[
                     {value:0, label:'Semua'},
-                    ...WEEKS.filter((x:number)=>w===0||x<=w).map((x:number)=>({value:x,label:`Minggu ${x}`})),
+                    ...WEEKS.filter((x:number)=>x>=(wS||1)).map((x:number)=>({value:x,label:`Minggu ${x}`})),
                   ]}
                   theme={theme}
                   style={{minWidth:130}}
@@ -657,7 +756,43 @@ function MobileFilterSheet({
           <Row l="Filter Area">
             <Sel value={af} onChange={(v:any)=>sAf(String(v))} options={aO} theme={theme} style={{minWidth:130}}/>
           </Row>
+
+          <div style={{paddingTop:10,fontSize:8,fontWeight:800,color:t.textMuted,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.12em'}}>Unit</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,padding:'10px 0'}}>
+            {UNIT_OPTIONS.map(opt=>{
+              const active = selectedUnit === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={()=>sSelectedUnit(opt.value)}
+                  style={{
+                    height:36,padding:'0 14px',borderRadius:9,
+                    background: active ? '#1c9706' : t.inputBg,
+                    border: active ? 'none' : `1px solid ${t.borderInput}`,
+                    color: active ? '#fff' : t.textSub,
+                    fontSize:13,fontWeight:active?700:400,
+                    fontFamily:'IBM Plex Mono,monospace',cursor:'pointer',
+                  }}
+                >
+                  {opt.fullLabel}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {unapplied && (
+          <div style={{
+            margin:'0 14px 8px', padding:'7px 10px', borderRadius:8,
+            background:t.warnBg, border:`1px solid ${t.warnBorder}`,
+            display:'flex', alignItems:'center', gap:7, flexShrink:0,
+          }}>
+            <span style={{width:6,height:6,borderRadius:'50%',background:t.warnText,flexShrink:0,animation:'fbPulseDot 1.3s ease-in-out infinite'}}/>
+            <span style={{fontSize:11,color:t.warnText,fontFamily:'IBM Plex Mono,monospace',fontWeight:600,lineHeight:1.4}}>
+              Filter berubah — klik "Terapkan" untuk memperbarui data
+            </span>
+          </div>
+        )}
 
         <div style={{
           padding:'8px 14px',
@@ -745,7 +880,7 @@ function KpiMini({ bg, border, labelColor, label, value, sub, badge, theme, acce
       <div style={{ fontSize:26, fontWeight:800, color:t.text, fontFamily:'IBM Plex Mono, monospace', letterSpacing:'-0.04em', lineHeight:1 }}>{value}</div>
       {sub && <div style={{ fontSize:9.5, color:t.textMuted, fontFamily:'IBM Plex Mono, monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
       {badge && (
-        <span style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:10, width:'fit-content', fontSize:9, fontWeight:700, fontFamily:'IBM Plex Mono, monospace', background:badge.positive?t.posBg:t.negBg, color:badge.positive?t.posText:t.negText, border:`1px solid ${badge.positive?t.posBorder:t.negBorder}` }}>
+        <span style={{ position:'absolute', top:14, right:16, display:'inline-flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:10, width:'fit-content', fontSize:9, fontWeight:700, fontFamily:'IBM Plex Mono, monospace', background:badge.positive?t.posBg:t.negBg, color:badge.positive?t.posText:t.negText, border:`1px solid ${badge.positive?t.posBorder:t.negBorder}` }}>
           {badge.positive?<ArrowUpRight size={9}/>:<ArrowDownRight size={9}/>}
           {badge.text}
         </span>
@@ -761,6 +896,7 @@ const UNIT_OPTIONS = [
   { value: 'units_bks', label: 'Bks',  fullLabel: 'Jual (Bks Net)'  },
   { value: 'units_slop',label: 'Slop', fullLabel: 'Jual (Slop Net)' },
   { value: 'units_bal', label: 'Bal',  fullLabel: 'Jual (Bal Net)'  },
+  { value: 'omzet',     label: 'Omzet',fullLabel: 'Omzet (Rp)'      },
 ];
 
 function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }:{
@@ -854,12 +990,26 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
   const l4wAvg=l4w.l4wAverage; const c1w=l4w.c1wValue; const lPos=c1w>=l4wAvg; const lc=lPos?'#10b981':'#ef4444';
   const lData=l4w.weeklyTrendData?.map((item:any)=>({w:item.week,v:item.value,avg:l4wAvg}))||[];
 
+  // ── Unit-aware outlet/product values ──────────────────────────────────────
+  // Sebelumnya bagian "Outlet Kontribusi" & "Top Produk" selalu pakai r.dozNet
+  // (= units_dos) apa pun unit yang dipilih, karena backend cuma kirim dozNet.
+  // Setelah backend mengirim unitsBks/unitsSlop/unitsBal/omzet juga di outletData,
+  // baca lewat helper ini supaya ikut berubah saat unit diganti.
+  const getOutletUnitValue = (r:any): number => {
+    if (selectedUnit === 'omzet')      return r.omzet      ?? 0;
+    if (selectedUnit === 'units_bks')  return r.unitsBks   ?? 0;
+    if (selectedUnit === 'units_slop') return r.unitsSlop  ?? 0;
+    if (selectedUnit === 'units_bal')  return r.unitsBal   ?? 0;
+    return r.dozNet ?? 0;
+  };
+  const fmtOutlet = (v:number) => selectedUnit==='omzet' ? fmtRp(v) : fmtK(v);
+
   const curR=rows.filter((r:any)=>r.year===(cy?.currentYear??y2));
   const oTypes=Array.from(new Set(curR.map((r:any)=>r.outletType))).filter(Boolean) as string[];
-  const totDoz=curR.reduce((s:number,r:any)=>s+(r.dozNet||0),0);
-  const dData=oTypes.map((ot,i)=>({n:ot,v:curR.filter((r:any)=>r.outletType===ot).reduce((s:number,r:any)=>s+(r.dozNet||0),0),fill:CC[i%CC.length]}));
+  const totDoz=curR.reduce((s:number,r:any)=>s+getOutletUnitValue(r),0);
+  const dData=oTypes.map((ot,i)=>({n:ot,v:curR.filter((r:any)=>r.outletType===ot).reduce((s:number,r:any)=>s+getOutletUnitValue(r),0),fill:CC[i%CC.length]}));
   const pMap=new Map<string,number>();
-  curR.forEach((r:any)=>{if(r.product) pMap.set(r.product,(pMap.get(r.product)||0)+(r.dozNet||0));});
+  curR.forEach((r:any)=>{if(r.product) pMap.set(r.product,(pMap.get(r.product)||0)+getOutletUnitValue(r));});
   const topP=Array.from(pMap.entries()).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([n,v])=>({n,v}));
 
   const unitLabel=UNIT_OPTIONS.find(o=>o.value===selectedUnit)?.label??UNIT_OPTIONS[0].label;
@@ -870,9 +1020,10 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
     return (
       <div style={{display:'flex',flexDirection:'column',gap:GAP}}>
         <div style={{display:'grid',gridTemplateColumns:'1fr',gap:GAP}}>
-          <KpiMini bg={t.card1bg} border={t.card1border} labelColor={t.card1text} accent={t.card1accent} label={`${unitLabel} ${pL}`} value={fmtU(yoy.previousYearTotal)} sub={fmtUF(yoy.previousYearTotal)} theme={theme}/>
-          <KpiMini bg={t.card2bg} border={t.card2border} labelColor={t.card2text} accent={t.card2accent} label={`${unitLabel} ${cL}`} value={fmtU(yoy.currentYearTotal)} sub={fmtUF(yoy.currentYearTotal)} theme={theme}/>
-          <KpiMini bg={t.card3bg} border={t.card3border} labelColor={t.card3text} accent={t.card3accent} label="Growth YoY" value={`${isPos?'+':''}${gPct.toFixed(1)}%`} sub={`Δ ${fmtUF(yoy.variance)}`} badge={{text:isPos?'↑ Tumbuh':'↓ Turun',positive:isPos}} theme={theme}/>
+        <KpiMini bg={t.card1bg} border={t.card1border} labelColor={t.card1text} accent={t.card1accent} label={`${unitLabel} ${pL}`} value={selectedUnit==='omzet'?fmtRp(yoy.previousYearTotal):fmtU(yoy.previousYearTotal)} sub={selectedUnit==='omzet'? `Rp ${fmtUF(yoy.previousYearTotal)}` : fmtUF(yoy.previousYearTotal)} theme={theme}/>
+        <KpiMini bg={t.card2bg} border={t.card2border} labelColor={t.card2text} accent={t.card2accent} label={`${unitLabel} ${cL}`} value={selectedUnit==='omzet'?fmtRp(yoy.currentYearTotal):fmtU(yoy.currentYearTotal)} sub={selectedUnit==='omzet'? `Rp ${fmtUF(yoy.currentYearTotal)}` : fmtUF(yoy.currentYearTotal)} theme={theme}/>
+        <KpiMini bg={t.card3bg} border={t.card3border} labelColor={t.card3text} accent={t.card3accent} label="Growth YoY" value={`${isPos?'+':''}${gPct.toFixed(1)}%`} sub={` ${selectedUnit==='omzet'? `Rp ${fmtUF(yoy.variance)}` : fmtUF(yoy.variance)}`} badge={{text:isPos?'↑ Tumbuh':'↓ Turun',positive:isPos}} theme={theme}/>
+
         </div>
 
         <Card theme={theme} accent="#3b82f6" title={`Mingguan — ${pL} vs ${cL}`} icon={<Calendar size={10} color="#3b82f6"/>} color="#3b82f6" sub={`${posW}/${wc.length} minggu positif`}>
@@ -904,7 +1055,7 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             <ComposedChart data={lData} margin={{top:2,right:4,left:0,bottom:0}}>
               <defs><linearGradient id="gLwM" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={lc} stopOpacity={0.25}/><stop offset="95%" stopColor={lc} stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid strokeDasharray="3 3" stroke={gs} vertical={false}/>
-              <XAxis dataKey="week" tick={ts} axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={55} dy={12}/>
+              <XAxis dataKey="w" tick={ts} axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={55} dy={12}/>
               <YAxis tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false} width={32}/>
               <Tooltip content={<CT theme={theme}/>}/>
               <Area type="monotone" dataKey="v" name={`${unitLabel} ${cL}`} fill="url(#gLwM)" stroke={lc} strokeWidth={2} dot={{fill:lc,r:2.5,strokeWidth:0}}/>
@@ -967,7 +1118,7 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
           </ResponsiveContainer>
         </Card>
 
-        <Card theme={theme} accent="#8b5cf6" title={`Outlet Kontribusi ${cL}`} icon={<Store size={10} color="#8b5cf6"/>} color="#8b5cf6" sub={oTypes.length>0?`${oTypes.length} tipe · ${fmtK(totDoz)} DOZ`:'Belum ada data outlet'}>
+        <Card theme={theme} accent="#8b5cf6" title={`Outlet Kontribusi ${cL}`} icon={<Store size={10} color="#8b5cf6"/>} color="#8b5cf6" sub={oTypes.length>0?`${oTypes.length} tipe · ${fmtOutlet(totDoz)} ${unitLabel}`:'Belum ada data outlet'}>
           {oTypes.length===0 ? (
             <div style={{color:t.textMuted,fontSize:10,textAlign:'center',padding:'20px 0',fontFamily:'IBM Plex Mono,monospace'}}>Terapkan filter untuk melihat data</div>
           ) : (
@@ -981,13 +1132,13 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
                     <Tooltip content={({active,payload})=>{
                       if (!active||!payload?.length) return null; const d=payload[0].payload;
                       const p=totDoz>0?((d.v/totDoz)*100).toFixed(1):'0';
-                      return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtK(d.v)} DOZ</div><div style={{color:t.textMuted}}>{p}%</div></div>;
+                      return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtOutlet(d.v)} {unitLabel}</div><div style={{color:t.textMuted}}>{p}%</div></div>;
                     }}/>
                   </RechartsPieChart>
                 </ResponsiveContainer>
                 <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
-                  <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtK(totDoz)}</div>
-                  <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>DOZ</div>
+                  <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtOutlet(totDoz)}</div>
+                  <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>{unitLabel.toUpperCase()}</div>
                 </div>
               </div>
               <div style={{flex:1,display:'flex',flexDirection:'column',gap:8,minWidth:0}}>
@@ -1013,15 +1164,15 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
           )}
         </Card>
 
-        <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={topP.length>0?String(cL):'Belum ada data produk'}>
+        <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={topP.length>0?`${cL} · ${unitLabel}`:'Belum ada data produk'}>
           {topP.length>0 ? (
             <ResponsiveContainer width="100%" height={MOBILE_CHART_H}>
               <BarChart data={topP} layout="vertical" margin={{top:0,right:6,left:0,bottom:0}}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gs} horizontal={false}/>
-                <XAxis type="number" tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false}/>
+                <XAxis type="number" tickFormatter={fmtOutlet} tick={ts} axisLine={false} tickLine={false}/>
                 <YAxis type="category" dataKey="n" tick={{...ts,fontSize:8}} axisLine={false} tickLine={false} width={80}/>
                 <Tooltip content={<CT theme={theme}/>}/>
-                <Bar dataKey="v" name="DOZ" radius={[0,3,3,0]} maxBarSize={16}>
+                <Bar dataKey="v" name={unitLabel} radius={[0,3,3,0]} maxBarSize={16}>
                   {topP.map((_:any,i:number)=><Cell key={i} fill={CC[i%CC.length]}/>)}
                 </Bar>
               </BarChart>
@@ -1038,9 +1189,10 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
   return (
     <div style={{height:availH,display:'flex',flexDirection:'column',gap:GAP,overflow:'hidden'}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1.8fr',gap:GAP,height:KPI_H,flexShrink:0}}>
-        <KpiMini bg={t.card1bg} border={t.card1border} labelColor={t.card1text} accent={t.card1accent} label={`${unitLabel} ${pL}`} value={fmtU(yoy.previousYearTotal)} sub={fmtUF(yoy.previousYearTotal)} theme={theme}/>
-        <KpiMini bg={t.card2bg} border={t.card2border} labelColor={t.card2text} accent={t.card2accent} label={`${unitLabel} ${cL}`} value={fmtU(yoy.currentYearTotal)} sub={fmtUF(yoy.currentYearTotal)} theme={theme}/>
-        <KpiMini bg={t.card3bg} border={t.card3border} labelColor={t.card3text} accent={t.card3accent} label="Growth YoY" value={`${isPos?'+':''}${gPct.toFixed(1)}%`} sub={`Δ ${fmtUF(yoy.variance)}`} badge={{text:isPos?'↑ Tumbuh':'↓ Turun',positive:isPos}} theme={theme}/>
+        <KpiMini bg={t.card1bg} border={t.card1border} labelColor={t.card1text} accent={t.card1accent} label={`${unitLabel} ${pL}`} value={selectedUnit==='omzet'?fmtRp(yoy.previousYearTotal):fmtU(yoy.previousYearTotal)} sub={selectedUnit==='omzet'? `Rp ${fmtUF(yoy.previousYearTotal)}` : fmtUF(yoy.previousYearTotal)} theme={theme}/>
+        <KpiMini bg={t.card2bg} border={t.card2border} labelColor={t.card2text} accent={t.card2accent} label={`${unitLabel} ${cL}`} value={selectedUnit==='omzet'?fmtRp(yoy.currentYearTotal):fmtU(yoy.currentYearTotal)} sub={selectedUnit==='omzet'? `Rp ${fmtUF(yoy.currentYearTotal)}` : fmtUF(yoy.currentYearTotal)} theme={theme}/>
+        <KpiMini bg={t.card3bg} border={t.card3border} labelColor={t.card3text} accent={t.card3accent} label="Growth YoY" value={`${isPos?'+':''}${gPct.toFixed(1)}%`} sub={` ${selectedUnit==='omzet'? `Rp ${fmtUF(yoy.variance)}` : fmtUF(yoy.variance)}`} badge={{text:isPos?'↑ Tumbuh':'↓ Turun',positive:isPos}} theme={theme}/>
+
 
         {(() => {
           const totalActual = qDataComputed.reduce((s:number,q:any)=>s+q.a,0);
@@ -1194,7 +1346,7 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
             </ResponsiveContainer>
           </Card>
 
-          <Card theme={theme} accent="#8b5cf6" title={`Outlet Kontribusi ${cL}`} icon={<Store size={10} color="#8b5cf6"/>} color="#8b5cf6" sub={`${oTypes.length} tipe · ${fmtK(totDoz)} DOZ`} style={{flex:'1 1 0'}}>
+          <Card theme={theme} accent="#8b5cf6" title={`Outlet Kontribusi ${cL}`} icon={<Store size={10} color="#8b5cf6"/>} color="#8b5cf6" sub={`${oTypes.length} tipe · ${fmtOutlet(totDoz)} ${unitLabel}`} style={{flex:'1 1 0'}}>
             {oTypes.length===0 ? (
               <div style={{color:t.textMuted,fontSize:10,textAlign:'center',paddingTop:16}}>Tidak ada data</div>
             ) : (
@@ -1208,13 +1360,13 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
                       <Tooltip content={({active,payload})=>{
                         if (!active||!payload?.length) return null; const d=payload[0].payload;
                         const p=totDoz>0?((d.v/totDoz)*100).toFixed(1):'0';
-                        return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtK(d.v)} DOZ</div><div style={{color:t.textMuted}}>{p}%</div></div>;
+                        return <div style={{background:t.tooltipBg,border:`1px solid ${t.tooltipBorder}`,borderRadius:7,padding:'5px 9px',fontSize:10,fontFamily:'IBM Plex Mono,monospace'}}><div style={{color:d.fill,fontWeight:700}}>{d.n}</div><div style={{color:t.text}}>{fmtOutlet(d.v)} {unitLabel}</div><div style={{color:t.textMuted}}>{p}%</div></div>;
                       }}/>
                     </RechartsPieChart>
                   </ResponsiveContainer>
                   <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',textAlign:'center',pointerEvents:'none'}}>
-                    <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtK(totDoz)}</div>
-                    <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>DOZ</div>
+                    <div style={{fontSize:11,fontWeight:800,color:t.text,fontFamily:'IBM Plex Mono,monospace',lineHeight:1}}>{fmtOutlet(totDoz)}</div>
+                    <div style={{fontSize:7,color:t.textMuted,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.05em'}}>{unitLabel.toUpperCase()}</div>
                   </div>
                 </div>
                 <div style={{flex:1,display:'flex',flexDirection:'column',gap:7,minWidth:0}}>
@@ -1259,15 +1411,15 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
               </ResponsiveContainer>
             </Card>
 
-            <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={String(cL)} style={{flex:'1 1 0'}}>
+            <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={`${cL} · ${unitLabel}`} style={{flex:'1 1 0'}}>
               {topP.length>0 ? (
                 <ResponsiveContainer width="100%" height={cH}>
                   <BarChart data={topP} layout="vertical" margin={{top:0,right:6,left:0,bottom:0}}>
                     <CartesianGrid strokeDasharray="3 3" stroke={gs} horizontal={false}/>
-                    <XAxis type="number" tickFormatter={fmtK} tick={ts} axisLine={false} tickLine={false}/>
+                    <XAxis type="number" tickFormatter={fmtOutlet} tick={ts} axisLine={false} tickLine={false}/>
                     <YAxis type="category" dataKey="n" tick={{...ts,fontSize:8}} axisLine={false} tickLine={false} width={76}/>
                     <Tooltip content={<CT theme={theme}/>}/>
-                    <Bar dataKey="v" name="DOZ" radius={[0,3,3,0]} maxBarSize={14}>
+                    <Bar dataKey="v" name={unitLabel} radius={[0,3,3,0]} maxBarSize={14}>
                       {topP.map((_:any,i:number)=><Cell key={i} fill={CC[i%CC.length]}/>)}
                     </Bar>
                   </BarChart>
@@ -1315,13 +1467,27 @@ function DashboardInner() {
   const {user} = useAuth();
 
   const [y1,    sY1]    = useState(2025);
-  const [wStart1, sWStart1] = useState(0);   // ← baru
+  const [wStart1, sWStart1] = useState(0);
   const [w1,    sW1]    = useState(0);
   const [y2,    sY2]    = useState(2026);
-  const [wStart2, sWStart2] = useState(0);   // ← baru
+  const [wStart2, sWStart2] = useState(0);
   const [w2,    sW2]    = useState(0);
   const [af,    sAf]    = useState('');
-  const [selectedUnit, setSelectedUnit] = useState('units_dos');
+  const [selectedUnit, setSelectedUnit] = useState('units_dos'); // draft, dikontrol tombol unit
+
+  // ── Snapshot filter yang TERAKHIR SUKSES di-fetch. Dipakai untuk render & untuk
+  //    menghitung "unapplied" (filter sudah diubah tapi belum diterapkan).
+  const [applied, setApplied] = useState({
+    y1: 2025, wStart1: 0, w1: 0,
+    y2: 2026, wStart2: 0, w2: 0,
+    af: '', unit: 'units_dos',
+  });
+
+  const unapplied =
+    y1 !== applied.y1 || wStart1 !== applied.wStart1 || w1 !== applied.w1 ||
+    y2 !== applied.y2 || wStart2 !== applied.wStart2 || w2 !== applied.w2 ||
+    af !== applied.af || selectedUnit !== applied.unit;
+
   const [areas,setAreas]=useState<AreaConfig[]>([]);
   const [loading,setLoading]=useState(false);
   const [availH,setAvailH]=useState(600);
@@ -1387,12 +1553,17 @@ function DashboardInner() {
     if (w2 > 0)      p.append('weekEnd2',   String(w2));
 
     if (af.trim()) p.append('area', af.trim());
-    p.append('selectedUnit', selectedUnit);
+    if (selectedUnit) p.append('selectedUnit', selectedUnit);
 
     const r = await fetch(`/api/sales-analysis?${p}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const j = await r.json();
-    if (j.success) setData(j.data);
+    if (j.success) {
+      setData(j.data);
+      // Snapshot disimpan HANYA setelah fetch sukses → ini sumber kebenaran
+      // untuk chip mobile, KPI/chart (selectedUnit di OverviewTab), dan "unapplied".
+      setApplied({ y1, wStart1, w1, y2, wStart2, w2, af, unit: selectedUnit });
+    }
     else console.error('API error:', j.error);
   } catch (e) {
     console.error('doApply failed:', e);
@@ -1406,6 +1577,7 @@ function DashboardInner() {
     sWStart2(0); sW2(0);
     sAf('');
     setSelectedUnit('units_dos');
+    setApplied({ y1, wStart1:0, w1:0, y2, wStart2:0, w2:0, af:'', unit:'units_dos' });
     setData(EMPTY_DATA);
   };
 
@@ -1431,7 +1603,8 @@ function DashboardInner() {
           loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}
         />
       );
-      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={selectedUnit}/>;
+      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} theme={theme}/>
+      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit}/>;
     }
   };
 
@@ -1469,23 +1642,27 @@ function DashboardInner() {
           {isMobile?(
             <>
               <MobileFilterBar
-                y1={y1} wStart1={wStart1} w1={w1}
-                y2={y2} wStart2={wStart2} w2={w2}
-                af={af} areas={areas} onOpen={()=>setSheet(true)} loading={loading} theme={theme}
+                applied={applied} unapplied={unapplied} areas={areas}
+                onOpen={()=>setSheet(true)} loading={loading} theme={theme}
               />
-              <MobileFilterSheet
+               <MobileFilterSheet
                 open={sheetOpen} onClose={()=>setSheet(false)}
                 y1={y1} sY1={sY1} wStart1={wStart1} sWStart1={sWStart1} w1={w1} sW1={sW1}
                 y2={y2} sY2={sY2} wStart2={wStart2} sWStart2={sWStart2} w2={w2} sW2={sW2}
                 af={af} sAf={sAf} areas={areas}
+                selectedUnit={selectedUnit} sSelectedUnit={setSelectedUnit}
+                unapplied={unapplied}
                 onApply={doApply} onReset={doReset} loading={loading} theme={theme}
               />
+
             </>
           ):(
             <DesktopFilterBar
               y1={y1} sY1={sY1} wStart1={wStart1} sWStart1={sWStart1} w1={w1} sW1={sW1}
               y2={y2} sY2={sY2} wStart2={wStart2} sWStart2={sWStart2} w2={w2} sW2={sW2}
               af={af} sAf={sAf} areas={areas}
+              selectedUnit={selectedUnit} sSelectedUnit={setSelectedUnit}
+              unapplied={unapplied}
               onApply={doApply} onReset={doReset} loading={loading} theme={theme}
             />
           )}

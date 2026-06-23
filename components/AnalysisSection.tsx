@@ -516,7 +516,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
 
                   {/* Vol */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <VolBadge label={String(pL)} val={row.volPrev} color="#3b82f6" theme={theme} />
+                    <VolBadge label={String(pL)} val={row.volPrev} color="#577098" theme={theme} />
                     <VolBadge label={String(cL)} val={row.volCurr} color={row.color} theme={theme} />
                   </div>
 
