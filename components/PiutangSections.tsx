@@ -2,517 +2,429 @@
 
 import React, { useState, useMemo } from 'react';
 import { PiutangRecord } from '@/types/sales';
-import { Search, Filter, ArrowUpDown, CreditCard, DollarSign, Calendar, Sliders, ChevronDown, RefreshCw } from 'lucide-react';
+import {
+  Search, Filter, ArrowUpDown, CreditCard,
+  DollarSign, Calendar, ChevronDown, RefreshCw,
+} from 'lucide-react';
 
 type Theme = 'light' | 'dark';
 
-// Color theme system supporting both light and dark themes nicely
-const TK = {
+// ── Token map identik dengan tk di page.tsx ──────────────────────────────────
+const tk = {
   dark: {
-    cardBg:        '#111318',
-    border:        'rgba(255,255,255,0.06)',
-    borderCard:    'rgba(255,255,255,0.07)',
-    tableHeadBg:   '#0c0e14',
-    tableHeadText: 'rgba(255,255,255,0.3)',
-    rowHover:      'rgba(255,255,255,0.04)',
-    rowAlt:        'rgba(255,255,255,0.015)',
-    text:          'rgba(255,255,255,0.9)',
-    textSub:       'rgba(255,255,255,0.55)',
-    textMuted:     'rgba(255,255,255,0.3)',
-    textFaint:     'rgba(255,255,255,0.18)',
-    inputBg:       'rgba(255,255,255,0.03)',
-    inputBorder:   'rgba(255,255,255,0.08)',
-    btnBg:         'rgba(59,130,246,0.12)',
-    btnBorder:     'rgba(59,130,246,0.3)',
-    btnText:       '#93c5fd',
-    posBg:         'rgba(16,185,129,0.1)',
-    posBorder:     'rgba(16,185,129,0.25)',
-    posText:       '#6ee7b7',
-    negBg:         'rgba(239,68,68,0.1)',
-    negBorder:     'rgba(239,68,68,0.22)',
-    negText:       '#fca5a5',
-    warningBg:     'rgba(245,158,11,0.1)',
-    warningBorder: 'rgba(245,158,11,0.25)',
-    warningText:   '#fde047',
-    shadow:        'none',
+    pagebg:      '#07090e',
+    cardbg:      '#0e1118',
+    card1bg:'#0d1a28', card1border:'#1a3a5c', card1text:'#7eb8f7', card1accent:'#3b82f6',
+    card2bg:'#0a1d14', card2border:'#1a4530', card2text:'#5edba8', card2accent:'#10b981',
+    card3bg:'#1a1108', card3border:'#3d2b08', card3text:'#f5d060', card3accent:'#f59e0b',
+    card4bg:'#290f0f', card4border:'#5c1a1a', card4text:'#fca5a5', card4accent:'#ef4444',
+    border:      'rgba(255,255,255,0.055)',
+    borderCard:  'rgba(255,255,255,0.075)',
+    borderInput: 'rgba(255,255,255,0.09)',
+    tableHead:   '#0b0d13',
+    tableAlt:    'rgba(255,255,255,0.015)',
+    rowHover:    'rgba(255,255,255,0.04)',
+    text:        'rgba(255,255,255,0.92)',
+    textSub:     'rgba(255,255,255,0.52)',
+    textMuted:   'rgba(255,255,255,0.28)',
+    textFaint:   'rgba(255,255,255,0.13)',
+    inputBg:     'rgba(255,255,255,0.035)',
+    shadow:      'none',
+    // semantic
+    green:  { bg:'rgba(16,185,129,0.09)',  text:'#34d399', border:'rgba(16,185,129,0.2)'  },
+    yellow: { bg:'rgba(245,158,11,0.07)',  text:'#fbbf24', border:'rgba(245,158,11,0.18)' },
+    red:    { bg:'rgba(239,68,68,0.08)',   text:'#fca5a5', border:'rgba(239,68,68,0.18)'  },
+    blue:   { bg:'rgba(59,130,246,0.1)',   text:'#93c5fd', border:'rgba(59,130,246,0.22)' },
+    pink:   { bg:'rgba(236,72,153,0.08)',  text:'#f9a8d4', border:'rgba(236,72,153,0.2)'  },
   },
   light: {
-    cardBg:        '#ffffff',
-    border:        'rgba(0,0,0,0.07)',
-    borderCard:    'rgba(0,0,0,0.08)',
-    tableHeadBg:   '#f8fafc',
-    tableHeadText: '#94a3b8',
-    rowHover:      'rgba(0,0,0,0.035)',
-    rowAlt:        'rgba(0,0,0,0.018)',
-    text:          '#0f172a',
-    textSub:       '#475569',
-    textMuted:     '#94a3b8',
-    textFaint:     '#cbd5e1',
-    inputBg:       'rgba(0,0,0,0.02)',
-    inputBorder:   'rgba(0,0,0,0.08)',
-    btnBg:         'rgba(37,99,235,0.08)',
-    btnBorder:     'rgba(37,99,235,0.25)',
-    btnText:       '#1d4ed8',
-    posBg:         'rgba(16,185,129,0.08)',
-    posBorder:     'rgba(22,163,74,0.25)',
-    posText:       '#15803d',
-    negBg:         'rgba(220,38,38,0.08)',
-    negBorder:     'rgba(220,38,38,0.2)',
-    negText:       '#dc2626',
-    warningBg:     'rgba(245,158,11,0.08)',
-    warningBorder: 'rgba(217,119,6,0.25)',
-    warningText:   '#b45309',
-    shadow:        '0 1px 8px rgba(0,0,0,0.05)',
+    pagebg:      '#eef1f7',
+    cardbg:      '#ffffff',
+    card1bg:'#eff6ff', card1border:'#bfdbfe', card1text:'#1d4ed8', card1accent:'#3b82f6',
+    card2bg:'#f0fdf4', card2border:'#bbf7d0', card2text:'#15803d', card2accent:'#10b981',
+    card3bg:'#fefce8', card3border:'#fde68a', card3text:'#92400e', card3accent:'#f59e0b',
+    card4bg:'#fef2f2', card4border:'#fecaca', card4text:'#b91c1c', card4accent:'#ef4444',
+    border:      'rgba(0,0,0,0.065)',
+    borderCard:  'rgba(0,0,0,0.08)',
+    borderInput: 'rgba(0,0,0,0.1)',
+    tableHead:   '#f8fafc',
+    tableAlt:    'rgba(0,0,0,0.018)',
+    rowHover:    'rgba(0,0,0,0.035)',
+    text:        '#0f172a',
+    textSub:     '#475569',
+    textMuted:   '#94a3b8',
+    textFaint:   '#cbd5e1',
+    inputBg:     'rgba(0,0,0,0.03)',
+    shadow:      '0 1px 3px rgba(0,0,0,0.06)',
+    // semantic
+    green:  { bg:'#f0fdf4',  text:'#15803d', border:'#bbf7d0' },
+    yellow: { bg:'#fffbeb',  text:'#92400e', border:'#fde68a' },
+    red:    { bg:'#fef2f2',  text:'#b91c1c', border:'#fecaca' },
+    blue:   { bg:'rgba(37,99,235,0.07)',  text:'#1d4ed8', border:'rgba(37,99,235,0.2)'   },
+    pink:   { bg:'rgba(219,39,119,0.07)', text:'#9d174d', border:'rgba(219,39,119,0.18)' },
   },
 } as const;
 
-// Currency Formatter to Rupiah (IDR)
-const formatIDR = (num: number): string => {
-  return num.toLocaleString('id-ID', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
-};
+type TK = typeof tk[keyof typeof tk];
 
+// ─── Formatter ────────────────────────────────────────────────────────────────
+const fIDR = (n: number) =>
+  n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+// ─── Shared mini-components ───────────────────────────────────────────────────
+function KpiCard({
+  label, labelColor, value, sub, icon, iconBg, iconColor, t, cardbg,
+}: {
+  label: string; labelColor: string; value: string; sub?: string;
+  icon: React.ReactNode; iconBg: string; iconColor: string; t: TK; cardbg: string;
+}) {
+  return (
+    <div style={{
+      background: cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 13,
+      padding: '14px 16px 12px', display: 'flex', flexDirection: 'column', gap: 6,
+      boxShadow: t.shadow, position: 'relative', overflow: 'hidden',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.1em', color: labelColor, fontWeight: 700 }}>
+          {label}
+        </span>
+        <div style={{ width: 28, height: 28, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: iconColor }}>
+          {icon}
+        </div>
+      </div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.03em', lineHeight: 1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─── FilterSelect — identik dengan WeekComparison ────────────────────────────
+function FilterSelect({
+  label, accentColor = '#3b82f6', value, onChange, children, t,
+}: {
+  label: string; accentColor?: string; value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode; t: TK;
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'stretch',
+      border: `1px solid ${t.borderInput}`, borderRadius: 8, overflow: 'hidden',
+    }}>
+      <span style={{
+        padding: '6px 10px', fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
+        textTransform: 'uppercase' as const, letterSpacing: '.07em', fontWeight: 600,
+        color: accentColor, background: `${accentColor}18`,
+        borderRight: `1px solid ${t.borderInput}`,
+        display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0,
+      }}>
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={onChange}
+        style={{
+          background: t.inputBg, border: 'none', outline: 'none',
+          padding: '6px 10px', fontSize: 12,
+          fontFamily: 'IBM Plex Mono, monospace', color: t.text,
+          cursor: 'pointer', flex: 1, minWidth: 0,
+          appearance: 'none', width: '100%',
+        }}
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
+// ─── SearchBar — konsisten dengan FilterSelect ────────────────────────────────
+function SearchBar({ value, onChange, t }: {
+  value: string; onChange: (v: string) => void; t: TK;
+}) {
+  const ACCENT = '#6366f1';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'stretch',
+      border: `1px solid ${value ? ACCENT + '66' : t.borderInput}`,
+      borderRadius: 8, overflow: 'hidden', transition: 'border-color 0.15s',
+    }}>
+      <span style={{
+        padding: '6px 10px', fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
+        textTransform: 'uppercase' as const, letterSpacing: '.07em', fontWeight: 600,
+        color: ACCENT, background: `${ACCENT}18`,
+        borderRight: `1px solid ${value ? ACCENT + '44' : t.borderInput}`,
+        display: 'flex', alignItems: 'center', flexShrink: 0, gap: 5,
+        transition: 'border-color 0.15s',
+      }}>
+        <Search size={10} />
+        Cari
+      </span>
+      <input
+        type="text"
+        placeholder="Faktur, kode, outlet..."
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          flex: 1, background: t.inputBg, border: 'none', outline: 'none',
+          padding: '6px 10px', fontSize: 12,
+          fontFamily: 'IBM Plex Mono, monospace', color: t.text,
+          minWidth: 0,
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 interface PiutangComponentProps {
   data: PiutangRecord[];
   theme: Theme;
 }
 
 export default function PiutangComponent({ data, theme = 'light' }: PiutangComponentProps) {
-  const t = TK[theme];
+  const t = tk[theme];
 
-  // States
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCity, setSelectedCity] = useState<string>('all');
-  const [selectedSalesman, setSelectedSalesman] = useState<string>('all');
-  const [selectedAgeRange, setSelectedAgeRange] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<keyof PiutangRecord>('hari');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [searchTerm,       setSearchTerm]       = useState('');
+  const [selectedCity,     setSelectedCity]     = useState('all');
+  const [selectedSalesman, setSelectedSalesman] = useState('all');
+  const [selectedAgeRange, setSelectedAgeRange] = useState('all');
+  const [sortBy,           setSortBy]           = useState<keyof PiutangRecord>('hari');
+  const [sortOrder,        setSortOrder]        = useState<'asc' | 'desc'>('desc');
 
-  // Filter lists derived from data
+  // ── Derived filter lists ───────────────────────────────────────────────────
   const cities = useMemo(() => {
-    const list = new Set<string>();
-    data.forEach(item => {
-      if (item.kota) list.add(item.kota.trim());
-    });
-    return Array.from(list);
+    const s = new Set<string>();
+    data.forEach(r => { if (r.kota) s.add(r.kota.trim()); });
+    return Array.from(s).sort();
   }, [data]);
 
   const salesmen = useMemo(() => {
-    const list = new Set<string>();
-    data.forEach(item => {
-      if (item.salesman) {
-        list.add(item.salesman.trim());
-      } else {
-        list.add('-');
-      }
-    });
-    return Array.from(list);
+    const s = new Set<string>();
+    data.forEach(r => s.add(r.salesman?.trim() || '-'));
+    return Array.from(s).sort();
   }, [data]);
 
-  // Handle Sort
+  // ── Sort handler ───────────────────────────────────────────────────────────
   const handleSort = (field: keyof PiutangRecord) => {
     if (sortBy === field) {
-      setSortOrder(order => (order === 'asc' ? 'desc' : 'asc'));
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(field);
       setSortOrder('desc');
     }
   };
 
-  // Filter & Sort Logic
+  // ── Filter + sort ──────────────────────────────────────────────────────────
   const filteredData = useMemo(() => {
+    const term = searchTerm.toLowerCase();
     return data
       .filter(item => {
-        // Search Term: faktur, kode, outlet, kecamatan, kelDesa
-        const term = searchTerm.toLowerCase();
-        const matchesSearch =
+        const matchSearch =
+          !term ||
           item.faktur.toLowerCase().includes(term) ||
           item.kode.toLowerCase().includes(term) ||
           item.outlet.toLowerCase().includes(term) ||
           item.kecamatan.toLowerCase().includes(term) ||
           item.kelDesa.toLowerCase().includes(term);
 
-        // City filter
-        const matchesCity = selectedCity === 'all' || item.kota.trim() === selectedCity;
+        const matchCity = selectedCity === 'all' || item.kota.trim() === selectedCity;
+        const salesmanVal = item.salesman?.trim() || '-';
+        const matchSalesman = selectedSalesman === 'all' || salesmanVal === selectedSalesman;
 
-        // Salesman filter
-        const salesmanVal = item.salesman ? item.salesman.trim() : '-';
-        const matchesSalesman = selectedSalesman === 'all' || salesmanVal === selectedSalesman;
-
-        // Age (Hari) filter
-        let matchesAge = true;
+        let matchAge = true;
         if (selectedAgeRange !== 'all') {
-          const daysNum = item.hari ?? 0;
-          if (selectedAgeRange === 'long') {
-            matchesAge = daysNum >= 45;
-          } else if (selectedAgeRange === 'medium') {
-            matchesAge = daysNum >= 30 && daysNum < 44;
-          } else if (selectedAgeRange === 'short') {
-            matchesAge = daysNum < 30;
-          } else if (selectedAgeRange === 'giro') {
-            matchesAge = item.hari === null; // Giro types usually have null/blank days
-          }
+          const h = item.hari ?? 0;
+          if      (selectedAgeRange === 'long')   matchAge = h >= 45;
+          else if (selectedAgeRange === 'medium') matchAge = h >= 30 && h < 45;
+          else if (selectedAgeRange === 'short')  matchAge = h < 30;
+          else if (selectedAgeRange === 'giro')   matchAge = item.hari === null;
         }
 
-        return matchesSearch && matchesCity && matchesSalesman && matchesAge;
+        return matchSearch && matchCity && matchSalesman && matchAge;
       })
       .sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-
-        // Handle nulls
-        if (valA === null) valA = sortOrder === 'asc' ? Infinity : -Infinity;
-        if (valB === null) valB = sortOrder === 'asc' ? Infinity : -Infinity;
-
-        if (typeof valA === 'string' && typeof valB === 'string') {
-          return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-
-        if (typeof valA === 'number' && typeof valB === 'number') {
-          return sortOrder === 'asc' ? valA - valB : valB - valA;
-        }
-
-        return 0;
+        let va = a[sortBy] as any;
+        let vb = b[sortBy] as any;
+        if (va === null) va = sortOrder === 'asc' ? Infinity : -Infinity;
+        if (vb === null) vb = sortOrder === 'asc' ? Infinity : -Infinity;
+        if (typeof va === 'string') return sortOrder === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        return sortOrder === 'asc' ? va - vb : vb - va;
       });
   }, [data, searchTerm, selectedCity, selectedSalesman, selectedAgeRange, sortBy, sortOrder]);
 
-  // Aggregate Metrics for filtered data
+  // ── Metrics ────────────────────────────────────────────────────────────────
   const metrics = useMemo(() => {
-    let totalPiutang = 0;
-    let totalGiro = 0;
-    let totalHariOverdue = 0;
-    let countWithHari = 0;
-
-    filteredData.forEach(item => {
-      totalPiutang += item.piutang;
-      totalGiro += item.giro;
-      if (item.hari !== null) {
-        totalHariOverdue += item.hari;
-        countWithHari += 1;
-      }
+    let totalPiutang = 0, totalGiro = 0, hariSum = 0, hariCount = 0;
+    filteredData.forEach(r => {
+      totalPiutang += r.piutang;
+      totalGiro    += r.giro;
+      if (r.hari !== null) { hariSum += r.hari; hariCount++; }
     });
-
-    const avgAging = countWithHari > 0 ? Math.round(totalHariOverdue / countWithHari) : 0;
-
     return {
       totalPiutang,
       totalGiro,
       totalOutstanding: totalPiutang + totalGiro,
-      avgAging,
+      avgAging: hariCount > 0 ? Math.round(hariSum / hariCount) : 0,
       count: filteredData.length,
     };
   }, [filteredData]);
 
-  const getSortIcon = (field: keyof PiutangRecord) => {
-    if (sortBy !== field) return <ArrowUpDown size={11} className="opacity-40" />;
+  // ── Sort icon ──────────────────────────────────────────────────────────────
+  const SortIcon = ({ field }: { field: keyof PiutangRecord }) => {
+    if (sortBy !== field) return <ArrowUpDown size={10} style={{ opacity: 0.3 }} />;
     return (
-      <span className={sortOrder === 'asc' ? 'text-blue-500' : 'text-[#10b981]'}>
-        <ArrowUpDown size={12} />
-      </span>
+      <ArrowUpDown size={11} color={sortOrder === 'asc' ? t.blue.text : t.green.text} />
     );
   };
 
   const clearFilters = () => {
-    setSearchTerm('');
-    setSelectedCity('all');
-    setSelectedSalesman('all');
-    setSelectedAgeRange('all');
-    setSortBy('hari');
-    setSortOrder('desc');
+    setSearchTerm(''); setSelectedCity('all');
+    setSelectedSalesman('all'); setSelectedAgeRange('all');
+    setSortBy('hari'); setSortOrder('desc');
   };
 
+  const hasFilters = searchTerm || selectedCity !== 'all' || selectedSalesman !== 'all' || selectedAgeRange !== 'all';
+
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, fontFamily: 'IBM Plex Sans, sans-serif' }} id="piutang-section">
-      
-      {/* ── KPI Summary Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-        
-        {/* Total Outstanding */}
-        <div style={{
-          background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, padding: 18,
-          boxShadow: t.shadow, transition: 'all 0.3s'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.textSub }}>
-              TOTAL
-            </span>
-            <div style={{ padding: 6, borderRadius: 8, background: 'rgba(59,130,246,0.08)', color: '#3b82f6' }}>
-              <DollarSign size={15} />
-            </div>
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            Rp {formatIDR(metrics.totalOutstanding)}
-          </div>
-          <div style={{ fontSize: 10, color: t.textMuted, display: 'flex', gap: 8 }}>
-            <span>Piutang + Giro</span>
-            <span style={{ color: t.textSub }}>· {metrics.count} Transaksi</span>
-          </div>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
-        {/* Total Piutang */}
-        <div style={{
-          background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, padding: 18,
-          boxShadow: t.shadow, transition: 'all 0.3s'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.warningText }}>
-              TOTAL PIUTANG 
-            </span>
-            <div style={{ padding: 6, borderRadius: 8, background: t.warningBg, color: '#f59e0b' }}>
-              <CreditCard size={15} />
-            </div>
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            Rp {formatIDR(metrics.totalPiutang)}
-          </div>
-          {/* <div style={{ fontSize: 10, color: t.textMuted }}>Kewajiban aktif yang belum dibayar</div> */}
-        </div>
-
-        {/* Total Giro */}
-        <div style={{
-          background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, padding: 18,
-          boxShadow: t.shadow, transition: 'all 0.3s'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: t.posText }}>
-              TOTAL GIRO
-            </span>
-            <div style={{ padding: 6, borderRadius: 8, background: t.posBg, color: '#10b981' }}>
-              <RefreshCw size={15} />
-            </div>
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            Rp {formatIDR(metrics.totalGiro)}
-          </div>
-          {/* <div style={{ fontSize: 10, color: t.textMuted }}>Warkat giro yang belum jatuh tempo</div> */}
-        </div>
-
-        {/* Rata-Rata Umur Piutang */}
-        <div style={{
-          background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, padding: 18,
-          boxShadow: t.shadow, transition: 'all 0.3s'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#ec4899' }}>
-              RATA-RATA UMUR PIUTANG
-            </span>
-            <div style={{ padding: 6, borderRadius: 8, background: 'rgba(236,72,153,0.08)', color: '#ec4899' }}>
-              <Calendar size={15} />
-            </div>
-          </div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', marginBottom: 4 }}>
-            {metrics.avgAging} <span style={{ fontSize: 12, fontWeight: 500, color: t.textSub }}>Hari</span>
-          </div>
-          {/* <div style={{ fontSize: 10, color: t.textMuted }}>Dihitung dari tanggal faktur</div> */}
-        </div>
-
+      {/* ── KPI Cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
+        <KpiCard
+          label="Total" labelColor={t.blue.text}
+          value={`Rp ${fIDR(metrics.totalOutstanding)}`}
+          sub={`Piutang + Giro · ${metrics.count} Transaksi`}
+          icon={<DollarSign size={14} />} iconBg={t.blue.bg} iconColor={t.blue.text} t={t}
+          cardbg={t.card1bg}
+        />
+        <KpiCard
+          label="Total Piutang" labelColor={t.green.text}
+          value={`Rp ${fIDR(metrics.totalPiutang)}`}
+          icon={<CreditCard size={14} />} iconBg={t.green.bg} iconColor={t.green.text} t={t}
+          cardbg={t.card2bg}
+        />
+        <KpiCard
+          label="Total Giro" labelColor={t.yellow.text}
+          value={`Rp ${fIDR(metrics.totalGiro)}`}
+          icon={<RefreshCw size={14} />} iconBg={t.yellow.bg} iconColor={t.yellow.text} t={t}
+          cardbg={t.card3bg}
+        />
+        <KpiCard
+          label="Rata-Rata Umur Piutang" labelColor={t.pink.text}
+          value={`${metrics.avgAging} Hari`} sub=""
+          icon={<Calendar size={14} />} iconBg={t.pink.bg} iconColor={t.pink.text} t={t}
+          cardbg={t.card4bg}
+        />
       </div>
 
-      {/* ── Interactive Filters Rail ── */}
+      {/* ── Filter Rail ── */}
       <div style={{
-        background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, padding: '14px 18px',
-        boxShadow: t.shadow, display: 'flex', flexDirection: 'column', gap: 12
+        background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 13,
+        padding: '14px 16px', boxShadow: t.shadow,
       }}>
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Filter size={13} color={t.textMuted} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: t.text, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Papan Filter Piutang
-            </span>
-          </div>
-          <button
-            onClick={clearFilters}
-            style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.btnText,
-              display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600
-            }}
-          >
-            Reset Filter
-          </button>
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-          gap: 10
-        }}>
-          
-          {/* Search Term */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: t.textMuted, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace' }}>SEARCH OUTLET/FAKTUR</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <Search size={12} color={t.textMuted} style={{ position: 'absolute', left: 10 }} />
-              <input
-                type="text"
-                placeholder="Cari faktur, kode, nama..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: t.inputBg,
-                  border: `1px solid ${t.inputBorder}`,
-                  borderRadius: 8,
-                  padding: '7px 10px 7px 28px',
-                  fontSize: 12,
-                  outline: 'none',
-                  color: t.text,
-                  transition: 'border-color 0.15s'
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Kota Dropdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: t.textMuted, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace' }}>KOTA</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <select
-                value={selectedCity}
-                onChange={e => setSelectedCity(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: t.inputBg,
-                  border: `1px solid ${t.inputBorder}`,
-                  borderRadius: 8,
-                  padding: '7px 24px 7px 10px',
-                  fontSize: 12,
-                  outline: 'none',
-                  appearance: 'none',
-                  color: t.text,
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="all">Semua Kota</option>
-                {cities.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <ChevronDown size={12} color={t.textMuted} style={{ position: 'absolute', right: 10, pointerEvents: 'none' }} />
-            </div>
-          </div>
-
-          {/* Salesman Dropdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: t.textMuted, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace' }}>SALESMAN</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <select
-                value={selectedSalesman}
-                onChange={e => setSelectedSalesman(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: t.inputBg,
-                  border: `1px solid ${t.inputBorder}`,
-                  borderRadius: 8,
-                  padding: '7px 24px 7px 10px',
-                  fontSize: 12,
-                  outline: 'none',
-                  appearance: 'none',
-                  color: t.text,
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="all">Semua Salesman</option>
-                {salesmen.map(s => (
-                  <option key={s} value={s}>{s === '-' ? 'Tanpa Salesman' : s}</option>
-                ))}
-              </select>
-              <ChevronDown size={12} color={t.textMuted} style={{ position: 'absolute', right: 10, pointerEvents: 'none' }} />
-            </div>
-          </div>
-
-          {/* Umur Piutang Overdue Ranges */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: 10, color: t.textMuted, fontWeight: 600, fontFamily: 'IBM Plex Mono, monospace' }}>UMUR PIUTANG (AGING)</label>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <select
-                value={selectedAgeRange}
-                onChange={e => setSelectedAgeRange(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: t.inputBg,
-                  border: `1px solid ${t.inputBorder}`,
-                  borderRadius: 8,
-                  padding: '7px 24px 7px 10px',
-                  fontSize: 12,
-                  outline: 'none',
-                  appearance: 'none',
-                  color: t.text,
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="all">Semua</option>
-                <option value="long">Sangat Lama (≥ 45 Hari)</option>
-                <option value="medium">Sedang (30 - 44 Hari)</option>
-                <option value="short">Baru (&lt; 30 Hari)</option>
-                <option value="giro">Giro (Null Overdue)</option>
-              </select>
-              <ChevronDown size={12} color={t.textMuted} style={{ position: 'absolute', right: 10, pointerEvents: 'none' }} />
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* ── Table Container ── */}
-      <div style={{
-        background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12,
-        boxShadow: t.shadow, overflow: 'hidden'
-      }}>
-        
-        {/* Table Title and Status */}
-        <div style={{ padding: '14px 18px border-b', borderBottom: `1px solid ${t.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.tableHeadBg, paddingLeft: 18, paddingRight: 18, paddingTop: 12, paddingBottom: 12 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            DAFTAR TRANSAKSI PIUTANG ({filteredData.length} records)
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+            Filter Data
           </span>
-          <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', background: t.inputBg, color: t.textSub, padding: '3px 8px', borderRadius: 14, border: `1px solid ${t.border}` }}>
-            Outstanding: Rp {formatIDR(metrics.totalOutstanding)}
+          {hasFilters && (
+            <button onClick={clearFilters} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 10px', borderRadius: 6,
+              background: t.blue.bg, border: `1px solid ${t.blue.border}`,
+              color: t.blue.text, cursor: 'pointer',
+              fontSize: 11, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace',
+            }}>
+              Reset Filter
+            </button>
+          )}
+        </div>
+
+        {/* Filter inputs — grid responsive */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+          <SearchBar value={searchTerm} onChange={setSearchTerm} t={t} />
+
+          <FilterSelect label="Kota" accentColor="#0d9488" value={selectedCity} onChange={e => setSelectedCity(e.target.value)} t={t}>
+            <option value="all">Semua Kota</option>
+            {cities.map(c => <option key={c} value={c}>{c}</option>)}
+          </FilterSelect>
+
+          <FilterSelect label="Salesman" accentColor="#8b5cf6" value={selectedSalesman} onChange={e => setSelectedSalesman(e.target.value)} t={t}>
+            <option value="all">Semua Salesman</option>
+            {salesmen.map(s => <option key={s} value={s}>{s === '-' ? 'Tanpa Salesman' : s}</option>)}
+          </FilterSelect>
+
+          <FilterSelect label="Hari" accentColor="#f59e0b" value={selectedAgeRange} onChange={e => setSelectedAgeRange(e.target.value)} t={t}>
+            <option value="all">Semua</option>
+            <option value="long">Sangat Lama (≥ 45 Hari)</option>
+            <option value="medium">Sedang (30–44 Hari)</option>
+            <option value="short">Baru (&lt; 30 Hari)</option>
+            <option value="giro">Giro (Null)</option>
+          </FilterSelect>
+        </div>
+      </div>
+
+      {/* ── Table ── */}
+      <div style={{
+        background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 13,
+        boxShadow: t.shadow, overflow: 'hidden',
+      }}>
+        {/* Table header bar */}
+        <div style={{
+          padding: '10px 16px', borderBottom: `1px solid ${t.border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: t.tableHead,
+        }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Daftar Piutang 
+          </span>
+          <span style={{
+            fontSize: 10, fontFamily: 'IBM Plex Mono, monospace',
+            background: t.inputBg, color: t.textSub,
+            padding: '2px 9px', borderRadius: 12, border: `1px solid ${t.border}`,
+          }}>
+            Outstanding: Rp {fIDR(metrics.totalOutstanding)}
           </span>
         </div>
 
-        {/* Responsive Table Wrapper */}
+        {/* Scrollable table */}
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
             <thead>
-              <tr style={{ background: t.tableHeadBg, borderBottom: `1px solid ${t.border}` }}>
-                {[
-                  { label: 'Faktur', key: 'faktur' },
-                  { label: 'Kode', key: 'kode' },
-                  { label: 'Outlet', key: 'outlet' },
-                  { label: 'Kota', key: 'kota' },
-                  { label: 'Kecamatan', key: 'kecamatan' },
-                  { label: 'Kel/Desa', key: 'kelDesa' },
-                  { label: 'Salesman', key: 'salesman' },
-                  { label: 'Tanggal', key: 'tanggal' },
+              <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.border}` }}>
+                {([
+                  { label: 'Faktur',      key: 'faktur'     },
+                  { label: 'Kode',        key: 'kode'       },
+                  { label: 'Outlet',      key: 'outlet'     },
+                  { label: 'Kota',        key: 'kota'       },
+                  { label: 'Kecamatan',   key: 'kecamatan'  },
+                  { label: 'Kel/Desa',    key: 'kelDesa'    },
+                  { label: 'Salesman',    key: 'salesman'   },
+                  { label: 'Tanggal',     key: 'tanggal'    },
                   { label: 'Jatuh Tempo', key: 'jatuhTempo' },
-                  { label: 'Hari', key: 'hari', numeric: true },
-                  { label: 'Piutang', key: 'piutang', numeric: true },
-                  { label: 'Giro', key: 'giro', numeric: true },
-                ].map(col => (
+                  { label: 'Hari',        key: 'hari',    numeric: true },
+                  { label: 'Piutang',     key: 'piutang', numeric: true },
+                  { label: 'Giro',        key: 'giro',    numeric: true },
+                ] as { label: string; key: keyof PiutangRecord; numeric?: boolean }[]).map(col => (
                   <th
                     key={col.key}
-                    onClick={() => handleSort(col.key as keyof PiutangRecord)}
+                    onClick={() => handleSort(col.key)}
                     style={{
-                      padding: '11px 14px',
-                      fontSize: 10,
+                      padding: '10px 14px', fontSize: 9,
                       fontFamily: 'IBM Plex Mono, monospace',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: t.tableHeadText,
-                      fontWeight: 700,
-                      whiteSpace: 'nowrap',
-                      cursor: 'pointer',
-                      textAlign: col.numeric ? 'right' : 'left',
-                      userSelect: 'none',
+                      textTransform: 'uppercase', letterSpacing: '0.07em',
+                      color: sortBy === col.key ? t.text : t.textMuted,
+                      fontWeight: 700, whiteSpace: 'nowrap', cursor: 'pointer',
+                      textAlign: col.numeric ? 'right' : 'left', userSelect: 'none',
                     }}
                   >
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: col.numeric ? 'flex-end' : 'flex-start', width: '100%' }}>
                       {col.label}
-                      {getSortIcon(col.key as keyof PiutangRecord)}
+                      <SortIcon field={col.key} />
                     </div>
                   </th>
                 ))}
@@ -521,72 +433,74 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
             <tbody>
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={12} style={{ padding: '40px 10px', textAlign: 'center', fontSize: 12, color: t.textSub, fontFamily: 'IBM Plex Mono, monospace' }}>
-                    Tidak ada transaksi piutang yang cocok dengan kriteria filter saat ini.
+                  <td colSpan={12} style={{ padding: '48px 10px', textAlign: 'center', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>
+                    Tidak ada transaksi piutang yang cocok.
                   </td>
                 </tr>
-              ) : (
-                filteredData.map((row, idx) => {
-                  const isBgAlt = idx % 2 === 1;
-                  const rowBg = isBgAlt ? t.rowAlt : 'transparent';
-                  return (
-                    <tr
-                      key={`${row.faktur}-${idx}`}
-                      style={{ background: rowBg, transition: 'background 0.1s', borderBottom: `1px solid ${t.border}` }}
-                      onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
-                      onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
-                    >
-                      <td style={{ padding: '11px 14px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.text, fontWeight: 600 }}>
-                        {row.faktur}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub }}>
-                        {row.kode}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 12, fontWeight: 700, color: t.text }}>
-                        {row.outlet}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, color: t.textSub }}>
-                        {row.kota}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, color: t.textSub }}>
-                        {row.kecamatan}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, color: t.textSub }}>
-                        {row.kelDesa}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, color: t.textSub, whiteSpace: 'nowrap' }}>
-                        {row.salesman || <span style={{ color: t.textFaint }}>—</span>}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap' }}>
-                        {row.tanggal}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap' }}>
-                        {row.jatuhTempo}
-                      </td>
-                      <td style={{
-                        padding: '11px 14px',
-                        fontSize: 11,
-                        fontFamily: 'IBM Plex Mono, monospace',
-                        textAlign: 'right',
-                        fontWeight: 600,
-                        color: row.hari !== null && row.hari > 4000 ? '#ef4444' : row.hari !== null && row.hari >= 3000 ? '#f59e0b' : t.textSub
-                      }}>
-                        {row.hari !== null ? formatIDR(row.hari) : <span style={{ color: t.textFaint }}>—</span>}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.piutang > 10000000 ? '#f59e0b' : t.text }}>
-                        {row.piutang > 0 ? formatIDR(row.piutang) : <span style={{ color: t.textFaint }}>0</span>}
-                      </td>
-                      <td style={{ padding: '11px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.giro > 0 ? '#10b981' : t.textSub }}>
-                        {row.giro > 0 ? formatIDR(row.giro) : <span style={{ color: t.textFaint }}>0</span>}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+              ) : filteredData.map((row, idx) => {
+                const isAlt = idx % 2 === 1;
+                const rowBg = isAlt ? t.tableAlt : 'transparent';
+
+                // warna aging
+                const agingColor =
+                  row.hari === null ? t.textFaint
+                  : row.hari > 40  ? '#ef4444'
+                  : row.hari >= 30 ? '#f59e0b'
+                  : row.hari <= 30   ? t.text
+                  : t.textSub;
+
+                return (
+                  <tr
+                    key={`${row.faktur}-${idx}`}
+                    style={{ background: rowBg, transition: 'background 0.1s', borderBottom: `1px solid ${t.border}` }}
+                    onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                    onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
+                  >
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.text, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {row.faktur}
+                    </td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {row.kode}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: t.text, fontWeight: 600 }}>
+                      {row.outlet}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: t.textSub }}>
+                      {row.kota}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: t.textSub }}>
+                      {row.kecamatan}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: t.textSub }}>
+                      {row.kelDesa}
+                    </td>
+                    <td style={{ padding: '10px 14px', color: t.textSub, whiteSpace: 'nowrap' }}>
+                      {row.salesman || <span style={{ color: t.textFaint }}>—</span>}
+                    </td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap', fontSize: 11 }}>
+                      {row.tanggal || '—'}
+                    </td>
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap', fontSize: 11 }}>
+                      {row.jatuhTempo || '—'}
+                    </td>
+                    {/* Hari — color-coded aging */}
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 600, color: agingColor }}>
+                      {row.hari !== null ? fIDR(row.hari) : <span style={{ color: t.textFaint }}>—</span>}
+                    </td>
+                    {/* Piutang */}
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.piutang > 10_000_000 ? t.yellow.text : t.text }}>
+                      {row.piutang > 0 ? fIDR(row.piutang) : <span style={{ color: t.textFaint }}>0</span>}
+                    </td>
+                    {/* Giro */}
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.giro > 0 ? t.green.text : t.textSub }}>
+                      {row.giro > 0 ? fIDR(row.giro) : <span style={{ color: t.textFaint }}>0</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
-
       </div>
 
     </div>
