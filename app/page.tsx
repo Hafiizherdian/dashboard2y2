@@ -19,7 +19,7 @@ import {
   Activity, FileText, Store, Sun, Moon,
   ChevronLeft, Filter, X, LogOut,
   ShieldAlert, ShieldCheck, Shield,
-  ArrowUpRight, ArrowDownRight,
+  Boxes, NotepadTextDashed, WalletCards,
 } from 'lucide-react';
 import {
   ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -61,6 +61,7 @@ const tk = {
     chipBlue:   { bg:'rgba(59,130,246,0.11)',  text:'#93c5fd', border:'rgba(59,130,246,0.25)'  },
     chipSlate:  { bg:'rgba(100,116,139,0.11)', text:'#cbd5e1', border:'rgba(100,116,139,0.25)' },
     chipOrange: { bg:'rgba(249,115,22,0.11)',  text:'#fb923c', border:'rgba(249,115,22,0.25)'  },
+    chipGreen:  { bg:'rgba(16,185,129,0.11)',  text:'#34d399', border:'rgba(16,185,129,0.25)'},
     card1bg:'#0d1a28', card1border:'#1a3a5c', card1text:'#7eb8f7', card1accent:'#3b82f6',
     card2bg:'#0a1d14', card2border:'#1a4530', card2text:'#5edba8', card2accent:'#10b981',
     card3bg:'#1a1108', card3border:'#3d2b08', card3text:'#f5d060', card3accent:'#f59e0b',
@@ -85,6 +86,7 @@ const tk = {
     chipBlue:   { bg:'rgba(37,99,235,0.07)',   text:'#1d4ed8', border:'rgba(37,99,235,0.2)'   },
     chipSlate:  { bg:'rgba(100,116,139,0.07)', text:'#475569', border:'rgba(100,116,139,0.16)' },
     chipOrange: { bg:'rgba(234,88,12,0.07)',   text:'#c2410c', border:'rgba(234,88,12,0.16)'   },
+    chipGreen:  { bg:'rgba(22,163,74,0.07)',   text:'#15803d', border:'rgba(22,163,74,0.16)'},
     card1bg:'#eff6ff', card1border:'#bfdbfe', card1text:'#1d4ed8', card1accent:'#3b82f6',
     card2bg:'#f0fdf4', card2border:'#bbf7d0', card2text:'#15803d', card2accent:'#10b981',
     card3bg:'#fefce8', card3border:'#fde68a', card3text:'#92400e', card3accent:'#f59e0b',
@@ -223,15 +225,15 @@ function ThemeToggle({ theme, setTheme, compact=false }:{ theme:Theme; setTheme:
 }
 
 const TABS=[
-  {id:'overview',      label:'Ringkasan',       shortLabel:'Ringkasan',  Icon:TrendingUp},
+  {id:'overview',      label:'Ringkasan',       shortLabel:'Ringkasan',  Icon:NotepadTextDashed},
   {id:'weekly',        label:'Mingguan',        shortLabel:'Mingguan',   Icon:Calendar  },
   {id:'quarterly',     label:'Kuartal',         shortLabel:'Kuartal',    Icon:BarChart3 },
   {id:'l4wc4w',        label:'L4W vs C1W',      shortLabel:'L4W',        Icon:Activity  },
   {id:'yoy',           label:'YoY Growth',      shortLabel:'YoY',        Icon:PieChart  },
   {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
   {id:'analysis',      label:'Brand Performance',shortLabel:'Brand',     Icon:FileText  },
-  {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Filter    },
-  {id:'piutang',       label:'Piutang',         shortLabel:'Piutang',    Icon:Store}
+  {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Boxes    },
+  {id:'piutang',       label:'Piutang',         shortLabel:'Piutang',    Icon:WalletCards}
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -569,7 +571,7 @@ function MobileFilterBar({
     }
   }, [loading]);
 
-  type CV='blue'|'slate'|'orange';
+  type CV='blue'|'green'|'orange';
   const Chip=({v,ch}:{v:string;ch:CV})=>{
     const key=`chip${ch.charAt(0).toUpperCase()+ch.slice(1)}` as keyof typeof t;
     const c=t[key] as {bg:string;text:string;border:string};
@@ -621,7 +623,7 @@ function MobileFilterBar({
         )}
         <Chip v={`${applied.y1} ${rangeLabel(applied.wStart1,applied.w1)}`} ch="blue"/>
         <span style={{fontSize:8,color:t.textFaint,fontFamily:'monospace',flexShrink:0}}>vs</span>
-        <Chip v={`${applied.y2} ${rangeLabel(applied.wStart2,applied.w2)}`} ch="slate"/>
+        <Chip v={`${applied.y2} ${rangeLabel(applied.wStart2,applied.w2)}`} ch="green"/>
         {aName&&<Chip v={aName} ch="orange"/>}
         {applied.unit!=='units_dos'&&(
           <Chip v={UNIT_OPTIONS.find(o=>o.value===applied.unit)?.label??applied.unit} ch="orange"/>
@@ -698,7 +700,7 @@ function MobileFilterSheet({
         borderTop:`1px solid ${t.border}`,
         transform:open?'translateY(0)':'translateY(100%)',
         transition:'transform 0.22s cubic-bezier(0.32,0.72,0,1)',
-        maxHeight:'80vh', display:'flex', flexDirection:'column',
+        maxHeight:'90vh', display:'flex', flexDirection:'column',
       }}>
         <style>{`@keyframes fbPulseDot{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
         <div style={{display:'flex',justifyContent:'center',padding:'8px 0 0'}}>
@@ -881,7 +883,7 @@ function KpiMini({ bg, border, labelColor, label, value, sub, badge, theme, acce
       {sub && <div style={{ fontSize:9.5, color:t.textMuted, fontFamily:'IBM Plex Mono, monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sub}</div>}
       {badge && (
         <span style={{ position:'absolute', top:14, right:16, display:'inline-flex', alignItems:'center', gap:3, padding:'2px 7px', borderRadius:10, width:'fit-content', fontSize:9, fontWeight:700, fontFamily:'IBM Plex Mono, monospace', background:badge.positive?t.posBg:t.negBg, color:badge.positive?t.posText:t.negText, border:`1px solid ${badge.positive?t.posBorder:t.negBorder}` }}>
-          {badge.positive?<ArrowUpRight size={9}/>:<ArrowDownRight size={9}/>}
+          {badge.positive}
           {badge.text}
         </span>
       )}

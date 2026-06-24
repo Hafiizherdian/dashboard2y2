@@ -159,7 +159,7 @@ const NAV_SECTIONS = [
     section: 'DATA',
     items: [
       { id: 'upload-penjualan',  label: 'Upload Penjualan',  icon: Upload,      accent: '#6366f1' },
-      { id: 'upload-distribusi', label: 'Upload Distribusi', icon: TrendingUp,  accent: '#10b981' },
+      { id: 'upload-distribusi', label: 'Upload Distribusi', icon: Upload,      accent: '#10b981' },
       { id: 'upload-piutang',    label: 'Upload Piutang',    icon: Upload,      accent: '#940d2c' },
       { id: 'areas',             label: 'Management Area',   icon: MapPin,      accent: '#0d9488' },
     ],
@@ -184,7 +184,7 @@ const PERM_MAP: Record<string, string> = {
 
 const PAGE_META: Record<string, { title: string; subtitle: string; icon: React.ComponentType<any>; color: string }> = {
   'upload-penjualan':  { title: 'Upload Penjualan',  subtitle: 'File data penjualan (.xlsx)',   icon: Upload,     color: '#6366f1' },
-  'upload-distribusi': { title: 'Upload Distribusi', subtitle: 'File data distribusi (.xlsx)',  icon: TrendingUp, color: '#10b981' },
+  'upload-distribusi': { title: 'Upload Distribusi', subtitle: 'File data distribusi (.xlsx)',  icon: Upload,     color: '#10b981' },
   'upload-piutang':    { title: 'Upload Piutang',    subtitle: 'FIle data piutang (.xlsx',      icon: Upload,     color: '#940d2c' },
   areas:               { title: 'Management Area',   subtitle: 'Target DOS per area',           icon: MapPin,     color: '#0d9488' },
   users:               { title: 'Manajemen User',    subtitle: 'Kelola akun pengguna',          icon: Users,      color: '#a855f7' },
