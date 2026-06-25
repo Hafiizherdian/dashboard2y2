@@ -23,7 +23,7 @@ jobs:
           script: |
             set -e
 
-            echo "=== Masuk ke direktori app ==="
+            echo "=== Masuk ke direktori app ===="
             cd ~/app
 
             echo "=== Pull kode terbaru ==="

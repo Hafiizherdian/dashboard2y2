@@ -120,7 +120,7 @@ function useBreakpoint() {
 }
 
 // ─── Unit key helper ─────────────────────────────────────────────────────────
-type UnitKey = 'units_dos' | 'units_bal' | 'units_slop' | 'units_bks';
+type UnitKey = 'units_dos' | 'units_bal' | 'units_slop' | 'units_bks' | 'omzet';
 
 function getUnitData(p: any, unitKey: UnitKey): { l4w: number; c1w: number; l4wTotal?: number } {
   return p[unitKey] ?? { l4w: 0, c1w: 0, l4wTotal: undefined };
@@ -275,7 +275,7 @@ function VarPill({ value, theme }: { value: number; theme: Theme }) {
       whiteSpace: 'nowrap',
     }}>
       {pos ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-      {pos ? '+' : ''}{formatPercentage(value)}
+      {pos ? '' : ''}{formatPercentage(value)}
     </span>
   );
 }
@@ -331,19 +331,25 @@ function FilterSelect({
 interface L4WC4WAnalysisProps {
   data: L4WC4WData;
   theme?: Theme;
+  selectedUnit?: UnitKey;
+  onUnitChange?: React.Dispatch<React.SetStateAction<UnitKey>> | ((unit: UnitKey) => void);
 }
 
 type SortKey = 'product' | 'year' | 'l4wValue' | 'c1wValue' | 'variance' | 'variancePercentage';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC4WAnalysisProps) {
+export default function L4WC4WAnalysisComponent({ data, theme: themeProp, selectedUnit: propSelectedUnit, onUnitChange  }: L4WC4WAnalysisProps) {
   const theme: Theme = themeProp ?? 'light';
   const t = TK[theme];
   const { isMobile } = useBreakpoint();
 
   const [expanded,     setExpanded]     = useState<'bar' | 'line' | null>(null);
   const [sort,         setSort]         = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'c1wValue', dir: 'desc' });
-  const [selectedUnit, setSelectedUnit] = useState<UnitKey>('units_dos');
+  // const [selectedUnit, setSelectedUnit] = useState<UnitKey>('units_dos');
+  const [internalSelectedUnit, setInternalSelectedUnit] = useState<UnitKey>('units_dos');
+  const selectedUnit    = propSelectedUnit ?? internalSelectedUnit;
+  const setSelectedUnit = onUnitChange ?? setInternalSelectedUnit;
+  const isOmzet         = selectedUnit === 'omzet';
   const [selectedCat,  setSelectedCat]  = useState('all');
 
   const unitOptions: { value: UnitKey; label: string }[] = [
@@ -351,6 +357,7 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
     { value: 'units_bal',  label: 'Jual (Bal Net)'  },
     { value: 'units_slop', label: 'Jual (Slop Net)' },
     { value: 'units_bks',  label: 'Jual (Bks Net)'  },
+    { value: 'omzet', label: 'Jual (Omzet)'}
   ];
 
   const fmtUnit = (v: number) => v.toLocaleString('id-ID');
@@ -431,34 +438,47 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
     l4wAvg: chartData[0].value,
     c1w:    chartData[1].value,
   }), [chartData]);
-
+  
   // ── trendData ─────────────────────────────────────────────────────────────
   const trendData = useMemo(() => {
     if (!data.weeklyTrendData?.length) return [];
-    // Untuk units_dos + semua kategori, weeklyTrendData dari backend sudah benar
-    if (selectedUnit === 'units_dos' && selectedCat === 'all') return data.weeklyTrendData;
 
-    const weekTotalMap = new Map<string, { l4wTotal: number; c1w: number }>();
-    data.weeklyTrendData.forEach(tw => {
-      if (!weekTotalMap.has(tw.week)) weekTotalMap.set(tw.week, { l4wTotal: 0, c1w: 0 });
+    // 1. Cari pola rasio (naik-turun) dari data asli API untuk periode L4W
+    const globalL4W = data.weeklyTrendData.filter(tw => tw.period !== 'C1W');
+    const totalGlobalL4W = globalL4W.reduce((sum, tw) => sum + tw.value, 0);
+    
+    const weekWeights = new Map<string, number>();
+    globalL4W.forEach(tw => {
+      // Hitung persentase bobot setiap minggunya (misal W19 menyumbang 27% dari total)
+      weekWeights.set(tw.week, totalGlobalL4W > 0 ? tw.value / totalGlobalL4W : 0.25);
     });
+
+    // 2. Hitung total C1W dan L4W murni berdasarkan filter (Unit & Kategori) saat ini
+    let filteredC1W = 0;
+    let filteredL4WTotal = 0;
 
     data.productDetails?.forEach(p => {
+      // Lewati produk yang tidak sesuai filter kategori
       if (selectedCat !== 'all' && getProductCategory(p.product) !== selectedCat) return;
-      data.weeklyTrendData?.forEach(tw => {
-        const entry = weekTotalMap.get(tw.week);
-        if (!entry) return;
-        const ud = getUnitData(p, selectedUnit);
-        if (tw.period === 'C1W') entry.c1w     += ud.c1w;
-        else                     entry.l4wTotal += ud.l4wTotal ?? (ud.l4w * 4);
-      });
+      
+      const ud = getUnitData(p, selectedUnit);
+      filteredC1W += ud.c1w;
+      filteredL4WTotal += ud.l4wTotal ?? (ud.l4w * 4);
     });
 
+    // 3. Bangun ulang data grafik dengan mendistribusikan total filter ke pola rasio
     return data.weeklyTrendData.map(tw => {
-      const entry = weekTotalMap.get(tw.week);
-      if (!entry) return { ...tw, value: 0 };
-      const value = tw.period === 'C1W' ? entry.c1w : entry.l4wTotal / 4;
-      return { ...tw, value: Math.round(value * 100) / 100 };
+      let finalValue = 0;
+      
+      if (tw.period === 'C1W') {
+        finalValue = filteredC1W;
+      } else {
+        // Alih-alih dibagi 4 (rata-rata), kita kalikan dengan rasio asli minggunya
+        const weight = weekWeights.get(tw.week) ?? 0.25;
+        finalValue = filteredL4WTotal * weight;
+      }
+      
+      return { ...tw, value: Math.round(finalValue * 100) / 100 };
     });
   }, [data, selectedUnit, selectedCat]);
 
@@ -509,7 +529,7 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: isMobile ? 8 : 14 }}>
       {[
         { color: t.barL4W, label: 'L4W' },
-        { color: t.barC1W, label: isMobile ? 'C1W' : 'C1W (dot besar)' },
+        { color: t.barC1W, label: isMobile ? 'C1W' : 'C1W' },
       ].map((item, i) => (
         <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: isMobile ? 11 : 12, color: t.textSub, fontFamily: 'IBM Plex Sans, sans-serif' }}>
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
@@ -596,7 +616,7 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
     }}>
 
       {/* ── Info banner ── */}
-      <div style={{
+      {/* <div style={{
         padding:      isMobile ? '8px 10px' : '10px 14px',
         background:   t.infoBg,
         border:       `1px solid ${t.infoBorder}`,
@@ -619,7 +639,7 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
             </>
           )}
         </p>
-      </div>
+      </div> */}
 
       {/* ── Filter card ── */}
       <div style={card()}>
@@ -665,7 +685,7 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp }: L4WC
             bg: t.card1Bg, border: t.card1Border, color: t.card1Text,
           },
           {
-            label: isMobile ? 'C1W (Sekarang)' : 'Minggu Terakhir (C1W)',
+            label: isMobile ? 'C1W (Sekarang)' : '1 Minggu Terakhir (C1W)',
             value: fmtUnit(summaryValues.c1w),
             sub:   'Penjualan minggu ini',
             bg: t.card2Bg, border: t.card2Border, color: t.card2Text,

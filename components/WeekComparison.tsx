@@ -15,7 +15,7 @@ import { ChevronUpIcon, ChevronDownIcon, Maximize2, X } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Theme   = 'dark' | 'light';
-type UnitKey = 'units_dos' | 'units_bal' | 'units_slop' | 'units_bks';
+type UnitKey = 'units_dos' | 'units_bal' | 'units_slop' | 'units_bks' | 'omzet';
 
 // ─── Theme tokens ─────────────────────────────────────────────────────────────
 const TK = {
@@ -69,6 +69,9 @@ function resolveUnitValues(
   const key   = unit as UnitKey;
   const field = detail[key] as { previous: number; current: number } | undefined;
   if (field && typeof field.previous === 'number') return { previous: field.previous, current: field.current };
+  // Omzet tidak boleh fallback ke Dos — satuannya beda total (Rupiah vs unit jual).
+  // Kalau backend lama belum kirim field omzet, tampilkan 0 daripada salah label.
+  if (key === 'omzet') return { previous: 0, current: 0 };
   const dos = detail.units_dos as { previous: number; current: number } | undefined;
   if (dos && typeof dos.previous === 'number') return { previous: dos.previous, current: dos.current };
   return { previous: 0, current: 0 };
@@ -80,6 +83,16 @@ const fmtK = (v: number) => {
 };
 
 const fmtExact = (v: number) => v.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+
+// ── Format Rupiah, dipakai saat unit terpilih adalah Omzet ───────────────────
+const fmtRp = (v: number) => {
+  const av = Math.abs(v);
+  if (av >= 1e9) return `Rp ${(v / 1e9).toFixed(1)}M`;
+  if (av >= 1e6) return `Rp ${(v / 1e6).toFixed(1)}jt`;
+  if (av >= 1e3) return `Rp ${(v / 1e3).toFixed(0)}rb`;
+  return `Rp ${Math.round(v).toLocaleString('id-ID')}`;
+};
+const fmtRpExact = (v: number) => `Rp ${v.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`;
 
 const fmtPct = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
@@ -116,22 +129,19 @@ function useWindowSize() {
 }
 
 // ─── useViewport hook (zoom + pan, grafik selalu full-width) ──────────────────
-// "Zoom" di sini artinya mengubah WINDOW — berapa week yang terlihat.
-// Grafik selalu full-width, tidak menyusut/membesar. User hanya mengubah
-// berapa week yang terlihat (window), lalu geser kiri/kanan untuk navigasi.
 interface ViewportResult {
-  visibleCount : number;                         // jumlah week terlihat saat ini
-  startIndex   : number;                         // index awal slice
+  visibleCount : number;
+  startIndex   : number;
   canPanLeft   : boolean;
   canPanRight  : boolean;
-  isWindowed   : boolean;                        // true jika window < total (bisa pan)
-  windowPct    : number;                         // persentase data yg terlihat (100 = semua)
-  zoomIn       : () => void;                     // perkecil window (lihat lebih sedikit week)
-  zoomOut      : () => void;                     // perbesar window (lihat lebih banyak week)
-  resetZoom    : () => void;                     // kembali ke semua week
+  isWindowed   : boolean;
+  windowPct    : number;
+  zoomIn       : () => void;
+  zoomOut      : () => void;
+  resetZoom    : () => void;
   panLeft      : () => void;
   panRight     : () => void;
-  panTo        : (fraction: number) => void;     // 0–1, tengah viewport
+  panTo        : (fraction: number) => void;
   ref          : React.RefObject<HTMLDivElement | null>;
   handlers: {
     onMouseDown  : (e: React.MouseEvent) => void;
@@ -142,11 +152,8 @@ interface ViewportResult {
   };
 }
 
-// Zoom step: tiap klik zoom in/out mengubah window sebesar 25%
 const ZOOM_STEP = 0.25;
-// Minimum week yang terlihat
 const MIN_WINDOW = 4;
-// Pan step: tiap klik panLeft/panRight menggeser 20% dari window saat ini
 const PAN_STEP_PCT = 0.20;
 
 function useViewport(totalCount: number): ViewportResult {
@@ -154,7 +161,6 @@ function useViewport(totalCount: number): ViewportResult {
   const [startIndex,   setStartIndex]   = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Sinkronisasi saat data berubah
   useEffect(() => {
     setVisibleCount(vc => {
       const next = Math.min(vc, totalCount);
@@ -163,23 +169,18 @@ function useViewport(totalCount: number): ViewportResult {
     });
   }, [totalCount]);
 
-  // ── Clamp helper ──────────────────────────────────────────────────────────
   const clamp = useCallback((si: number, vc: number) =>
     Math.max(0, Math.min(totalCount - vc, si)),
   [totalCount]);
 
-  // ── Zoom ──────────────────────────────────────────────────────────────────
-  // Zoom IN = window lebih kecil (lihat LEBIH SEDIKIT week, lebih detail)
   const zoomIn = useCallback(() => {
     setVisibleCount(vc => {
       const next = Math.max(MIN_WINDOW, Math.round(vc * (1 - ZOOM_STEP)));
-      // Pertahankan pusat viewport
       setStartIndex(si => clamp(si + Math.round((vc - next) / 2), next));
       return next;
     });
   }, [clamp]);
 
-  // Zoom OUT = window lebih besar (lihat LEBIH BANYAK week)
   const zoomOut = useCallback(() => {
     setVisibleCount(vc => {
       const next = Math.min(totalCount, Math.round(vc * (1 + ZOOM_STEP)));
@@ -193,9 +194,7 @@ function useViewport(totalCount: number): ViewportResult {
     setStartIndex(0);
   }, [totalCount]);
 
-  // ── Pan ───────────────────────────────────────────────────────────────────
   const panLeft = useCallback(() => {
-    // Baca visibleCount via ref agar tidak perlu masuk ke dep array
     setVisibleCount(vc => {
       setStartIndex(si => clamp(si - Math.max(1, Math.round(vc * PAN_STEP_PCT)), vc));
       return vc;
@@ -217,7 +216,6 @@ function useViewport(totalCount: number): ViewportResult {
     });
   }, [totalCount, clamp]);
 
-  // ── Drag pan ──────────────────────────────────────────────────────────────
   const dragStartX   = useRef<number | null>(null);
   const dragStartIdx = useRef(0);
   const isDragging   = useRef(false);
@@ -251,7 +249,6 @@ function useViewport(totalCount: number): ViewportResult {
     isDragging.current = false;
   }, []);
 
-  // ── Touch swipe pan ───────────────────────────────────────────────────────
   useEffect(() => {
     const el = ref.current; if (!el) return;
     let lastX = 0, touchStartIdx = 0;
@@ -277,7 +274,6 @@ function useViewport(totalCount: number): ViewportResult {
     };
   }, [startIndex, clamp]);
 
-  // ── Keyboard ──────────────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowLeft':  e.preventDefault(); panLeft();   break;
@@ -318,16 +314,6 @@ function useViewport(totalCount: number): ViewportResult {
 }
 
 // ─── ChartViewport ────────────────────────────────────────────────────────────
-// Pendekatan BENAR: render SEMUA data dalam satu SVG lebar penuh,
-// lalu geser kontainer dengan CSS translateX. Grafik TIDAK re-render saat pan.
-//
-// Cara kerja:
-//  • Inner chart div lebarnya = (totalCount / visibleCount) * 100%
-//    → jika visibleCount=13 dari 52 total, lebar = 400%
-//  • translateX digunakan untuk menggeser ke posisi startIndex
-//    → offset = -(startIndex / totalCount) * totalWidth
-//  • Zoom = ubah visibleCount → otomatis lebar inner berubah, posisi disesuaikan
-//  • Grafik di-pass SEMUA data (tidak di-slice), XAxis tick di-filter via interval
 type ChartEntry = Record<string, unknown>;
 
 function ChartViewport<T extends ChartEntry>({
@@ -336,7 +322,6 @@ function ChartViewport<T extends ChartEntry>({
   theme: Theme;
   height: number;
   data: T[];
-  /** children menerima data LENGKAP (tidak di-slice) + info viewport */
   children: (allData: T[], visibleCount: number, startIndex: number) => React.ReactNode;
 }) {
   const t = TK[theme];
@@ -352,16 +337,9 @@ function ChartViewport<T extends ChartEntry>({
   const mmRef      = useRef<HTMLDivElement>(null);
   const mmDragging = useRef(false);
 
-  // Lebar inner = rasio total/visible → jika visible=13 dari 52, lebar = 400%
   const innerWidthPct = data.length > 0 ? (data.length / visibleCount) * 100 : 100;
-
-  // Offset translateX: geser sejauh (startIndex/totalCount) * innerWidth
-  // Karena innerWidth dalam %, dan kita dalam konteks outer 100%:
-  // translateX dalam px terlalu rumit — gunakan left offset trick:
-  // Bungkus inner dalam overflow:hidden div (outer), inner absolute dengan left = -offsetPct%
   const offsetPct = data.length > 0 ? (startIndex / data.length) * innerWidthPct : 0;
 
-  // ── Minimap ───────────────────────────────────────────────────────────────
   const mmPanFromEvent = useCallback((clientX: number) => {
     const el = mmRef.current; if (!el) return;
     const r  = el.getBoundingClientRect();
@@ -383,7 +361,6 @@ function ChartViewport<T extends ChartEntry>({
     return () => { window.removeEventListener('mouseup', up); window.removeEventListener('mousemove', move); };
   }, [mmPanFromEvent]);
 
-  // ── Zoom buttons ──────────────────────────────────────────────────────────
   const ZBtn = ({ label, action, disabled, title: ttl }: {
     label: string; action: () => void; disabled: boolean; title: string;
   }) => (
@@ -406,7 +383,6 @@ function ChartViewport<T extends ChartEntry>({
     </button>
   );
 
-  // ── Pan buttons ───────────────────────────────────────────────────────────
   const PBtn = ({ dir }: { dir: 'left' | 'right' }) => {
     const disabled = dir === 'left' ? !canPanLeft : !canPanRight;
     return (
@@ -445,7 +421,6 @@ function ChartViewport<T extends ChartEntry>({
 
   return (
     <div style={{ userSelect: 'none' }}>
-      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6, padding: '0 2px' }}>
         <span style={{
           fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', marginRight: 'auto',
@@ -463,7 +438,6 @@ function ChartViewport<T extends ChartEntry>({
         <ZBtn label="↺" action={resetZoom} disabled={!isWindowed}                  title="Tampilkan semua week (Esc)" />
       </div>
 
-      {/* Minimap */}
       {isWindowed && (
         <div style={{ marginBottom: 8, padding: '0 2px' }}>
           <div
@@ -499,10 +473,6 @@ function ChartViewport<T extends ChartEntry>({
         </div>
       )}
 
-      {/* ── Chart container ──────────────────────────────────────────────────
-           OUTER: overflow:hidden + border, tinggi fixed
-           INNER: lebar = innerWidthPct%, digeser dengan marginLeft / translateX
-           Chart di-render sekali dengan SEMUA data, tidak pernah di-slice. ── */}
       <div
         style={{
           borderRadius: 10,
@@ -525,23 +495,17 @@ function ChartViewport<T extends ChartEntry>({
         onBlur={() => setFocused(false)}
         onKeyDown={handlers.onKeyDown}
       >
-        {/* Inner — lebar penuh × rasio, digeser ke kiri sesuai startIndex */}
         <div style={{
           position: 'absolute',
           top: 0, bottom: 0,
           width: `${innerWidthPct}%`,
-          // Geser: offset negatif sesuai posisi startIndex
-          // translateX(-offsetPct%) tapi offsetPct relatif terhadap innerWidth
-          // jadi: left = -(startIndex/totalCount)*100% dalam konteks outer
           left: `${-offsetPct}%`,
-          // Animasi halus saat pan dengan tombol/keyboard, tidak saat drag
           transition: dragging ? 'none' : 'left .15s ease-out',
         }}>
           {children(data, visibleCount, startIndex)}
         </div>
       </div>
 
-      {/* Hint */}
       <div style={{
         marginTop: 4, height: 13,
         fontSize: 9, fontFamily: 'IBM Plex Mono,monospace',
@@ -559,8 +523,9 @@ function ChartViewport<T extends ChartEntry>({
 // ─── Custom Tooltips ──────────────────────────────────────────────────────────
 type LinePayload = { dataKey?: string; value?: number, name?: string};
 
-function TooltipLine({ active, payload, label, theme }: {
+function TooltipLine({ active, payload, label, theme, fmtValue = fmtK }: {
   active?: boolean; payload?: LinePayload[]; label?: string; theme: Theme;
+  fmtValue?: (v: number) => string; // ← baru: format-aware (K-suffix biasa, atau Rp saat Omzet)
 }) {
   if (!active || !payload?.length) return null;
   const t  = TK[theme];
@@ -577,9 +542,9 @@ function TooltipLine({ active, payload, label, theme }: {
   return (
     <div style={{ background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontFamily: 'IBM Plex Mono,monospace', minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
       <div style={{ fontWeight: 700, fontSize: 12, color: t.text, marginBottom: 6 }}>{label}</div>
-      {row(payload.find(x => x.dataKey === 'previousYear')?.name ?? 'Tahun Lalu', fmtK(pv))}
-      {row(payload.find(x => x.dataKey === 'currentYear')?.name  ?? 'Tahun Ini',  fmtK(cv))}
-      {row('Selisih', `${vr >= 0 ? '+' : ''}${fmtK(vr)} (${fmtPct(pc)})`, vr >= 0 ? POS_COLOR : NEG_COLOR)}
+      {row(payload.find(x => x.dataKey === 'previousYear')?.name ?? 'Tahun Lalu', fmtValue(pv))}
+      {row(payload.find(x => x.dataKey === 'currentYear')?.name  ?? 'Tahun Ini',  fmtValue(cv))}
+      {row('Selisih', `${vr >= 0 ? '+' : ''}${fmtValue(vr)} (${fmtPct(pc)})`, vr >= 0 ? POS_COLOR : NEG_COLOR)}
     </div>
   );
 }
@@ -722,15 +687,17 @@ type ChartRowData = {
   variance: number; variancePercentage: number;
 };
 
-function ChartTableView({ type, data, previousYearLabel, currentYearLabel, theme, maxHeight = 340 }: {
+function ChartTableView({
+  type, data, previousYearLabel, currentYearLabel, theme, maxHeight = 340,
+  valueFormatter = fmtExact, // format-aware untuk kolom angka (bukan persentase)
+}: {
   type: 'line' | 'bar'; data: ChartRowData[];
   previousYearLabel: string | number; currentYearLabel: string | number;
-  theme: Theme; maxHeight?: number;
+  theme: Theme; maxHeight?: number; valueFormatter?: (v: number) => string;
 }) {
   const t = TK[theme];
   const [sort, setSort] = useState<{ key: keyof ChartRowData; dir: 'asc' | 'desc' }>({ key: 'week', dir: 'asc' });
 
-  // FIX: Gunakan useCallback untuk toggle sort agar tidak membuat closure baru tiap render
   const handleSort = useCallback((key: keyof ChartRowData) => {
     setSort(p => ({ key, dir: p.key === key && p.dir === 'asc' ? 'desc' : 'asc' }));
   }, []);
@@ -799,12 +766,12 @@ function ChartTableView({ type, data, previousYearLabel, currentYearLabel, theme
                   onMouseLeave={e => ((e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? 'transparent' : t.rowAlt)}>
                   <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', borderBottom: `1px solid ${t.borderLight}` }}>{row.week}</td>
                   {type === 'line' && <>
-                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{fmtExact(row.previousYear)}</td>
-                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{fmtExact(row.currentYear)}</td>
-                    <td style={{ padding: '8px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtExact(row.variance)}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{valueFormatter(row.previousYear)}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{valueFormatter(row.currentYear)}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{valueFormatter(row.variance)}</td>
                   </>}
                   {type === 'bar' && (
-                    <td style={{ padding: '8px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtExact(row.variance)}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{valueFormatter(row.variance)}</td>
                   )}
                   <td style={{ padding: '8px 14px', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}><GrowthPill value={row.variancePercentage} /></td>
                 </tr>
@@ -815,9 +782,9 @@ function ChartTableView({ type, data, previousYearLabel, currentYearLabel, theme
             <tfoot>
               <tr style={{ background: t.theadBg, borderTop: `2px solid ${t.border}` }}>
                 <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Total</td>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{fmtExact(totals.p)}</td>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{fmtExact(totals.c)}</td>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', color: totals.v >= 0 ? POS_COLOR : NEG_COLOR }}>{totals.v >= 0 ? '+' : ''}{fmtExact(totals.v)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.p)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.c)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', color: totals.v >= 0 ? POS_COLOR : NEG_COLOR }}>{totals.v >= 0 ? '+' : ''}{valueFormatter(totals.v)}</td>
                 <td style={{ padding: '8px 14px', textAlign: 'right' }}><GrowthPill value={totals.pct} /></td>
               </tr>
             </tfoot>
@@ -887,7 +854,6 @@ export default function WeekComparisonComponent({
   const previousWeekRangeLabel = formatWeekRange(comparisonWeeks?.previousYear ?? undefined);
   const currentWeekRangeLabel  = formatWeekRange(comparisonWeeks?.currentYear  ?? undefined);
 
-  // FIX: Memoize weekOptions agar tidak recompute tiap render
   const weekOptions = useMemo(
     () => Array.from(new Set(data.map(d => d.week))).sort((a, b) => a - b),
     [data],
@@ -903,14 +869,19 @@ export default function WeekComparisonComponent({
     direction: 'asc' | 'desc';
   } | null>(null);
 
-  // FIX: Gunakan data.length sebagai dep, bukan data (objek baru tiap render dari parent)
   useEffect(() => { setSelectedWeek(null); }, [data.length]);
+
+  // ── Format-aware: saat unit = omzet, pakai format Rupiah; selain itu format angka biasa ──
+  const isOmzetUnit  = selectedUnit === 'omzet';
+  const fmtVal       = isOmzetUnit ? fmtRp      : fmtK;
+  const fmtValExact  = isOmzetUnit ? fmtRpExact : fmtExact;
 
   const unitOptions = useMemo(() => [
     { value: 'units_dos',  label: 'Jual (Dos Net)' },
     { value: 'units_bal',  label: 'Jual (Bal Net)' },
     { value: 'units_slop', label: 'Jual (Slop Net)' },
     { value: 'units_bks',  label: 'Jual (Bks Net)' },
+    { value: 'omzet',      label: 'Omzet (Rp)' }, // ← baru
   ], []);
 
   const getUnitLabel = useCallback(
@@ -925,9 +896,10 @@ export default function WeekComparisonComponent({
         if (!m.has(d.product)) m.set(d.product, {
           units_dos: { previous: 0, current: 0 }, units_bal: { previous: 0, current: 0 },
           units_slop: { previous: 0, current: 0 }, units_bks: { previous: 0, current: 0 },
+          omzet: { previous: 0, current: 0 }, // ← baru
         });
         const acc = m.get(d.product)!;
-        (['units_dos', 'units_bal', 'units_slop', 'units_bks'] as UnitKey[]).forEach(k => {
+        (['units_dos', 'units_bal', 'units_slop', 'units_bks', 'omzet'] as UnitKey[]).forEach(k => {
           const v = resolveUnitValues(d, k);
           acc[k].previous += v.previous; acc[k].current += v.current;
         });
@@ -966,7 +938,6 @@ export default function WeekComparisonComponent({
     });
   }, [data, selectedWeek, selectedUnit, allProductsInData]);
 
-  // FIX: Pisahkan callback sort agar stabil referensinya
   const handleTableSort = useCallback((key: typeof sortConfig extends { key: infer K } | null ? K : never) => {
     setSortConfig(p => p?.key === key
       ? { key, direction: p.direction === 'asc' ? 'desc' : 'asc' }
@@ -998,7 +969,6 @@ export default function WeekComparisonComponent({
           prevVal += previous; currVal += current;
         });
       } else {
-        // FIX: Hindari cast yang tidak aman — gunakan fallback langsung ke angka
         prevVal = (item as unknown as { previousYear: number }).previousYear ?? 0;
         currVal = (item as unknown as { currentYear:  number }).currentYear  ?? 0;
       }
@@ -1015,18 +985,14 @@ export default function WeekComparisonComponent({
   const modalChartH  = Math.max(280, winSize.h * 0.5);
   const modalTableH  = Math.max(320, winSize.h * 0.62);
 
-  // Axis tick style — font sedikit lebih kecil agar semua week label muat
   const axisTickStyle = { fill: t.textMuted, fontSize: isMobile ? 8 : 9, fontFamily: 'IBM Plex Mono,monospace' };
   const tooltipContentStyle = { background: 'transparent', border: 'none', padding: 0, boxShadow: 'none' };
-  // Warna grid: horizontal sedikit lebih terang, vertikal lebih samar
   const gridH = theme === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
   const gridV = theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
 
-  // Hitung interval tick XAxis:
-  // Tampilkan semua label jika ≤ 26 item, otherwise skip agar tidak tumpang tindih.
   const tickInterval = useCallback(
     (count: number) => {
-      if (count <= 26) return 0;          // semua week tampil
+      if (count <= 26) return 0;
       return Math.max(1, Math.ceil(count / 24) - 1);
     },
     [],
@@ -1054,14 +1020,12 @@ export default function WeekComparisonComponent({
   const renderLineChart = useCallback((h: number, d: CD = chartData) => (
     <ResponsiveContainer width="100%" height={h}>
       <LineChart data={d} margin={isMobile ? { left: -8, right: 6, top: 6, bottom: 2 } : { left: 2, right: 10, top: 8, bottom: 2 }}>
-        {/* Garis bantu horizontal — putus-putus halus */}
         <CartesianGrid
           strokeDasharray="3 5"
           horizontal={true}
           vertical={false}
           stroke={gridH}
         />
-        {/* Garis bantu vertikal — solid, lebih samar dari horizontal */}
         <CartesianGrid
           strokeDasharray="0"
           horizontal={false}
@@ -1075,14 +1039,13 @@ export default function WeekComparisonComponent({
           axisLine={false}
           tickLine={false}
           interval={tickInterval(d.length)}
-          // Sedikit padding agar label W1 & Wlast tidak terpotong
           padding={{ left: 8, right: 8 }}
         />
-        <YAxis tickFormatter={fmtK} tick={axisTickStyle} axisLine={false} tickLine={false} width={isMobile ? 34 : 44} />
+        <YAxis tickFormatter={fmtVal} tick={axisTickStyle} axisLine={false} tickLine={false} width={isMobile ? 34 : 44} />
         <Tooltip
           content={(props: unknown) => {
             const p = props as { active?: boolean; payload?: LinePayload[]; label?: string };
-            return <TooltipLine active={p.active} payload={p.payload} label={p.label} theme={theme} />;
+            return <TooltipLine active={p.active} payload={p.payload} label={p.label} theme={theme} fmtValue={fmtVal} />;
           }}
           cursor={{ stroke: t.textMuted, strokeWidth: 1, strokeDasharray: '3 3' }}
           contentStyle={tooltipContentStyle}
@@ -1091,14 +1054,12 @@ export default function WeekComparisonComponent({
         <Line type="monotone" dataKey="currentYear"  stroke={CURR_COLOR} strokeWidth={isMobile ? 2 : 2.5} dot={false} activeDot={{ r: 4, fill: CURR_COLOR, stroke: '#fff', strokeWidth: 2 }} name={String(currentYearLabel)} />
       </LineChart>
     </ResponsiveContainer>
-  ), [isMobile, t, axisTickStyle, tickInterval, theme, previousYearLabel, currentYearLabel, tooltipContentStyle, chartData, gridH, gridV]);
+  ), [isMobile, t, axisTickStyle, tickInterval, theme, previousYearLabel, currentYearLabel, tooltipContentStyle, chartData, gridH, gridV, fmtVal]);
 
   const renderBarChart = useCallback((h: number, d: CD = chartData) => (
     <ResponsiveContainer width="100%" height={h}>
       <BarChart data={d} margin={isMobile ? { left: -8, right: 6, top: 6, bottom: 2 } : { left: 2, right: 10, top: 8, bottom: 2 }} barCategoryGap={d.length > 20 ? '5%' : '20%'}>
-        {/* Horizontal grid */}
         <CartesianGrid strokeDasharray="3 5" horizontal={true} vertical={false} stroke={gridH} />
-        {/* Vertical grid — lebih samar dari horizontal */}
         <CartesianGrid strokeDasharray="0" horizontal={false} vertical={true} stroke={gridV} strokeWidth={1} />
         <XAxis
           dataKey="week"
@@ -1154,14 +1115,14 @@ export default function WeekComparisonComponent({
 
   // ── Memoized summary cells ─────────────────────────────────────────────────
   const lineCells = useMemo(() => [
-    { label: String(previousYearLabel), value: fmtExact(lineSummary.totP) },
-    { label: String(currentYearLabel),  value: fmtExact(lineSummary.totC) },
+    { label: String(previousYearLabel), value: fmtValExact(lineSummary.totP) },
+    { label: String(currentYearLabel),  value: fmtValExact(lineSummary.totC) },
     {
       label: 'Selisih',
-      value: `${lineSummary.vari >= 0 ? '+' : ''}${fmtExact(lineSummary.vari)} (${fmtPct(lineSummary.pct)})`,
+      value: `${lineSummary.vari >= 0 ? '+' : ''}${fmtValExact(lineSummary.vari)} (${fmtPct(lineSummary.pct)})`,
       color: lineSummary.vari >= 0 ? POS_COLOR : NEG_COLOR,
     },
-  ], [lineSummary]);
+  ], [lineSummary, fmtValExact]);
 
   const barCells = useMemo(() => [
     { label: 'Rata-rata',           value: fmtPct(barSummary.avg),  color: barSummary.avg  >= 0 ? POS_COLOR : NEG_COLOR },
@@ -1174,14 +1135,14 @@ export default function WeekComparisonComponent({
     <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 20, fontFamily: 'IBM Plex Sans,sans-serif' }}>
 
       {/* Info banner */}
-      <div style={{ padding: isMobile ? '8px 10px' : '10px 14px', background: t.infoBg, border: `1px solid ${t.infoBorder}`, borderRadius: isMobile ? 8 : 10 }}>
+      {/* <div style={{ padding: isMobile ? '8px 10px' : '10px 14px', background: t.infoBg, border: `1px solid ${t.infoBorder}`, borderRadius: isMobile ? 8 : 10 }}>
         <p style={{ margin: 0, fontSize: isMobile ? 10 : 12, color: t.infoText, fontFamily: 'IBM Plex Mono,monospace', lineHeight: 1.6 }}>
           {isMobile
             ? <><strong>{String(previousYearLabel)}</strong> vs <strong>{String(currentYearLabel)}</strong><br />{previousWeekRangeLabel} — {data.length} minggu</>
             : <><strong>Periode:</strong> {previousWeekRangeLabel} vs {currentWeekRangeLabel}&nbsp;|&nbsp;<strong>Tahun:</strong> {String(previousYearLabel)} vs {String(currentYearLabel)}&nbsp;|&nbsp;<strong>Total Minggu:</strong> {data.length}</>
           }
         </p>
-      </div>
+      </div> */}
 
       {/* Filter */}
       <div style={{ ...card(), padding: isMobile ? 14 : 20 }}>
@@ -1249,7 +1210,7 @@ export default function WeekComparisonComponent({
               {/* Content */}
               {inTable ? (
                 <div style={{ padding: '0 12px 12px' }}>
-                  <ChartTableView type={chartType} data={chartData} previousYearLabel={previousYearLabel} currentYearLabel={currentYearLabel} theme={theme} maxHeight={isMobile ? 260 : 320} />
+                  <ChartTableView type={chartType} data={chartData} previousYearLabel={previousYearLabel} currentYearLabel={currentYearLabel} theme={theme} maxHeight={isMobile ? 260 : 320} valueFormatter={fmtValExact} />
                 </div>
               ) : (
                 <>
@@ -1301,9 +1262,9 @@ export default function WeekComparisonComponent({
                       onMouseEnter={e => ((e.currentTarget as HTMLTableRowElement).style.background = t.rowHover)}
                       onMouseLeave={e => ((e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? 'transparent' : t.rowAlt)}>
                       <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', fontSize: isMobile ? 11 : 12, color: t.text, fontWeight: 500, fontFamily: 'IBM Plex Sans,sans-serif', borderBottom: `1px solid ${t.borderLight}`, maxWidth: isMobile ? 110 : 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail.product}</td>
-                      <td style={{ padding: '10px 16px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtExact(detail.previousYear)}</td>
-                      <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', fontSize: isMobile ? 11 : 12, color: t.text, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtExact(detail.currentYear)}</td>
-                      <td style={{ padding: '10px 16px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap', color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtExact(detail.variance)}</td>
+                      <td style={{ padding: '10px 16px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtValExact(detail.previousYear)}</td>
+                      <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', fontSize: isMobile ? 11 : 12, color: t.text, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>{fmtValExact(detail.currentYear)}</td>
+                      <td style={{ padding: '10px 16px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap', color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{fmtValExact(detail.variance)}</td>
                       <td style={{ padding: isMobile ? '8px 10px' : '10px 16px', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, whiteSpace: 'nowrap' }}>
                         <GrowthPill value={detail.variancePercentage} />
                       </td>
@@ -1333,7 +1294,7 @@ export default function WeekComparisonComponent({
       {expandTarget && (
         <ChartModal onClose={() => setExpandTarget(null)} title={modalTitle} theme={theme}>
           {expandTarget.mode === 'table' ? (
-            <ChartTableView type={expandTarget.chart} data={chartData} previousYearLabel={previousYearLabel} currentYearLabel={currentYearLabel} theme={theme} maxHeight={modalTableH} />
+            <ChartTableView type={expandTarget.chart} data={chartData} previousYearLabel={previousYearLabel} currentYearLabel={currentYearLabel} theme={theme} maxHeight={modalTableH} valueFormatter={fmtValExact} />
           ) : (
             <>
               <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
