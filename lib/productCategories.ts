@@ -57,6 +57,7 @@ export const defaultProductFactories: ProductFactoryMapping = {
   'POTENZA 12 F': 'PT. KARYA TIMUR PRIMA',
   'POTENZA 16 F': 'PT. KARYA TIMUR PRIMA',
   'POTENZA 20 F': 'PT. KARYA TIMUR PRIMA',
+  'POTENZA MARQUIS 16 F': 'PT. KARYA TIMUR PRIMA',
   'POTENZA BLUEBERRY 16 F': 'PT. KARYA TIMUR PRIMA',
   'POTENZA BOLD 12 F': 'PT. KARYA TIMUR PRIMA',
   'POTENZA BOLD 16 F': 'PT. KARYA TIMUR PRIMA',
@@ -168,6 +169,7 @@ export const defaultProductCategories: ProductCategoryMapping = {
   'POTENZA BLUEBERRY 20 F': 'SKMM',
   'POTENZA MILD 16 F': 'SKMM',
   'POTENZA MILD 20 F': 'SKMM',
+  'POTENZA MARQUIS 16 F': 'SKMM',
 
   // SKT (Sigaret Kretek Tangan)
   'CAKRA PRIMA 16 K': 'SKT',
@@ -239,6 +241,7 @@ export const defaultProductStickMapping: ProductStickMapping = {
   'POTENZA BOLD 12 F': 12,
   'POTENZA BOLD 16 F': 16,
   'POTENZA BOLD 20 F': 20,
+  'POTENZA MARQUIS 16 F': 16,
   'POTENZO 16 F': 16,
   'ULTIMATE 20 F': 20,
   'CAKRA ROYAL MILD 16 F': 16,
@@ -332,6 +335,7 @@ export const defaultProductUnitMapping: ProductUnitMapping = {
   'POTENZA BOLD 12 F': { stickPerPack: 12, packPerSlop: 10, slopPerBal: 20, balPerDos: 4 },
   'POTENZA BOLD 16 F': { stickPerPack: 16, packPerSlop: 10, slopPerBal: 10, balPerDos: 6 },
   'POTENZA BOLD 20 F': { stickPerPack: 20, packPerSlop: 10, slopPerBal: 10, balPerDos: 6 },
+  'POTENZA MARQUIS 16 F': { stickPerPack:16, packPerSlop:10, slopPerBal:10, balPerDos:6},
   'POTENZO 16 F': { stickPerPack: 16, packPerSlop: 10, slopPerBal: 10, balPerDos: 6 },
   'ULTIMATE 20 F': { stickPerPack: 20, packPerSlop: 10, slopPerBal: 10, balPerDos: 6 },
   'CAKRA ROYAL MILD 16 F': { stickPerPack: 16, packPerSlop: 10, slopPerBal: 10, balPerDos: 6 },
