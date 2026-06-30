@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { PiutangRecord } from '@/types/sales';
+import { PiutangRecord, WeeklySales } from '@/types/sales';
 import {
   Search, Filter, ArrowUpDown, CreditCard,
   DollarSign, Calendar, ChevronDown, RefreshCw,
@@ -9,7 +9,6 @@ import {
 
 type Theme = 'light' | 'dark';
 
-// ── Token map identik dengan tk di page.tsx ──────────────────────────────────
 const tk = {
   dark: {
     pagebg:      '#07090e',
@@ -18,6 +17,8 @@ const tk = {
     card2bg:'#0a1d14', card2border:'#1a4530', card2text:'#5edba8', card2accent:'#10b981',
     card3bg:'#1a1108', card3border:'#3d2b08', card3text:'#f5d060', card3accent:'#f59e0b',
     card4bg:'#290f0f', card4border:'#5c1a1a', card4text:'#fca5a5', card4accent:'#ef4444',
+    card5bg:'#170f24', card5border:'#3b225c', card5text:'#c084fc', card5accent:'#a855f7', // Card Purple
+    card6bg:'#091c21', card6border:'#164652', card6text:'#67e8f9', card6accent:'#06b6d4', // Card Cyan
     border:      'rgba(255,255,255,0.055)',
     borderCard:  'rgba(255,255,255,0.075)',
     borderInput: 'rgba(255,255,255,0.09)',
@@ -30,12 +31,13 @@ const tk = {
     textFaint:   'rgba(255,255,255,0.13)',
     inputBg:     'rgba(255,255,255,0.035)',
     shadow:      'none',
-    // semantic
     green:  { bg:'rgba(16,185,129,0.09)',  text:'#34d399', border:'rgba(16,185,129,0.2)'  },
     yellow: { bg:'rgba(245,158,11,0.07)',  text:'#fbbf24', border:'rgba(245,158,11,0.18)' },
     red:    { bg:'rgba(239,68,68,0.08)',   text:'#fca5a5', border:'rgba(239,68,68,0.18)'  },
     blue:   { bg:'rgba(59,130,246,0.1)',   text:'#93c5fd', border:'rgba(59,130,246,0.22)' },
     pink:   { bg:'rgba(236,72,153,0.08)',  text:'#f9a8d4', border:'rgba(236,72,153,0.2)'  },
+    purple: { bg:'rgba(168,85,247,0.08)',  text:'#c084fc', border:'rgba(168,85,247,0.2)'  }, // Baru
+    cyan:   { bg:'rgba(6,182,212,0.08)',   text:'#67e8f9', border:'rgba(6,182,212,0.2)'   }, // Baru
   },
   light: {
     pagebg:      '#eef1f7',
@@ -44,6 +46,8 @@ const tk = {
     card2bg:'#f0fdf4', card2border:'#bbf7d0', card2text:'#15803d', card2accent:'#10b981',
     card3bg:'#fefce8', card3border:'#fde68a', card3text:'#92400e', card3accent:'#f59e0b',
     card4bg:'#fef2f2', card4border:'#fecaca', card4text:'#b91c1c', card4accent:'#ef4444',
+    card5bg:'#faf5ff', card5border:'#e9d5ff', card5text:'#6b21a8', card5accent:'#a855f7', // Card Purple
+    card6bg:'#ecfeff', card6border:'#c5f6fa', card6text:'#0e7490', card6accent:'#06b6d4', // Card Cyan
     border:      'rgba(0,0,0,0.065)',
     borderCard:  'rgba(0,0,0,0.08)',
     borderInput: 'rgba(0,0,0,0.1)',
@@ -56,22 +60,21 @@ const tk = {
     textFaint:   '#cbd5e1',
     inputBg:     'rgba(0,0,0,0.03)',
     shadow:      '0 1px 3px rgba(0,0,0,0.06)',
-    // semantic
     green:  { bg:'#f0fdf4',  text:'#15803d', border:'#bbf7d0' },
     yellow: { bg:'#fffbeb',  text:'#92400e', border:'#fde68a' },
     red:    { bg:'#fef2f2',  text:'#b91c1c', border:'#fecaca' },
     blue:   { bg:'rgba(37,99,235,0.07)',  text:'#1d4ed8', border:'rgba(37,99,235,0.2)'   },
     pink:   { bg:'rgba(219,39,119,0.07)', text:'#9d174d', border:'rgba(219,39,119,0.18)' },
+    purple: { bg:'rgba(168,85,247,0.06)', text:'#6b21a8', border:'rgba(168,85,247,0.15)' }, // Baru
+    cyan:   { bg:'rgba(6,182,212,0.06)',  text:'#0e7490', border:'rgba(6,182,212,0.18)' }, // Baru
   },
 } as const;
 
 type TK = typeof tk[keyof typeof tk];
 
-// ─── Formatter ────────────────────────────────────────────────────────────────
 const fIDR = (n: number) =>
   n.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-// ─── Shared mini-components ───────────────────────────────────────────────────
 function KpiCard({
   label, labelColor, value, sub, icon, iconBg, iconColor, t, cardbg,
 }: {
@@ -100,7 +103,6 @@ function KpiCard({
   );
 }
 
-// ─── FilterSelect — identik dengan WeekComparison ────────────────────────────
 function FilterSelect({
   label, accentColor = '#3b82f6', value, onChange, children, t,
 }: {
@@ -139,7 +141,6 @@ function FilterSelect({
   );
 }
 
-// ─── SearchBar — konsisten dengan FilterSelect ────────────────────────────────
 function SearchBar({ value, onChange, t }: {
   value: string; onChange: (v: string) => void; t: TK;
 }) {
@@ -177,16 +178,15 @@ function SearchBar({ value, onChange, t }: {
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 interface PiutangComponentProps {
   data: PiutangRecord[];
+  weeklyData?: WeeklySales[];
   theme: Theme;
 }
 
-export default function PiutangComponent({ data, theme = 'light' }: PiutangComponentProps) {
+export default function PiutangComponent({ data, weeklyData = [], theme = 'light' }: PiutangComponentProps) {
   const t = tk[theme];
 
-  // ── State ──────────────────────────────────────────────────────────────────
   const [searchTerm,       setSearchTerm]       = useState('');
   const [selectedCity,     setSelectedCity]     = useState('all');
   const [selectedSalesman, setSelectedSalesman] = useState('all');
@@ -194,7 +194,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
   const [sortBy,           setSortBy]           = useState<keyof PiutangRecord>('hari');
   const [sortOrder,        setSortOrder]        = useState<'asc' | 'desc'>('desc');
 
-  // ── Derived filter lists ───────────────────────────────────────────────────
   const cities = useMemo(() => {
     const s = new Set<string>();
     data.forEach(r => { if (r.kota) s.add(r.kota.trim()); });
@@ -207,7 +206,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
     return Array.from(s).sort();
   }, [data]);
 
-  // ── Sort handler ───────────────────────────────────────────────────────────
   const handleSort = (field: keyof PiutangRecord) => {
     if (sortBy === field) {
       setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
@@ -217,7 +215,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
     }
   };
 
-  // ── Filter + sort ──────────────────────────────────────────────────────────
   const filteredData = useMemo(() => {
     const term = searchTerm.toLowerCase();
     return data
@@ -255,13 +252,12 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
       });
   }, [data, searchTerm, selectedCity, selectedSalesman, selectedAgeRange, sortBy, sortOrder]);
 
-  // ── Metrics ────────────────────────────────────────────────────────────────
   const metrics = useMemo(() => {
     let totalPiutang = 0, totalGiro = 0, hariSum = 0, hariCount = 0;
     filteredData.forEach(r => {
       totalPiutang += r.piutang;
       totalGiro    += r.giro;
-      if (r.hari !== null) { hariSum += r.hari; hariCount++; }
+      if (r.hari !== null && r.hari < 90) { hariSum += r.hari; hariCount++; }
     });
     return {
       totalPiutang,
@@ -272,7 +268,21 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
     };
   }, [filteredData]);
 
-  // ── Sort icon ──────────────────────────────────────────────────────────────
+  // ── Omzet 1 Bulan (4 minggu terakhir) — selalu Rupiah, independen dari unit filter dashboard utama
+  const omzet1Bulan = useMemo(() => {
+    if (!weeklyData || weeklyData.length === 0) return 0;
+    const latestYear = Math.max(...weeklyData.map(w => w.year));
+    const weeksInLatestYear = weeklyData
+      .filter(w => w.year === latestYear)
+      .sort((a, b) => a.week - b.week);
+    const last4Weeks = weeksInLatestYear.slice(-4);
+    return last4Weeks.reduce((sum, w) => sum + (w.omzetTotal ?? 0), 0);
+  }, [weeklyData]);
+
+  const persentasePiutang = omzet1Bulan > 0 
+  ? (metrics.totalOutstanding / omzet1Bulan) * 100 
+  : 0;
+
   const SortIcon = ({ field }: { field: keyof PiutangRecord }) => {
     if (sortBy !== field) return <ArrowUpDown size={10} style={{ opacity: 0.3 }} />;
     return (
@@ -288,45 +298,53 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
 
   const hasFilters = searchTerm || selectedCity !== 'all' || selectedSalesman !== 'all' || selectedAgeRange !== 'all';
 
-  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
-      {/* ── KPI Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
         <KpiCard
-          label="Total" labelColor={t.blue.text}
+          label="Omzet 1 Bulan" labelColor={t.green.text}
+          value={`Rp ${fIDR(omzet1Bulan)}`} sub="1 Bulan (4 Minggu Terakhir)"
+          icon={<Calendar size={14} />} iconBg={t.green.bg} iconColor={t.green.text} t={t}
+          cardbg={t.card2bg}
+        />
+        <KpiCard
+          label="Total Piutang" labelColor={t.blue.text}
           value={`Rp ${fIDR(metrics.totalOutstanding)}`}
           sub={`Piutang + Giro · ${metrics.count} Transaksi`}
           icon={<DollarSign size={14} />} iconBg={t.blue.bg} iconColor={t.blue.text} t={t}
           cardbg={t.card1bg}
         />
         <KpiCard
-          label="Total Piutang" labelColor={t.green.text}
-          value={`Rp ${fIDR(metrics.totalPiutang)}`}
-          icon={<CreditCard size={14} />} iconBg={t.green.bg} iconColor={t.green.text} t={t}
-          cardbg={t.card2bg}
+          label="Persentase Omzet/Piutang" labelColor={t.cyan.text}
+          value={`${persentasePiutang.toFixed(1)}%`}
+          icon={<RefreshCw size={14} />} iconBg={t.cyan.bg} iconColor={t.cyan.text} t={t}
+          cardbg={t.card6bg}
         />
         <KpiCard
-          label="Total Giro" labelColor={t.yellow.text}
+          label="Piutang" labelColor={t.red.text}
+          value={`Rp ${fIDR(metrics.totalPiutang)}`}
+          icon={<CreditCard size={14} />} iconBg={t.red.bg} iconColor={t.red.text} t={t}
+          cardbg={t.card4bg}
+        />
+        <KpiCard
+          label="Giro" labelColor={t.yellow.text}
           value={`Rp ${fIDR(metrics.totalGiro)}`}
           icon={<RefreshCw size={14} />} iconBg={t.yellow.bg} iconColor={t.yellow.text} t={t}
           cardbg={t.card3bg}
         />
         <KpiCard
-          label="Rata-Rata Umur Piutang" labelColor={t.pink.text}
+          label="Rata-Rata Umur Piutang" labelColor={t.purple.text}
           value={`${metrics.avgAging} Hari`} sub=""
-          icon={<Calendar size={14} />} iconBg={t.pink.bg} iconColor={t.pink.text} t={t}
-          cardbg={t.card4bg}
+          icon={<Calendar size={14} />} iconBg={t.purple.bg} iconColor={t.purple.text} t={t}
+          cardbg={t.card5bg}
         />
       </div>
 
-      {/* ── Filter Rail ── */}
       <div style={{
         background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 13,
         padding: '14px 16px', boxShadow: t.shadow,
       }}>
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '.08em' }}>
             Filter Data
@@ -344,7 +362,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
           )}
         </div>
 
-        {/* Filter inputs — grid responsive */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
           <SearchBar value={searchTerm} onChange={setSearchTerm} t={t} />
 
@@ -368,12 +385,10 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
         </div>
       </div>
 
-      {/* ── Table ── */}
       <div style={{
         background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 13,
         boxShadow: t.shadow, overflow: 'hidden',
       }}>
-        {/* Table header bar */}
         <div style={{
           padding: '10px 16px', borderBottom: `1px solid ${t.border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -391,7 +406,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
           </span>
         </div>
 
-        {/* Scrollable table */}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
             <thead>
@@ -441,7 +455,6 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
                 const isAlt = idx % 2 === 1;
                 const rowBg = isAlt ? t.tableAlt : 'transparent';
 
-                // warna aging
                 const agingColor =
                   row.hari === null ? t.textFaint
                   : row.hari > 40  ? '#ef4444'
@@ -483,15 +496,12 @@ export default function PiutangComponent({ data, theme = 'light' }: PiutangCompo
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap', fontSize: 11 }}>
                       {row.jatuhTempo || '—'}
                     </td>
-                    {/* Hari — color-coded aging */}
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 600, color: agingColor }}>
                       {row.hari !== null ? fIDR(row.hari) : <span style={{ color: t.textFaint }}>—</span>}
                     </td>
-                    {/* Piutang */}
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.piutang > 10_000_000 ? t.yellow.text : t.text }}>
                       {row.piutang > 0 ? fIDR(row.piutang) : <span style={{ color: t.textFaint }}>0</span>}
                     </td>
-                    {/* Giro */}
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.giro > 0 ? t.green.text : t.textSub }}>
                       {row.giro > 0 ? fIDR(row.giro) : <span style={{ color: t.textFaint }}>0</span>}
                     </td>

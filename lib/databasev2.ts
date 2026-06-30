@@ -1029,10 +1029,22 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       });
     }
 
+    // Omzet murni minggu ini (independen dari selectedUnit), untuk card "Omzet 1 Bulan" di Piutang
+    const weekOmzetCurrent = currentYear !== undefined
+      ? Array.from(allProductsSet).reduce(
+          (s, p) => s + (omzetByProductWeek.get(`${currentYear}-${week}-${p}`) ?? 0), 0,
+        )
+      : 0;
+    const weekOmzetPrevious = previousYear !== undefined
+      ? Array.from(allProductsSet).reduce(
+          (s, p) => s + (omzetByProductWeek.get(`${previousYear}-${week}-${p}`) ?? 0), 0,
+        )
+      : 0;
+
     if (currYearSales > 0 && currentYear !== undefined)
-      weeklyData.push({ week, year: currentYear,  sales: currYearSales, target: currYearSales * 1.1 });
+      weeklyData.push({ week, year: currentYear,  sales: currYearSales, target: currYearSales * 1.1, omzetTotal: weekOmzetCurrent });
     if (prevYearSales > 0 && previousYear !== undefined)
-      weeklyData.push({ week, year: previousYear, sales: prevYearSales, target: prevYearSales * 1.1 });
+      weeklyData.push({ week, year: previousYear, sales: prevYearSales, target: prevYearSales * 1.1, omzetTotal: weekOmzetPrevious });
   }
 
   console.log(`\n📦 [STEP-4] outletAggMap size=${outletAggMap.size} (no truncation needed)`);
