@@ -1281,7 +1281,7 @@ function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }
           </Card>
 
           <div style={{display:'flex',gap:GAP,flex:'1 1 0',minHeight:0,overflow:'hidden'}}>
-            <Card theme={theme} accent="#f59e0b" title="L4W vs C1W" icon={<Activity size={10} color="#f59e0b"/>} color="#f59e0b" sub={`Δ ${lPos?'+':''}${l4w.variancePercentage?.toFixed(1)??'0'}% vs rata-rata`} style={{flex:'1 1 0',minWidth:0,overflow:'hidden'}}>
+            <Card theme={theme} accent="#f59e0b" title="L4W vs C1W" icon={<Activity size={10} color="#f59e0b"/>} color="#f59e0b" sub={`L4w rata-rata vs c1w`} style={{flex:'1 1 0',minWidth:0,overflow:'hidden'}}>
               <div style={{display:'flex',gap:6,marginBottom:6,flexShrink:0}}>
                 {[{l:'L4W',v:fmtU(l4wAvg),c:'#3b82f6'},{l:'C1W',v:fmtU(c1w),c:lc}].map(p=>(
                   <div key={p.l} style={{padding:'4px 8px',borderRadius:7,background:`${p.c}10`,border:`1px solid ${p.c}22`,flex:1}}>
@@ -1605,7 +1605,7 @@ function DashboardInner() {
           loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}
         />
       );
-      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} theme={theme}/>
+      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
       default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit}/>;
     }
   };

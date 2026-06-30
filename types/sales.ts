@@ -12,6 +12,7 @@ export interface WeeklySales {
   year: number;         // Tahun penjualan
   sales: number;        // Total penjualan minggu tersebut
   target?: number;      // Target penjualan (opsional)
+  omzetTotal?: number;
 }
 
 /**
