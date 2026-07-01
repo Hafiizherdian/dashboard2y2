@@ -3,8 +3,9 @@
 import React, { useState, useMemo } from 'react';
 import { PiutangRecord, WeeklySales } from '@/types/sales';
 import {
-  Search, Filter, ArrowUpDown, CreditCard,
-  DollarSign, Calendar, ChevronDown, RefreshCw,
+  Search, CalendarRange, ArrowUpDown, CreditCard,
+  DollarSign, Calendar, BanknoteArrowDown, Percent,
+  BanknoteX,
 } from 'lucide-react';
 
 type Theme = 'light' | 'dark';
@@ -60,13 +61,13 @@ const tk = {
     textFaint:   '#cbd5e1',
     inputBg:     'rgba(0,0,0,0.03)',
     shadow:      '0 1px 3px rgba(0,0,0,0.06)',
-    green:  { bg:'#f0fdf4',  text:'#15803d', border:'#bbf7d0' },
-    yellow: { bg:'#fffbeb',  text:'#92400e', border:'#fde68a' },
-    red:    { bg:'#fef2f2',  text:'#b91c1c', border:'#fecaca' },
+    green:  { bg:'rgba(28, 239, 91, 0.17)',  text:'#15803d', border:'#bbf7d0' },
+    yellow: { bg:'rgba(244, 203, 38, 0.15)',  text:'#92400e', border:'#fde68a' },
+    red:    { bg:'rgba(241, 42, 42, 0.11)',  text:'#b91c1c', border:'#fecaca' },
     blue:   { bg:'rgba(37,99,235,0.07)',  text:'#1d4ed8', border:'rgba(37,99,235,0.2)'   },
     pink:   { bg:'rgba(219,39,119,0.07)', text:'#9d174d', border:'rgba(219,39,119,0.18)' },
     purple: { bg:'rgba(168,85,247,0.06)', text:'#6b21a8', border:'rgba(168,85,247,0.15)' }, // Baru
-    cyan:   { bg:'rgba(6,182,212,0.06)',  text:'#0e7490', border:'rgba(6,182,212,0.18)' }, // Baru
+    cyan:   { bg:'rgba(6, 181, 212, 0.1)',  text:'#0e7490', border:'rgba(6,182,212,0.18)' }, // Baru
   },
 } as const;
 
@@ -188,11 +189,18 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
   const t = tk[theme];
 
   const [searchTerm,       setSearchTerm]       = useState('');
+  const [selectedOutlet,   setSelectedOutlet]   = useState('all');
   const [selectedCity,     setSelectedCity]     = useState('all');
   const [selectedSalesman, setSelectedSalesman] = useState('all');
   const [selectedAgeRange, setSelectedAgeRange] = useState('all');
   const [sortBy,           setSortBy]           = useState<keyof PiutangRecord>('hari');
   const [sortOrder,        setSortOrder]        = useState<'asc' | 'desc'>('desc');
+
+  const outlet = useMemo(() => {
+    const s = new Set<string>();
+    data.forEach(r => { if (r.outlet) s.add(r.outlet.trim()); });
+    return Array.from(s).sort();
+  }, [data]);
 
   const cities = useMemo(() => {
     const s = new Set<string>();
@@ -227,6 +235,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
           item.kecamatan.toLowerCase().includes(term) ||
           item.kelDesa.toLowerCase().includes(term);
 
+        const matchOutlet = selectedOutlet === 'all' || item.outlet.trim() === selectedOutlet;
         const matchCity = selectedCity === 'all' || item.kota.trim() === selectedCity;
         const salesmanVal = item.salesman?.trim() || '-';
         const matchSalesman = selectedSalesman === 'all' || salesmanVal === selectedSalesman;
@@ -240,7 +249,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
           else if (selectedAgeRange === 'giro')   matchAge = item.hari === null;
         }
 
-        return matchSearch && matchCity && matchSalesman && matchAge;
+        return matchSearch && matchOutlet && matchCity && matchSalesman && matchAge;
       })
       .sort((a, b) => {
         let va = a[sortBy] as any;
@@ -250,7 +259,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
         if (typeof va === 'string') return sortOrder === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
         return sortOrder === 'asc' ? va - vb : vb - va;
       });
-  }, [data, searchTerm, selectedCity, selectedSalesman, selectedAgeRange, sortBy, sortOrder]);
+  }, [data, searchTerm,selectedOutlet, selectedCity, selectedSalesman, selectedAgeRange, sortBy, sortOrder]);
 
   const metrics = useMemo(() => {
     let totalPiutang = 0, totalGiro = 0, hariSum = 0, hariCount = 0;
@@ -275,7 +284,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
     const weeksInLatestYear = weeklyData
       .filter(w => w.year === latestYear)
       .sort((a, b) => a.week - b.week);
-    const last4Weeks = weeksInLatestYear.slice(-4);
+    const last4Weeks = weeksInLatestYear.slice(-2);
     return last4Weeks.reduce((sum, w) => sum + (w.omzetTotal ?? 0), 0);
   }, [weeklyData]);
 
@@ -291,34 +300,34 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
   };
 
   const clearFilters = () => {
-    setSearchTerm(''); setSelectedCity('all');
+    setSearchTerm(''); setSelectedOutlet('all'); setSelectedCity('all');
     setSelectedSalesman('all'); setSelectedAgeRange('all');
     setSortBy('hari'); setSortOrder('desc');
   };
 
-  const hasFilters = searchTerm || selectedCity !== 'all' || selectedSalesman !== 'all' || selectedAgeRange !== 'all';
+  const hasFilters = searchTerm || selectedOutlet !== 'all' || selectedCity !== 'all' || selectedSalesman !== 'all' || selectedAgeRange !== 'all';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
         <KpiCard
-          label="Omzet 1 Bulan" labelColor={t.green.text}
-          value={`Rp ${fIDR(omzet1Bulan)}`} sub="1 Bulan (4 Minggu Terakhir)"
-          icon={<Calendar size={14} />} iconBg={t.green.bg} iconColor={t.green.text} t={t}
+          label="Omzet 2 minggu" labelColor={t.green.text}
+          value={`Rp ${fIDR(omzet1Bulan)}`} sub="2 Minggu Terakhir"
+          icon={<CalendarRange size={14} />} iconBg={t.green.bg} iconColor={t.green.text} t={t}
           cardbg={t.card2bg}
         />
         <KpiCard
           label="Total Piutang" labelColor={t.blue.text}
           value={`Rp ${fIDR(metrics.totalOutstanding)}`}
           sub={`Piutang + Giro · ${metrics.count} Transaksi`}
-          icon={<DollarSign size={14} />} iconBg={t.blue.bg} iconColor={t.blue.text} t={t}
+          icon={<BanknoteX size={14} />} iconBg={t.blue.bg} iconColor={t.blue.text} t={t}
           cardbg={t.card1bg}
         />
         <KpiCard
           label="Persentase Omzet/Piutang" labelColor={t.cyan.text}
           value={`${persentasePiutang.toFixed(1)}%`}
-          icon={<RefreshCw size={14} />} iconBg={t.cyan.bg} iconColor={t.cyan.text} t={t}
+          icon={<Percent size={14} />} iconBg={t.cyan.bg} iconColor={t.cyan.text} t={t}
           cardbg={t.card6bg}
         />
         <KpiCard
@@ -330,7 +339,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
         <KpiCard
           label="Giro" labelColor={t.yellow.text}
           value={`Rp ${fIDR(metrics.totalGiro)}`}
-          icon={<RefreshCw size={14} />} iconBg={t.yellow.bg} iconColor={t.yellow.text} t={t}
+          icon={<BanknoteArrowDown size={14} />} iconBg={t.yellow.bg} iconColor={t.yellow.text} t={t}
           cardbg={t.card3bg}
         />
         <KpiCard
@@ -364,6 +373,11 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
           <SearchBar value={searchTerm} onChange={setSearchTerm} t={t} />
+
+          <FilterSelect label="Outlet" accentColor="#ef4444" value={selectedOutlet} onChange={e => setSelectedOutlet(e.target.value)} t={t}>
+            <option value="all">Semua Outlet</option>
+            {outlet.map(o => <option key={o} value={o}>{o}</option>)}
+          </FilterSelect>
 
           <FilterSelect label="Kota" accentColor="#0d9488" value={selectedCity} onChange={e => setSelectedCity(e.target.value)} t={t}>
             <option value="all">Semua Kota</option>
