@@ -56,8 +56,9 @@ const TK = {
 } as const;
 
 // ─── Chart palette ────────────────────────────────────────────────────────────
-const PREV_COLOR = '#64748b';
-const CURR_COLOR = '#3b82f6';
+// Duotone violet + teal — dua warna setara bobotnya, beda dari biru chrome UI.
+const PREV_COLOR = '#2563eb';
+const CURR_COLOR = '#10b981';
 const POS_COLOR  = '#10b981';
 const NEG_COLOR  = '#ef4444';
 
@@ -542,8 +543,8 @@ function TooltipLine({ active, payload, label, theme, fmtValue = fmtK }: {
   return (
     <div style={{ background: t.tooltipBg, border: `1px solid ${t.tooltipBorder}`, borderRadius: 8, padding: '8px 12px', fontFamily: 'IBM Plex Mono,monospace', minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
       <div style={{ fontWeight: 700, fontSize: 12, color: t.text, marginBottom: 6 }}>{label}</div>
-      {row(payload.find(x => x.dataKey === 'previousYear')?.name ?? 'Tahun Lalu', fmtValue(pv))}
-      {row(payload.find(x => x.dataKey === 'currentYear')?.name  ?? 'Tahun Ini',  fmtValue(cv))}
+      {row(payload.find(x => x.dataKey === 'previousYear')?.name ?? 'Tahun Lalu', fmtValue(pv), PREV_COLOR)}
+      {row(payload.find(x => x.dataKey === 'currentYear')?.name  ?? 'Tahun Ini',  fmtValue(cv), CURR_COLOR)}
       {row('Selisih', `${vr >= 0 ? '+' : ''}${fmtValue(vr)} (${fmtPct(pc)})`, vr >= 0 ? POS_COLOR : NEG_COLOR)}
     </div>
   );
@@ -590,7 +591,7 @@ function LegendPill({ color, label, dash, theme }: { color: string; label: strin
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontFamily: 'IBM Plex Mono,monospace', color: t.textSub }}>
       {dash
-        ? <span style={{ width: 18, height: 0, borderTop: `2px dashed ${color}`, display: 'inline-block' }} />
+        ? <span style={{ width: 18, height: 0, borderTop: `2px dotted ${color}`, display: 'inline-block' }} />
         : <span style={{ width: 18, height: 3, borderRadius: 2, background: color, display: 'inline-block' }} />
       }
       {label}
@@ -1019,7 +1020,7 @@ export default function WeekComparisonComponent({
 
   const renderLineChart = useCallback((h: number, d: CD = chartData) => (
     <ResponsiveContainer width="100%" height={h}>
-      <LineChart data={d} margin={isMobile ? { left: -8, right: 6, top: 6, bottom: 2 } : { left: 2, right: 10, top: 8, bottom: 2 }}>
+      <LineChart data={d} margin={isMobile ? { left: -8, right: 6, top: 10, bottom: 2 } : { left: 2, right: 10, top: 12, bottom: 2 }}>
         <CartesianGrid
           strokeDasharray="3 5"
           horizontal={true}
@@ -1027,7 +1028,7 @@ export default function WeekComparisonComponent({
           stroke={gridH}
         />
         <CartesianGrid
-          strokeDasharray="0"
+          strokeDasharray="3 5"
           horizontal={false}
           vertical={true}
           stroke={gridV}
@@ -1047,11 +1048,31 @@ export default function WeekComparisonComponent({
             const p = props as { active?: boolean; payload?: LinePayload[]; label?: string };
             return <TooltipLine active={p.active} payload={p.payload} label={p.label} theme={theme} fmtValue={fmtVal} />;
           }}
-          cursor={{ stroke: t.textMuted, strokeWidth: 1, strokeDasharray: '3 3' }}
+          cursor={{ stroke: t.textSub, strokeWidth: 1 }}
           contentStyle={tooltipContentStyle}
         />
-        <Line type="monotone" dataKey="previousYear" stroke={PREV_COLOR} strokeWidth={1.5} strokeDasharray="4 3" dot={false} activeDot={false} name={String(previousYearLabel)} />
-        <Line type="monotone" dataKey="currentYear"  stroke={CURR_COLOR} strokeWidth={isMobile ? 2 : 2.5} dot={false} activeDot={{ r: 4, fill: CURR_COLOR, stroke: '#fff', strokeWidth: 2 }} name={String(currentYearLabel)} />
+        {/* Tahun lalu — garis solid, dot ring kecil di tiap titik, tetap kecil saat hover */}
+        <Line
+          type="natural"
+          dataKey="previousYear"
+          stroke={PREV_COLOR}
+          strokeWidth={isMobile ? 1.75 : 2}
+          strokeLinecap="round"
+          dot={{ r: isMobile ? 2.5 : 3, stroke: PREV_COLOR, strokeWidth: 2, fill: t.cardBg }}
+          activeDot={{ r: isMobile ? 4 : 5, stroke: PREV_COLOR, strokeWidth: 2, fill: t.cardBg }}
+          name={String(previousYearLabel)}
+        />
+        {/* Tahun ini — metrik utama: dot ring kecil di tiap titik, jadi bola solid besar saat dihover */}
+        <Line
+          type="natural"
+          dataKey="currentYear"
+          stroke={CURR_COLOR}
+          strokeWidth={isMobile ? 2 : 2.5}
+          strokeLinecap="round"
+          dot={{ r: isMobile ? 2.5 : 3, stroke: CURR_COLOR, strokeWidth: 2, fill: t.cardBg }}
+          activeDot={{ r: isMobile ? 7 : 9, fill: CURR_COLOR, stroke: t.cardBg, strokeWidth: 2 }}
+          name={String(currentYearLabel)}
+        />
       </LineChart>
     </ResponsiveContainer>
   ), [isMobile, t, axisTickStyle, tickInterval, theme, previousYearLabel, currentYearLabel, tooltipContentStyle, chartData, gridH, gridV, fmtVal]);
@@ -1192,7 +1213,7 @@ export default function WeekComparisonComponent({
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                       {isLine
                         ? <>
-                            <LegendPill color={PREV_COLOR} label={String(previousYearLabel)} dash theme={theme} />
+                            <LegendPill color={PREV_COLOR} label={String(previousYearLabel)} theme={theme} />
                             <LegendPill color={CURR_COLOR} label={String(currentYearLabel)}  theme={theme} />
                           </>
                         : <>
@@ -1300,7 +1321,7 @@ export default function WeekComparisonComponent({
               <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
                 {expandTarget.chart === 'line'
                   ? <>
-                      <LegendPill color={PREV_COLOR} label={String(previousYearLabel)} dash theme={theme} />
+                      <LegendPill color={PREV_COLOR} label={String(previousYearLabel)} theme={theme} />
                       <LegendPill color={CURR_COLOR} label={String(currentYearLabel)} theme={theme} />
                     </>
                   : <>
