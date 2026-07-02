@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, ReferenceLine,
@@ -125,7 +125,6 @@ interface OutletCountByType {
   outlet_type:  string;
   outlet_count: number;
 }
-// ── Tipe untuk outletCountByTypeSalesman (dari backend) ───────────────────────
 interface OutletCountByTypeSalesman {
   salesman:     string;
   outlet_type:  string;
@@ -173,7 +172,6 @@ interface DistData {
   coverage:                     CovRow[];
   coverageSalesman:             CovSalRow[];
   outletCountByType:            OutletCountByType[];
-  // ── TAMBAHAN: outlet count per salesman × tipe ─────────────────────────────
   outletCountByTypeSalesman:    OutletCountByTypeSalesman[];
   totalOutlets:                 number;
   achievementAreaSalesman:      AchAreaSalesmanRow[];
@@ -214,502 +212,29 @@ function normRows(rows: any[]): any[] {
   }));
 }
 
-// ─── Re-agregasi client-side berdasarkan semua filter aktif ──────────────────
-function reaggregate(
-  base:       DistData,
-  product:    string,
-  outletType: string,
-  salesman:   string,
-): DistData {
-  const matchProduct  = (p?: string) => !product    || (p ?? '').toLowerCase().includes(product.toLowerCase());
-  const matchOutlet   = (o?: string) => !outletType || (o ?? '').toLowerCase() === outletType.toLowerCase();
-  const matchSalesman = (s?: string) => !salesman   || (s ?? '').toLowerCase().includes(salesman.toLowerCase());
-
-  // ── "Source of truth" — semua 4 dimensi: salesman × product × outlet_type × week_num
-  const covFiltered = base.coverageSalesman.filter(r =>
-    matchProduct(r.product) &&
-    matchSalesman(r.salesman) &&
-    matchOutlet(r.outlet_type)
-  );
-
-  const hasFilter   = !!(product || outletType || salesman);
-  const needCovPath = !!(outletType || salesman);
-
-  // ── Lookup helper: outletCountByTypeSalesman → Map<"salesman||outlet_type", count>
-  // Dipakai untuk mengisi outlet_count yang akurat saat filter salesman aktif.
-  const outletCountSalTypeMap = new Map<string, number>();
-  (base.outletCountByTypeSalesman ?? []).forEach(r => {
-    const key = `${r.salesman}||${r.outlet_type}`;
-    outletCountSalTypeMap.set(key, (outletCountSalTypeMap.get(key) ?? 0) + r.outlet_count);
-  });
-
-  // Lookup global per outlet_type (tanpa filter salesman) — untuk kasus tanpa filter salesman
-  const outletCountMap = new Map<string, number>(
-    base.outletCountByType.map(r => [r.outlet_type, r.outlet_count])
-  );
-
-  // ── Achievement Salesman ──────────────────────────────────────────────────
-  const salMap = new Map<string, AchRow>();
-
-  if (needCovPath) {
-    // Rebuild dari covFiltered (sudah include filter outletType/salesman)
-    covFiltered.forEach(r => {
-      const key = r.salesman ?? '';
-      const ex  = salMap.get(key);
-      if (!ex) {
-        salMap.set(key, {
-          salesman:        r.salesman,
-          total_plan:      r.plan,
-          total_actual:    r.actual,
-          total_av_out:    r.av_out,
-          achievement_pct: 0,
-          outlet_count:    0,
-        });
-      } else {
-        ex.total_plan   += r.plan;
-        ex.total_actual += r.actual;
-        ex.total_av_out += r.av_out;
-      }
-    });
-
-    // Isi outlet_count dari outletCountByTypeSalesman
-    // Jika filter outletType aktif: sum hanya untuk outlet_type yang cocok
-    // Jika tidak: sum semua outlet_type per salesman yang termasuk di covFiltered
-    const covSalesmenSet = new Set(covFiltered.map(r => r.salesman));
-    salMap.forEach((row, sal) => {
-      if (!covSalesmenSet.has(sal)) return;
-      let count = 0;
-      (base.outletCountByTypeSalesman ?? []).forEach(r => {
-        if (r.salesman !== sal) return;
-        if (outletType && r.outlet_type.toLowerCase() !== outletType.toLowerCase()) return;
-        count += r.outlet_count;
-      });
-      row.outlet_count = count;
-    });
-
-  } else {
-    base.achievementSalesman
-      .filter(r => matchProduct(r.product) && matchSalesman(r.salesman))
-      .forEach(r => {
-        const key = r.salesman ?? '';
-        const ex  = salMap.get(key);
-        if (!ex) {
-          salMap.set(key, { ...r, outlet_count: r.outlet_count ?? 0 });
-        } else {
-          ex.total_plan   += r.total_plan;
-          ex.total_actual += r.total_actual;
-          ex.total_av_out += r.total_av_out;
-          ex.outlet_count  = Math.max(ex.outlet_count ?? 0, r.outlet_count ?? 0);
-        }
-      });
-  }
-
-  const achievementSalesman = Array.from(salMap.values())
-    .map(r => ({
-      ...r,
-      achievement_pct: r.total_plan > 0
-        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
-        : 0,
-    }))
-    .sort((a, b) => b.achievement_pct - a.achievement_pct);
-
-  // ── Achievement Product ───────────────────────────────────────────────────
-  const prodMap = new Map<string, AchRow>();
-
-  if (needCovPath) {
-    covFiltered.forEach(r => {
-      const key = r.product ?? '';
-      const ex  = prodMap.get(key);
-      if (!ex) {
-        prodMap.set(key, {
-          product:         r.product,
-          category:        base.achievementProduct.find(p => p.product === r.product)?.category ?? '',
-          total_plan:      r.plan,
-          total_actual:    r.actual,
-          total_av_out:    r.av_out,
-          achievement_pct: 0,
-        });
-      } else {
-        ex.total_plan   += r.plan;
-        ex.total_actual += r.actual;
-        ex.total_av_out += r.av_out;
-      }
-    });
-  } else {
-    base.achievementSalesman
-      .filter(r => matchProduct(r.product) && matchSalesman(r.salesman))
-      .forEach(r => {
-        const key = r.product ?? '';
-        const ex  = prodMap.get(key);
-        if (!ex) {
-          prodMap.set(key, {
-            product:         r.product,
-            category:        base.achievementProduct.find(p => p.product === r.product)?.category ?? '',
-            total_plan:      r.total_plan,
-            total_actual:    r.total_actual,
-            total_av_out:    r.total_av_out,
-            achievement_pct: 0,
-          });
-        } else {
-          ex.total_plan   += r.total_plan;
-          ex.total_actual += r.total_actual;
-          ex.total_av_out += r.total_av_out;
-        }
-      });
-  }
-
-  const achievementProduct = Array.from(prodMap.values())
-    .map(r => ({
-      ...r,
-      achievement_pct: r.total_plan > 0
-        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
-        : 0,
-    }))
-    .sort((a, b) => b.total_av_out - a.total_av_out);
-
-  // ── Achievement Area ──────────────────────────────────────────────────────
-  const areaMap = new Map<string, AchRow>();
-
-  if (!hasFilter) {
-    base.achievementArea.forEach(r => {
-      areaMap.set(`${r.city}||${r.district}`, { ...r });
-    });
-  } else if (outletType) {
-    const covBySal = new Map<string, { plan: number; actual: number; av_out: number }>();
-    covFiltered.forEach(r => {
-      const ex = covBySal.get(r.salesman);
-      if (!ex) {
-        covBySal.set(r.salesman, { plan: r.plan, actual: r.actual, av_out: r.av_out });
-      } else {
-        ex.plan   += r.plan;
-        ex.actual += r.actual;
-        ex.av_out += r.av_out;
-      }
-    });
-
-    const salAreaLookup = new Map<string, AchAreaSalesmanRow[]>();
-    (base.achievementAreaSalesman ?? []).forEach(r => {
-      if (!salAreaLookup.has(r.salesman)) salAreaLookup.set(r.salesman, []);
-      salAreaLookup.get(r.salesman)!.push(r);
-    });
-
-    covBySal.forEach((totals, sal) => {
-      const areaRows     = salAreaLookup.get(sal) ?? [];
-      const totalPlanSal = areaRows.reduce((s, r) => s + r.total_plan, 0);
-      if (totalPlanSal === 0) return;
-
-      areaRows.forEach(ar => {
-        const ratio = ar.total_plan / totalPlanSal;
-        const key   = `${ar.city}||${ar.district}`;
-        const ex    = areaMap.get(key);
-        const add   = {
-          plan:   totals.plan   * ratio,
-          actual: totals.actual * ratio,
-          av_out: totals.av_out * ratio,
-        };
-        if (!ex) {
-          areaMap.set(key, {
-            city:            ar.city,
-            district:        ar.district,
-            total_plan:      add.plan,
-            total_actual:    add.actual,
-            total_av_out:    add.av_out,
-            achievement_pct: 0,
-            outlet_count:    ar.outlet_count ?? 0,
-          });
-        } else {
-          ex.total_plan   += add.plan;
-          ex.total_actual += add.actual;
-          ex.total_av_out += add.av_out;
-        }
-      });
-    });
-
-    if (areaMap.size === 0) {
-      base.achievementArea.forEach(r => {
-        areaMap.set(`${r.city}||${r.district}`, { ...r });
-      });
-    }
-  } else if (salesman) {
-    const areaRows = (base.achievementAreaSalesman ?? [])
-      .filter(r => matchSalesman(r.salesman));
-
-    if (areaRows.length > 0) {
-      areaRows.forEach(r => {
-        const key = `${r.city}||${r.district}`;
-        const ex  = areaMap.get(key);
-        if (!ex) {
-          areaMap.set(key, {
-            city:            r.city,
-            district:        r.district,
-            total_plan:      r.total_plan,
-            total_actual:    r.total_actual,
-            total_av_out:    r.total_av_out,
-            achievement_pct: 0,
-            outlet_count:    r.outlet_count ?? 0,
-          });
-        } else {
-          ex.total_plan   += r.total_plan;
-          ex.total_actual += r.total_actual;
-          ex.total_av_out += r.total_av_out;
-          ex.outlet_count  = (ex.outlet_count ?? 0) + (r.outlet_count ?? 0);
-        }
-      });
-    } else {
-      base.achievementArea.forEach(r => {
-        areaMap.set(`${r.city}||${r.district}`, { ...r });
-      });
-    }
-  } else {
-    const areaProductData = base.achievementAreaProduct ?? [];
-    if (areaProductData.length > 0) {
-      areaProductData
-        .filter(r => matchProduct(r.product))
-        .forEach(r => {
-          const key = `${r.city}||${r.district}`;
-          const ex  = areaMap.get(key);
-          if (!ex) {
-            areaMap.set(key, {
-              city:            r.city,
-              district:        r.district,
-              total_plan:      r.total_plan,
-              total_actual:    r.total_actual,
-              total_av_out:    r.total_av_out,
-              achievement_pct: 0,
-              outlet_count:    r.outlet_count ?? 0,
-            });
-          } else {
-            ex.total_plan   += r.total_plan;
-            ex.total_actual += r.total_actual;
-            ex.total_av_out += r.total_av_out;
-            ex.outlet_count  = Math.max(ex.outlet_count ?? 0, r.outlet_count ?? 0);
-          }
-        });
-    } else {
-      base.achievementArea.forEach(r => {
-        areaMap.set(`${r.city}||${r.district}`, { ...r });
-      });
-    }
-  }
-
-  const achievementArea = Array.from(areaMap.values())
-    .map(r => ({
-      ...r,
-      achievement_pct: r.total_plan > 0
-        ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
-        : 0,
-    }))
-    .sort((a, b) => b.total_av_out - a.total_av_out);
-
-  // ── Trend per minggu ──────────────────────────────────────────────────────
-  let trend: TrendRow[];
-
-  if (needCovPath) {
-    const trendMap = new Map<number, TrendRow>();
-    covFiltered.forEach(r => {
-      const ex = trendMap.get(r.week_num);
-      if (!ex) {
-        trendMap.set(r.week_num, {
-          week:         r.week,
-          week_num:     r.week_num,
-          total_plan:   r.plan,
-          total_actual: r.actual,
-          total_av_in:  r.av_in,
-          total_ec:     r.ec,
-          total_av_out: r.av_out,
-          outlet_count: 0,
-        });
-      } else {
-        ex.total_plan   += r.plan;
-        ex.total_actual += r.actual;
-        ex.total_av_in  += r.av_in;
-        ex.total_ec     += r.ec;
-        ex.total_av_out += r.av_out;
-      }
-    });
-    trend = Array.from(trendMap.values()).sort((a, b) => a.week_num - b.week_num);
-  } else {
-    const trendMap = new Map<number, TrendRow>();
-    base.trend
-      .filter(r => matchProduct(r.product))
-      .forEach(r => {
-        const ex = trendMap.get(r.week_num);
-        if (!ex) {
-          trendMap.set(r.week_num, { ...r });
-        } else {
-          ex.total_plan   += r.total_plan;
-          ex.total_actual += r.total_actual;
-          ex.total_av_in  += r.total_av_in;
-          ex.total_ec     += r.total_ec;
-          ex.total_av_out += r.total_av_out;
-          ex.outlet_count += r.outlet_count;
-        }
-      });
-    trend = Array.from(trendMap.values()).sort((a, b) => a.week_num - b.week_num);
-  }
-
-  // ── Coverage per tipe outlet ──────────────────────────────────────────────
-  const covMap = new Map<string, CovRow>();
-
-  if (needCovPath) {
-    covFiltered.forEach(r => {
-      const key = r.outlet_type ?? '';
-      const ex  = covMap.get(key);
-      if (!ex) {
-        covMap.set(key, {
-          outlet_type:     key,
-          total_plan:      r.plan,
-          total_actual:    r.actual,
-          total_av_in:     r.av_in,
-          total_ec:        r.ec,
-          total_av_out:    r.av_out,
-          outlet_count:    0,
-          achievement_pct: 0,
-        });
-      } else {
-        ex.total_plan   += r.plan;
-        ex.total_actual += r.actual;
-        ex.total_av_in  += r.av_in;
-        ex.total_ec     += r.ec;
-        ex.total_av_out += r.av_out;
-      }
-    });
-  } else {
-    base.coverage
-      .filter(r => matchProduct(r.product))
-      .forEach(r => {
-        const key = r.outlet_type ?? '';
-        const ex  = covMap.get(key);
-        if (!ex) {
-          covMap.set(key, { ...r, outlet_count: 0 });
-        } else {
-          ex.total_plan   += r.total_plan;
-          ex.total_actual += r.total_actual;
-          ex.total_av_in  += r.total_av_in;
-          ex.total_ec     += r.total_ec;
-          ex.total_av_out += r.total_av_out;
-        }
-      });
-  }
-
-  // Isi outlet_count per tipe outlet:
-  // - Ada filter salesman: jumlahkan outletCountByTypeSalesman untuk salesman yang cocok
-  // - Tidak ada filter salesman: pakai outletCountByType global
-  const coverage = Array.from(covMap.values())
-    .map(r => {
-      let outletCount = 0;
-      if (salesman) {
-        // Jumlahkan outlet_count dari semua salesman yang cocok filter untuk tipe ini
-        (base.outletCountByTypeSalesman ?? []).forEach(ocr => {
-          if (ocr.outlet_type !== r.outlet_type) return;
-          if (!matchSalesman(ocr.salesman)) return;
-          outletCount += ocr.outlet_count;
-        });
-      } else {
-        outletCount = outletCountMap.get(r.outlet_type) ?? 0;
-      }
-      return {
-        ...r,
-        outlet_count:    outletCount,
-        achievement_pct: r.total_plan > 0
-          ? Math.round((r.total_av_out / r.total_plan) * 1000) / 10
-          : 0,
-      };
-    })
-    .sort((a, b) => b.total_av_out - a.total_av_out);
-
-  // ── Coverage Salesman heatmap ─────────────────────────────────────────────
-  const covSalMap = new Map<string, CovSalRow>();
-  covFiltered.forEach(r => {
-    const key = `${r.salesman}||${r.week}`;
-    const ex  = covSalMap.get(key);
-    if (!ex) {
-      covSalMap.set(key, { ...r });
-    } else {
-      ex.plan   += r.plan;
-      ex.actual += r.actual;
-      ex.av_in  += r.av_in;
-      ex.ec     += r.ec;
-      ex.av_out += r.av_out;
-    }
-  });
-  const coverageSalesman = Array.from(covSalMap.values())
-    .map(r => ({
-      ...r,
-      achievement_pct: r.plan > 0
-        ? Math.round((r.av_out / r.plan) * 1000) / 10
-        : 0,
-    }));
-
-  // ── Summary ───────────────────────────────────────────────────────────────
-  const totalPlan   = trend.reduce((s, r) => s + r.total_plan,   0);
-  const totalActual = trend.reduce((s, r) => s + r.total_actual, 0);
-  const totalAvIn   = trend.reduce((s, r) => s + r.total_av_in,  0);
-  const totalEc     = trend.reduce((s, r) => s + r.total_ec,     0);
-  const totalAvOut  = trend.reduce((s, r) => s + r.total_av_out, 0);
-
-  // Total outlets — hitung dari sumber yang benar sesuai kombinasi filter
-  let totalOutlets: number;
-
-  if (!hasFilter) {
-    // Tidak ada filter sama sekali → pakai nilai server
-    totalOutlets = base.totalOutlets;
-  } else if (salesman && outletType) {
-    // Keduanya aktif: jumlahkan outlet_count untuk salesman × tipe yang cocok
-    totalOutlets = 0;
-    (base.outletCountByTypeSalesman ?? []).forEach(r => {
-      if (matchSalesman(r.salesman) && r.outlet_type.toLowerCase() === outletType.toLowerCase()) {
-        totalOutlets += r.outlet_count;
-      }
-    });
-  } else if (salesman) {
-    // Hanya filter salesman: jumlahkan semua tipe untuk salesman yang cocok
-    totalOutlets = 0;
-    (base.outletCountByTypeSalesman ?? []).forEach(r => {
-      if (matchSalesman(r.salesman)) totalOutlets += r.outlet_count;
-    });
-  } else if (outletType) {
-    // Hanya filter tipe outlet: pakai outletCountByType global
-    totalOutlets = outletCountMap.get(outletType) ?? 0;
-  } else {
-    // Hanya filter product: total outlet keseluruhan (tidak bisa filter per product dari DB)
-    totalOutlets = base.totalOutlets;
-  }
-
-  const totalSalesmen = new Set(achievementSalesman.map(r => r.salesman)).size;
-  const totalProducts = achievementProduct.length;
-
-  const summary: Summary = {
-    ...base.summary,
-    total_plan:          totalPlan,
-    total_actual:        totalActual,
-    total_av_in:         totalAvIn,
-    total_ec:            totalEc,
-    total_av_out:        totalAvOut,
-    total_outlets:       totalOutlets,
-    total_salesmen:      totalSalesmen,
-    total_products:      totalProducts,
-    overall_achievement: totalPlan > 0
-      ? Math.round((totalAvOut / totalPlan) * 1000) / 10
-      : 0,
-  };
-
-  return {
-    summary,
-    achievementSalesman,
-    achievementProduct,
-    achievementArea,
-    trend,
-    coverage,
-    coverageSalesman,
-    outletCountByType:            base.outletCountByType,
-    outletCountByTypeSalesman:    base.outletCountByTypeSalesman,
-    totalOutlets:                 base.totalOutlets,
-    achievementAreaSalesman:      base.achievementAreaSalesman   ?? [],
-    achievementAreaProduct:       base.achievementAreaProduct    ?? [],
-    achievementAreaOutletType:    base.achievementAreaOutletType ?? [],
-  };
-}
+// NOTE:
+// Fungsi reaggregate() client-side SUDAH DIHAPUS.
+// Dulu di sini ada agregasi ulang (SUM manual) yang membuat angka Plan/Actual/
+// Av-In/EC/Av-Out di UI berbeda dari hasil query server (route.ts), karena server
+// melakukan dedup per outlet lewat CTE outlet_agg (MAX(CASE WHEN metric>0...)),
+// sedangkan reaggregate() SUM baris mentah — berpotensi double count outlet yang
+// sama di beberapa baris (misal lintas minggu / lintas tipe outlet).
+//
+// Sekarang: fetch ke /api/distribution HANYA terjadi ketika tombol "Terapkan"
+// ditekan (loadData) atau saat areaFilter berganti (reset). Filter dropdown
+// (Produk / Tipe Outlet / Salesman) TIDAK auto-fetch lagi begitu dipilih —
+// nilainya cuma disimpan di state lokal dan baru dikirim ke server saat
+// "Terapkan" ditekan. Ini sengaja dihilangkan (dulu ada useEffect yang watch
+// productFilter/outletTypeFilter/salesmanFilter dan langsung fetch) karena:
+//   1) User experience: filter dropdown ikut nunggu tombol, konsisten dengan
+//      filter minggu yang juga baru jalan pas "Terapkan" ditekan.
+//   2) Bug infinite-loop: fetchData sempat dimasukkan ke dependency array
+//      useEffect tsb. Karena fetchData (useCallback) bergantung pada
+//      onDataLoaded/setLoading dari props, dan kalau parent tidak
+//      me-memoize callback itu, fetchData dapat referensi BARU setiap kali
+//      parent re-render -> useEffect ke-trigger lagi -> fetch lagi -> parent
+//      re-render lagi -> ...berulang terus tanpa henti. Menghapus effect ini
+//      menghilangkan sumber loop tersebut sekaligus.
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function AchBadge({ pct, theme }: { pct: number; theme: Theme }) {
@@ -792,17 +317,15 @@ function FilterBadge({ label, value, onClear, theme }: { label: string; value: s
 function DistributionTabs({
   data,
   theme,
-  hasAreaFilterWarning,
 }: {
   data: DistData;
   theme: Theme;
-  hasAreaFilterWarning: boolean;
 }) {
   const t = tk[theme];
   const [tabValue, setTabValue] = useState(0);
 
   const tabs = [
-    { label: 'Achievement',    icon: Target,   color: '#10b981', content: <AchievementContent data={data} theme={theme} hasAreaFilterWarning={hasAreaFilterWarning} /> },
+    { label: 'Achievement',    icon: Target,   color: '#10b981', content: <AchievementContent data={data} theme={theme} /> },
     { label: 'Trend Mingguan', icon: Activity, color: '#3b82f6', content: <TrendContent       data={data} theme={theme} /> },
     { label: 'Outlet',         icon: Store,    color: '#f59e0b', content: <CoverageContent    data={data} theme={theme} /> },
   ];
@@ -851,11 +374,9 @@ function DistributionTabs({
 function AchievementContent({
   data,
   theme,
-  hasAreaFilterWarning,
 }: {
   data: DistData;
   theme: Theme;
-  hasAreaFilterWarning: boolean;
 }) {
   const t  = tk[theme];
   const ts = { fontSize: 8, fill: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
@@ -890,20 +411,6 @@ function AchievementContent({
           </button>
         ))}
       </div>
-
-      {view === 'area' && hasAreaFilterWarning && (
-        <div style={{
-          padding: '8px 12px', borderRadius: 8,
-          background: 'rgba(245,158,11,0.09)', border: '1px solid rgba(245,158,11,0.2)',
-          fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: '#fbbf24',
-          display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <Activity size={12} />
-          <span>
-            Data area ditampilkan dari referensi keseluruhan. Reload untuk mendapatkan data area yang akurat per filter.
-          </span>
-        </div>
-      )}
 
       <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>
@@ -1302,10 +809,37 @@ export default function DistributionSection({
   const [outletTypeFilter, setOutletTypeFilter] = useState('');
   const [salesmanFilter,   setSalesmanFilter]   = useState('');
 
+  // Dropdown filter (product/outletType/salesman/city) tidak dari cachedData
+  // saja — kita simpan pilihan opsi dari load PERTAMA (tanpa filter) supaya
+  // opsi dropdown tidak menyusut begitu salah satu filter lain aktif.
+  const [productOptions,    setProductOptions]    = useState<string[]>([]);
+  const [outletTypeOptions, setOutletTypeOptions] = useState<string[]>([]);
+  const [salesmanOptions,   setSalesmanOptions]   = useState<string[]>([]);
+
+  // FIX: dulu isInitialLoad dihitung dari `!loaded` (prop dari PARENT).
+  // Masalahnya `loaded` itu state punya page.tsx, bukan state lokal komponen
+  // ini — kalau parent sudah punya loaded=true duluan (misal karena pindah
+  // tab lalu balik lagi, atau area yang sama sudah pernah dimuat di sesi
+  // yang sama), klik "Terapkan" PERTAMA di komponen ini langsung dianggap
+  // "bukan initial load", sehingga productOptions/outletTypeOptions/
+  // salesmanOptions TIDAK PERNAH diisi sama sekali -> dropdown filter tidak
+  // pernah muncul. Sekarang dipakai flag LOKAL (optionsReadyRef) yang murni
+  // menandai "apakah komponen ini sendiri sudah pernah berhasil mengisi
+  // opsi dropdown", lepas dari state `loaded` milik parent.
+  const optionsReadyRef = useRef(false);
+
+  // Ref untuk mencegah race condition: kalau user ganti filter dengan cepat,
+  // hanya response fetch TERAKHIR yang boleh commit ke state.
+  const requestSeq = useRef(0);
+
   useEffect(() => {
     setProductFilter('');
     setOutletTypeFilter('');
     setSalesmanFilter('');
+    setProductOptions([]);
+    setOutletTypeOptions([]);
+    setSalesmanOptions([]);
+    optionsReadyRef.current = false; // area ganti -> opsi dropdown harus di-fetch ulang
   }, [areaFilter]);
 
   const resetFilters = useCallback(() => {
@@ -1314,133 +848,151 @@ export default function DistributionSection({
     setSalesmanFilter('');
   }, []);
 
-  const productOptions = useMemo(() => {
-    if (!cachedData) return [];
-    return Array.from(
-      new Set(cachedData.achievementProduct.map(r => r.product).filter(Boolean))
-    ).sort() as string[];
-  }, [cachedData]);
+  const normalizeResponse = (raw: any): DistData => {
+    raw.summary = {
+      ...raw.summary,
+      total_plan:          parseFloat(raw.summary.total_plan          ?? 0),
+      total_actual:        parseFloat(raw.summary.total_actual        ?? 0),
+      total_av_in:         parseFloat(raw.summary.total_av_in         ?? 0),
+      total_ec:            parseFloat(raw.summary.total_ec            ?? 0),
+      total_av_out:        parseFloat(raw.summary.total_av_out        ?? 0),
+      total_outlets:       parseFloat(raw.summary.total_outlets       ?? 0),
+      total_salesmen:      parseFloat(raw.summary.total_salesmen      ?? 0),
+      total_products:      parseFloat(raw.summary.total_products      ?? 0),
+      total_customers:     parseFloat(raw.summary.total_customers     ?? 0),
+      overall_achievement: parseFloat(raw.summary.overall_achievement ?? 0),
+    };
+    raw.achievementSalesman = normRows(raw.achievementSalesman);
+    raw.achievementProduct  = normRows(raw.achievementProduct);
+    raw.achievementArea     = normRows(raw.achievementArea);
+    raw.coverage            = normRows(raw.coverage);
+    raw.coverageSalesman    = raw.coverageSalesman.map((r: any) => ({
+      ...r,
+      plan:            parseFloat(r.plan            ?? 0),
+      actual:          parseFloat(r.actual          ?? 0),
+      av_in:           parseFloat(r.av_in           ?? 0),
+      ec:              parseFloat(r.ec              ?? 0),
+      av_out:          parseFloat(r.av_out          ?? 0),
+      achievement_pct: parseFloat(r.achievement_pct ?? 0),
+    }));
+    raw.achievementAreaProduct = (raw.achievementAreaProduct ?? []).map((r: any) => ({
+      ...r,
+      total_plan:      parseFloat(r.total_plan      ?? 0),
+      total_actual:    parseFloat(r.total_actual    ?? 0),
+      total_av_out:    parseFloat(r.total_av_out    ?? 0),
+      achievement_pct: parseFloat(r.achievement_pct ?? 0),
+      outlet_count:    parseInt(r.outlet_count      ?? 0),
+    }));
+    raw.achievementAreaOutletType = (raw.achievementAreaOutletType ?? []).map((r: any) => ({
+      ...r,
+      total_plan:      parseFloat(r.total_plan      ?? 0),
+      total_actual:    parseFloat(r.total_actual    ?? 0),
+      total_av_out:    parseFloat(r.total_av_out    ?? 0),
+      achievement_pct: parseFloat(r.achievement_pct ?? 0),
+      outlet_count:    parseInt(r.outlet_count      ?? 0),
+    }));
+    raw.trend = raw.trend.map((r: any) => ({
+      ...r,
+      total_plan:    parseFloat(r.total_plan    ?? 0),
+      total_actual:  parseFloat(r.total_actual  ?? 0),
+      total_av_in:   parseFloat(r.total_av_in   ?? 0),
+      total_ec:      parseFloat(r.total_ec      ?? 0),
+      total_av_out:  parseFloat(r.total_av_out  ?? 0),
+      outlet_count:  parseFloat(r.outlet_count  ?? 0),
+    }));
+    raw.outletCountByType = (raw.outletCountByType ?? []).map((r: any) => ({
+      outlet_type:  r.outlet_type,
+      outlet_count: parseInt(r.outlet_count ?? 0),
+    }));
+    raw.totalOutlets = parseInt(raw.totalOutlets ?? 0);
+    raw.achievementAreaSalesman = (raw.achievementAreaSalesman ?? []).map((r: any) => ({
+      ...r,
+      total_plan:      parseFloat(r.total_plan      ?? 0),
+      total_actual:    parseFloat(r.total_actual    ?? 0),
+      total_av_out:    parseFloat(r.total_av_out    ?? 0),
+      achievement_pct: parseFloat(r.achievement_pct ?? 0),
+      outlet_count:    parseInt(r.outlet_count      ?? 0),
+    }));
+    raw.outletCountByTypeSalesman = (raw.outletCountByTypeSalesman ?? []).map((r: any) => ({
+      salesman:     r.salesman,
+      outlet_type:  r.outlet_type,
+      outlet_count: parseInt(r.outlet_count ?? 0),
+    }));
+    return raw as DistData;
+  };
 
-  const outletTypeOptions = useMemo(() => {
-    if (!cachedData) return [];
-    return Array.from(
-      new Set(cachedData.outletCountByType.map(r => r.outlet_type).filter(Boolean))
-    ).sort() as string[];
-  }, [cachedData]);
-
-  const salesmanOptions = useMemo(() => {
-    if (!cachedData) return [];
-    return Array.from(
-      new Set(cachedData.achievementSalesman.map(r => r.salesman).filter(Boolean))
-    ).sort() as string[];
-  }, [cachedData]);
-
-  const data = useMemo((): DistData => {
-    const base = cachedData ?? EMPTY_DATA;
-    return reaggregate(base, productFilter, outletTypeFilter, salesmanFilter);
-  }, [cachedData, productFilter, outletTypeFilter, salesmanFilter]);
-
-  const hasAreaFilterWarning = useMemo(() => {
-    const hasFilter  = !!(productFilter || salesmanFilter);
-    const hasSalData = (cachedData?.achievementAreaSalesman?.length ?? 0) > 0;
-    return hasFilter && !hasSalData;
-  }, [productFilter, salesmanFilter, cachedData]);
-
-  const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
-
-  const loadData = useCallback(async () => {
+  // fetchData: satu-satunya jalur ambil data. Selalu request langsung ke
+  // server dengan filter aktif sebagai query param — TIDAK ADA agregasi ulang
+  // di client. `isInitialLoad` menandai fetch pertama (tanpa filter product/
+  // outletType/salesman) supaya opsi dropdown diisi dari situ.
+  const fetchData = useCallback(async (opts: {
+    product?:    string;
+    outletType?: string;
+    salesman?:   string;
+    isInitialLoad?: boolean;
+  } = {}) => {
     if (!areaFilter) return;
+
+    const mySeq = ++requestSeq.current;
     setLoading(true);
     try {
       const p = new URLSearchParams({ weekStart: String(weekStart), weekEnd: String(weekEnd) });
-      if (areaFilter) p.append('area', areaFilter);
+      p.append('area', areaFilter);
+      if (opts.product)    p.append('product', opts.product);
+      if (opts.outletType) p.append('outletType', opts.outletType);
+      if (opts.salesman)   p.append('salesman', opts.salesman);
+
       const r = await fetch(`/api/distribution?${p}`);
-      if (r.ok) {
-        const j = await r.json();
-        if (j.success) {
-          const raw = j.data;
-          raw.summary = {
-            ...raw.summary,
-            total_plan:          parseFloat(raw.summary.total_plan          ?? 0),
-            total_actual:        parseFloat(raw.summary.total_actual        ?? 0),
-            total_av_in:         parseFloat(raw.summary.total_av_in         ?? 0),
-            total_ec:            parseFloat(raw.summary.total_ec            ?? 0),
-            total_av_out:        parseFloat(raw.summary.total_av_out        ?? 0),
-            total_outlets:       parseFloat(raw.summary.total_outlets       ?? 0),
-            total_salesmen:      parseFloat(raw.summary.total_salesmen      ?? 0),
-            total_products:      parseFloat(raw.summary.total_products      ?? 0),
-            total_customers:     parseFloat(raw.summary.total_customers     ?? 0),
-            overall_achievement: parseFloat(raw.summary.overall_achievement ?? 0),
-          };
-          raw.achievementSalesman = normRows(raw.achievementSalesman);
-          raw.achievementProduct  = normRows(raw.achievementProduct);
-          raw.achievementArea     = normRows(raw.achievementArea);
-          raw.coverage            = normRows(raw.coverage);
-          raw.coverageSalesman    = raw.coverageSalesman.map((r: any) => ({
-            ...r,
-            plan:            parseFloat(r.plan            ?? 0),
-            actual:          parseFloat(r.actual          ?? 0),
-            av_in:           parseFloat(r.av_in           ?? 0),
-            ec:              parseFloat(r.ec              ?? 0),
-            av_out:          parseFloat(r.av_out          ?? 0),
-            achievement_pct: parseFloat(r.achievement_pct ?? 0),
-          }));
-          raw.achievementAreaProduct = (raw.achievementAreaProduct ?? []).map((r: any) => ({
-            ...r,
-            total_plan:      parseFloat(r.total_plan      ?? 0),
-            total_actual:    parseFloat(r.total_actual    ?? 0),
-            total_av_out:    parseFloat(r.total_av_out    ?? 0),
-            achievement_pct: parseFloat(r.achievement_pct ?? 0),
-            outlet_count:    parseInt(r.outlet_count      ?? 0),
-          }));
-          raw.achievementAreaOutletType = (raw.achievementAreaOutletType ?? []).map((r: any) => ({
-            ...r,
-            total_plan:      parseFloat(r.total_plan      ?? 0),
-            total_actual:    parseFloat(r.total_actual    ?? 0),
-            total_av_out:    parseFloat(r.total_av_out    ?? 0),
-            achievement_pct: parseFloat(r.achievement_pct ?? 0),
-            outlet_count:    parseInt(r.outlet_count      ?? 0),
-          }));
-          raw.trend = raw.trend.map((r: any) => ({
-            ...r,
-            total_plan:    parseFloat(r.total_plan    ?? 0),
-            total_actual:  parseFloat(r.total_actual  ?? 0),
-            total_av_in:   parseFloat(r.total_av_in   ?? 0),
-            total_ec:      parseFloat(r.total_ec      ?? 0),
-            total_av_out:  parseFloat(r.total_av_out  ?? 0),
-            outlet_count:  parseFloat(r.outlet_count  ?? 0),
-          }));
-          raw.outletCountByType = (raw.outletCountByType ?? []).map((r: any) => ({
-            outlet_type:  r.outlet_type,
-            outlet_count: parseInt(r.outlet_count ?? 0),
-          }));
-          raw.totalOutlets = parseInt(raw.totalOutlets ?? 0);
-          raw.achievementAreaSalesman = (raw.achievementAreaSalesman ?? []).map((r: any) => ({
-            ...r,
-            total_plan:      parseFloat(r.total_plan      ?? 0),
-            total_actual:    parseFloat(r.total_actual    ?? 0),
-            total_av_out:    parseFloat(r.total_av_out    ?? 0),
-            achievement_pct: parseFloat(r.achievement_pct ?? 0),
-            outlet_count:    parseInt(r.outlet_count      ?? 0),
-          }));
-          // ── TAMBAHAN: Normalize outletCountByTypeSalesman ──────────────────
-          raw.outletCountByTypeSalesman = (raw.outletCountByTypeSalesman ?? []).map((r: any) => ({
-            salesman:     r.salesman,
-            outlet_type:  r.outlet_type,
-            outlet_count: parseInt(r.outlet_count ?? 0),
-          }));
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j.success) return;
 
-          resetFilters();
-          onDataLoaded?.(raw);
-        }
+      // Kalau ada fetch lebih baru yang sudah jalan, buang hasil yang telat ini.
+      if (mySeq !== requestSeq.current) return;
+
+      const data = normalizeResponse(j.data);
+
+      if (opts.isInitialLoad) {
+        setProductOptions(
+          Array.from(new Set(data.achievementProduct.map(r => r.product).filter(Boolean))).sort() as string[]
+        );
+        setOutletTypeOptions(
+          Array.from(new Set(data.outletCountByType.map(r => r.outlet_type).filter(Boolean))).sort() as string[]
+        );
+        setSalesmanOptions(
+          Array.from(new Set(data.achievementSalesman.map(r => r.salesman).filter(Boolean))).sort() as string[]
+        );
+        optionsReadyRef.current = true;
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [weekStart, weekEnd, areaFilter, resetFilters]);
 
+      onDataLoaded?.(data);
+    } finally {
+      if (mySeq === requestSeq.current) setLoading(false);
+    }
+  }, [weekStart, weekEnd, areaFilter, onDataLoaded, setLoading]);
+
+  // Tombol "Terapkan" → SATU-SATUNYA pemicu fetch untuk minggu maupun filter
+  // dropdown (Produk / Tipe Outlet / Salesman). Nilai filter dropdown yang
+  // sedang dipilih langsung dikirim bersamaan di sini — tidak ada lagi
+  // auto-fetch terpisah saat dropdown berubah.
+  //
+  // `isInitialLoad` cuma true di load PERTAMA (saat `loaded` masih false),
+  // supaya opsi dropdown (productOptions dkk) diisi dari situ dan tidak
+  // menyusut/reset tiap kali "Terapkan" ditekan ulang dengan filter aktif.
+  const loadData = useCallback(() => {
+    fetchData({
+      product:       productFilter    || undefined,
+      outletType:    outletTypeFilter || undefined,
+      salesman:      salesmanFilter   || undefined,
+      isInitialLoad: !optionsReadyRef.current,
+    });
+  }, [fetchData, productFilter, outletTypeFilter, salesmanFilter]);
+
+  const data     = cachedData ?? EMPTY_DATA;
   const s        = data.summary;
   const areaName = areas.find(a => a.id === areaFilter)?.name;
+
+  const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
 
   const selectStyle = (active: boolean) => ({
     height: 26, padding: '0 6px',
@@ -1549,13 +1101,14 @@ export default function DistributionSection({
           fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: t.tabActiveText,
         }}>
           <Activity size={11} />
-          <span style={{ color: t.textSub }}>Filter aktif:</span>
+          <span style={{ color: t.textSub }}>Filter dipilih:</span>
           {productFilter    && <FilterBadge label="Produk"      value={productFilter}    onClear={() => setProductFilter('')}    theme={theme} />}
           {outletTypeFilter && <FilterBadge label="Tipe Outlet" value={outletTypeFilter} onClear={() => setOutletTypeFilter('')} theme={theme} />}
           {salesmanFilter   && <FilterBadge label="Salesman"    value={salesmanFilter}   onClear={() => setSalesmanFilter('')}   theme={theme} />}
           <button onClick={resetFilters} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 11, padding: '0 4px', fontFamily: 'IBM Plex Mono,monospace' }}>
             Reset Semua
           </button>
+          <span style={{ color: t.textMuted, fontSize: 9 }}>· klik Terapkan untuk memuat</span>
         </div>
       )}
 
@@ -1586,7 +1139,6 @@ export default function DistributionSection({
           <DistributionTabs
             data={data}
             theme={theme}
-            hasAreaFilterWarning={hasAreaFilterWarning}
           />
         </>
       )}

@@ -41,6 +41,34 @@ function logError(step: string, err: unknown, detail?: Record<string, unknown>) 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GET
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// CATATAN PENTING ─ Definisi metrik (per outlet, tidak double count per produk):
+//   - total_plan   : outlet dihitung 1x jika SUM(plan) pada outlet itu > 0
+//   - total_actual : outlet dihitung 1x jika SUM(actual) pada outlet itu > 0
+//   - total_av_in  : outlet dihitung 1x jika SUM(av_in) pada outlet itu > 0
+//   - total_ec     : outlet dihitung 1x jika SUM(ec) pada outlet itu > 0
+//   - total_av_out : outlet dihitung 1x jika (av_in > 0 ATAU ec > 0) pada outlet itu
+//
+// Semua query di bawah pakai pola CTE 2-tahap:
+//   1) flatten ke level outlet dalam masing-masing grup (MAX/CASE WHEN SUM(...)>0)
+//   2) SUM flag tsb per grup -> hasilnya jadi COUNT DISTINCT outlet yang valid,
+//      bukan SUM mentah dari kolom Plan/Actual/Av-In/EC/Av-Out.
+//
+// PENTING ─ dimensi GROUP BY harus PERSIS SAMA dengan dimensi yang ditampilkan
+// di frontend. Kalau CTE/SELECT di-GROUP BY dengan kolom tambahan (mis. product,
+// outlet_type) yang TIDAK ditampilkan/diagregasi lagi di komponen React, hasilnya
+// jadi banyak baris untuk 1 entity yang sama di tabel (kelihatan "duplikat"), atau
+// — kalau frontend nge-key pakai Map — baris-baris itu saling overwrite dan data
+// yang ditampilkan jadi salah/hilang diam-diam. Query di bawah ini SENGAJA di-
+// GROUP BY hanya sampai dimensi yang benar-benar dipakai di UI:
+//   - achievementSalesman  -> per salesman saja      (tab "Per Salesman")
+//   - achievementProduct   -> per product+category   (tab "Per Produk", category
+//                              ikut ditampilkan di kolom terpisah, jadi aman)
+//   - achievementArea      -> per city+district       (tab "Per Area/Kota")
+//   - trend                -> per week saja            (chart & tabel trend mingguan)
+//   - coverage              -> per outlet_type saja    (pie chart & tabel per tipe)
+//   - coverageSalesman     -> per salesman+week saja   (heatmap salesman × minggu)
+//
 export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
     try {
@@ -63,13 +91,14 @@ export async function GET(request: NextRequest) {
       }
 
       // ── Query lengkap ─────────────────────────────────────────────────────
-      const area      = searchParams.get('area') || '';
-      const salesman  = searchParams.get('salesman') || '';
-      const product   = searchParams.get('product') || '';
-      const weekStart = parseInt(searchParams.get('weekStart') || '1');
-      const weekEnd   = parseInt(searchParams.get('weekEnd') || '52');
-      const city      = searchParams.get('city') || '';
-      const fileId    = searchParams.get('fileId') || '';
+      const area       = searchParams.get('area') || '';
+      const salesman   = searchParams.get('salesman') || '';
+      const product    = searchParams.get('product') || '';
+      const weekStart  = parseInt(searchParams.get('weekStart') || '1');
+      const weekEnd    = parseInt(searchParams.get('weekEnd') || '52');
+      const city       = searchParams.get('city') || '';
+      const fileId     = searchParams.get('fileId') || '';
+      const outletType = searchParams.get('outletType') || '';
 
       // ── WHERE dengan semua filter (dipakai mayoritas query) ────────────────
       const params: any[] = [];
@@ -84,10 +113,11 @@ export async function GET(request: NextRequest) {
         params.push(area);
       }
 
-      if (salesman) { conditions.push(`salesman ILIKE $${idx++}`); params.push(`%${salesman}%`); }
-      if (product)  { conditions.push(`product ILIKE $${idx++}`);  params.push(`%${product}%`);  }
-      if (city)     { conditions.push(`city ILIKE $${idx++}`);     params.push(`%${city}%`);     }
-      if (fileId)   { conditions.push(`dist_file_id = $${idx++}`); params.push(parseInt(fileId)); }
+      if (salesman)   { conditions.push(`salesman ILIKE $${idx++}`);    params.push(`%${salesman}%`); }
+      if (product)    { conditions.push(`product ILIKE $${idx++}`);     params.push(`%${product}%`);  }
+      if (city)       { conditions.push(`city ILIKE $${idx++}`);        params.push(`%${city}%`);     }
+      if (fileId)     { conditions.push(`dist_file_id = $${idx++}`);    params.push(parseInt(fileId)); }
+      if (outletType) { conditions.push(`outlet_type ILIKE $${idx++}`); params.push(outletType); }
 
       conditions.push(`week_num BETWEEN $${idx++} AND $${idx++}`);
       params.push(weekStart, weekEnd);
@@ -107,9 +137,10 @@ export async function GET(request: NextRequest) {
         baseParams.push(area);
       }
 
-      if (product)  { baseConditions.push(`product ILIKE $${baseIdx++}`);  baseParams.push(`%${product}%`);  }
-      if (city)     { baseConditions.push(`city ILIKE $${baseIdx++}`);     baseParams.push(`%${city}%`);     }
-      if (fileId)   { baseConditions.push(`dist_file_id = $${baseIdx++}`); baseParams.push(parseInt(fileId)); }
+      if (product)    { baseConditions.push(`product ILIKE $${baseIdx++}`);     baseParams.push(`%${product}%`);  }
+      if (city)       { baseConditions.push(`city ILIKE $${baseIdx++}`);        baseParams.push(`%${city}%`);     }
+      if (fileId)     { baseConditions.push(`dist_file_id = $${baseIdx++}`);    baseParams.push(parseInt(fileId)); }
+      if (outletType) { baseConditions.push(`outlet_type ILIKE $${baseIdx++}`); baseParams.push(outletType); }
 
       baseConditions.push(`week_num BETWEEN $${baseIdx++} AND $${baseIdx++}`);
       baseParams.push(weekStart, weekEnd);
@@ -129,8 +160,9 @@ export async function GET(request: NextRequest) {
         noSalNoProdParams.push(area);
       }
 
-      if (city)   { noSalNoProdConditions.push(`city ILIKE $${noSalNoProdIdx++}`);   noSalNoProdParams.push(`%${city}%`);   }
-      if (fileId) { noSalNoProdConditions.push(`dist_file_id = $${noSalNoProdIdx++}`); noSalNoProdParams.push(parseInt(fileId)); }
+      if (city)       { noSalNoProdConditions.push(`city ILIKE $${noSalNoProdIdx++}`);        noSalNoProdParams.push(`%${city}%`);   }
+      if (fileId)     { noSalNoProdConditions.push(`dist_file_id = $${noSalNoProdIdx++}`);     noSalNoProdParams.push(parseInt(fileId)); }
+      if (outletType) { noSalNoProdConditions.push(`outlet_type ILIKE $${noSalNoProdIdx++}`);  noSalNoProdParams.push(outletType); }
 
       noSalNoProdConditions.push(`week_num BETWEEN $${noSalNoProdIdx++} AND $${noSalNoProdIdx++}`);
       noSalNoProdParams.push(weekStart, weekEnd);
@@ -138,7 +170,7 @@ export async function GET(request: NextRequest) {
       const whereNoSalNoProd = noSalNoProdConditions.join(' AND ');
 
       // ── WHERE dengan salesman tapi TANPA filter product ────────────────────
-      // Dipakai untuk outletCountByType & totalOutlets agar ikut filter salesman
+      // Dipakai untuk outletCountByType & totalOutlets agar ikut filter salesman + outletType
       const withSalConditions: string[] = ['1=1'];
       const withSalParams: any[] = [];
       let withSalIdx = 1;
@@ -151,9 +183,10 @@ export async function GET(request: NextRequest) {
         withSalParams.push(area);
       }
 
-      if (salesman) { withSalConditions.push(`salesman ILIKE $${withSalIdx++}`); withSalParams.push(`%${salesman}%`); }
-      if (city)     { withSalConditions.push(`city ILIKE $${withSalIdx++}`);     withSalParams.push(`%${city}%`);     }
-      if (fileId)   { withSalConditions.push(`dist_file_id = $${withSalIdx++}`); withSalParams.push(parseInt(fileId)); }
+      if (salesman)   { withSalConditions.push(`salesman ILIKE $${withSalIdx++}`);    withSalParams.push(`%${salesman}%`); }
+      if (city)       { withSalConditions.push(`city ILIKE $${withSalIdx++}`);        withSalParams.push(`%${city}%`);     }
+      if (fileId)     { withSalConditions.push(`dist_file_id = $${withSalIdx++}`);    withSalParams.push(parseInt(fileId)); }
+      if (outletType) { withSalConditions.push(`outlet_type ILIKE $${withSalIdx++}`); withSalParams.push(outletType); }
 
       withSalConditions.push(`week_num BETWEEN $${withSalIdx++} AND $${withSalIdx++}`);
       withSalParams.push(weekStart, weekEnd);
@@ -177,149 +210,257 @@ export async function GET(request: NextRequest) {
         achAreaOutletTypeQ,
       ] = await Promise.all([
 
-        // Achievement per salesman × product
+        // Achievement per salesman (murni per salesman, TANPA breakdown produk).
+        // FIX: sebelumnya GROUP BY salesman, product -> 1 salesman bisa muncul
+        // berkali-kali (1 baris per produk) dan di tabel "Per Salesman" kolom
+        // product tidak ditampilkan, jadi kelihatan seperti baris duplikat.
+        // Sekarang outlet di-dedup per salesman saja (lintas semua produk).
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              salesman,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY salesman, outlet
+          )
           SELECT
             salesman,
-            product,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${where}
-          GROUP BY salesman, product
+          FROM outlet_agg
+          GROUP BY salesman
           ORDER BY achievement_pct DESC
         `, params),
 
         // Achievement per produk
+        // outlet dihitung 1x per (product, category) — category ikut ditampilkan
+        // di kolom terpisah di UI jadi baris ganda di sini (kalau ada) tetap valid.
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              product,
+              category,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY product, category, outlet
+          )
           SELECT
             product,
             category,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${where}
+          FROM outlet_agg
           GROUP BY product, category
           ORDER BY total_av_out DESC
         `, params),
 
         // Achievement per area (base — tanpa filter salesman)
+        // outlet dihitung 1x per (city, district), tidak terikat produk
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              city,
+              district,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${whereBase}
+            GROUP BY city, district, outlet
+          )
           SELECT
             city,
             district,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${whereBase}
+          FROM outlet_agg
           GROUP BY city, district
           ORDER BY total_av_out DESC
-          
         `, baseParams),
 
-        // Trend mingguan × product
+        // Trend mingguan (murni per minggu, TANPA breakdown produk).
+        // FIX: sebelumnya GROUP BY week, week_num, product -> 1 minggu bisa
+        // muncul berkali-kali (1 baris per produk), padahal tabel & chart trend
+        // di frontend cuma menampilkan kolom "Minggu" saja -> kelihatan seperti
+        // baris/bar duplikat per minggu. Sekarang outlet di-dedup per minggu saja.
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              week,
+              week_num,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 THEN 1 ELSE 0 END) AS f_avin,
+              MAX(CASE WHEN ec > 0 THEN 1 ELSE 0 END) AS f_ec,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY week, week_num, outlet
+          )
           SELECT
             week,
             week_num,
-            product,
-            SUM(plan)              AS total_plan,
-            SUM(actual)            AS total_actual,
-            SUM(av_in)             AS total_av_in,
-            SUM(ec)                AS total_ec,
-            SUM(av_out)            AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avin)   AS total_av_in,
+            SUM(f_ec)     AS total_ec,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count
-          FROM distribution_records
-          WHERE ${where}
-          GROUP BY week, week_num, product
-          ORDER BY week_num ASC, product ASC
+          FROM outlet_agg
+          GROUP BY week, week_num
+          ORDER BY week_num ASC
         `, params),
 
-        // Coverage per tipe outlet × product (tanpa filter salesman)
+        // Coverage per tipe outlet (murni per outlet_type, TANPA breakdown produk,
+        // tanpa filter salesman).
+        // FIX: sebelumnya GROUP BY outlet_type, product -> 1 tipe outlet bisa
+        // muncul berkali-kali (1 baris per produk), padahal tabel, pie chart, dan
+        // bar chart Av-In/EC/Av-Out di frontend cuma menampilkan outlet_type saja
+        // -> kelihatan seperti baris/slice duplikat. Sekarang outlet di-dedup per
+        // tipe outlet saja.
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              outlet_type,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 THEN 1 ELSE 0 END) AS f_avin,
+              MAX(CASE WHEN ec > 0 THEN 1 ELSE 0 END) AS f_ec,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${whereBase}
+            GROUP BY outlet_type, outlet
+          )
           SELECT
             outlet_type,
-            product,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_in)  AS total_av_in,
-            SUM(ec)     AS total_ec,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avin)   AS total_av_in,
+            SUM(f_ec)     AS total_ec,
+            SUM(f_avout)  AS total_av_out,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${whereBase}
-          GROUP BY outlet_type, product
+          FROM outlet_agg
+          GROUP BY outlet_type
           ORDER BY total_av_out DESC
         `, baseParams),
 
-        // Coverage salesman per minggu × product × outlet_type (heatmap)
+        // Coverage salesman per minggu (murni per salesman+minggu, TANPA
+        // breakdown produk/outlet_type) — dipakai untuk heatmap.
+        // FIX: sebelumnya GROUP BY salesman, week_num, week, product, outlet_type
+        // -> kalau 1 salesman punya >1 kombinasi produk/tipe-outlet di minggu yang
+        // sama, hasilnya jadi >1 baris dengan key salesman+week yang sama. Karena
+        // heatMap di frontend nge-key pakai `${salesman}||${week}` (Map.set),
+        // baris-baris itu SALING OVERWRITE — data salesman itu di minggu itu jadi
+        // cuma nunjukin kombinasi produk/tipe-outlet TERAKHIR, bukan totalnya.
+        // Sekarang outlet di-dedup per salesman+minggu saja (lintas semua produk
+        // & tipe outlet).
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              salesman,
+              week_num,
+              week,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 THEN 1 ELSE 0 END) AS f_avin,
+              MAX(CASE WHEN ec > 0 THEN 1 ELSE 0 END) AS f_ec,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY salesman, week_num, week, outlet
+          )
           SELECT
             salesman,
             week_num,
             week,
-            product,
-            outlet_type,
-            SUM(plan)   AS plan,
-            SUM(actual) AS actual,
-            SUM(av_in)  AS av_in,
-            SUM(ec)     AS ec,
-            SUM(av_out) AS av_out,
+            SUM(f_plan)   AS plan,
+            SUM(f_actual) AS actual,
+            SUM(f_avin)   AS av_in,
+            SUM(f_ec)     AS ec,
+            SUM(f_avout)  AS av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${where}
-          GROUP BY salesman, week_num, week, product, outlet_type
-          ORDER BY salesman, week_num, product
+          FROM outlet_agg
+          GROUP BY salesman, week_num, week
+          ORDER BY salesman, week_num
         `, params),
 
-        // Summary keseluruhan
+        // Summary keseluruhan (KPI card)
+        // total_plan/actual/av_in/ec/av_out = COUNT DISTINCT outlet yang memenuhi
+        // kondisi, tidak tergantung berapa banyak produk per outlet
         pool.query(`
+          WITH base AS (
+            SELECT * FROM distribution_records WHERE ${where}
+          ),
+          outlet_agg AS (
+            SELECT
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 THEN 1 ELSE 0 END) AS f_avin,
+              MAX(CASE WHEN ec > 0 THEN 1 ELSE 0 END) AS f_ec,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM base
+            GROUP BY outlet
+          )
           SELECT
-            SUM(plan)                   AS total_plan,
-            SUM(actual)                 AS total_actual,
-            SUM(av_in)                  AS total_av_in,
-            SUM(ec)                     AS total_ec,
-            SUM(av_out)                 AS total_av_out,
-            COUNT(DISTINCT outlet)      AS total_outlets,
-            COUNT(DISTINCT salesman)    AS total_salesmen,
-            COUNT(DISTINCT product)     AS total_products,
-            COUNT(DISTINCT customer_id) AS total_customers,
+            (SELECT COALESCE(SUM(f_plan), 0)   FROM outlet_agg) AS total_plan,
+            (SELECT COALESCE(SUM(f_actual), 0) FROM outlet_agg) AS total_actual,
+            (SELECT COALESCE(SUM(f_avin), 0)   FROM outlet_agg) AS total_av_in,
+            (SELECT COALESCE(SUM(f_ec), 0)     FROM outlet_agg) AS total_ec,
+            (SELECT COALESCE(SUM(f_avout), 0)  FROM outlet_agg) AS total_av_out,
+            (SELECT COUNT(DISTINCT outlet)     FROM base)       AS total_outlets,
+            (SELECT COUNT(DISTINCT salesman)   FROM base)       AS total_salesmen,
+            (SELECT COUNT(DISTINCT product)    FROM base)       AS total_products,
+            (SELECT COUNT(DISTINCT customer_id) FROM base)      AS total_customers,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN (SELECT COALESCE(SUM(f_plan), 0) FROM outlet_agg) > 0
+              THEN ROUND(
+                (SELECT COALESCE(SUM(f_avout), 0) FROM outlet_agg)::numeric
+                / (SELECT SUM(f_plan) FROM outlet_agg) * 100, 1
+              )
               ELSE 0
             END AS overall_achievement
-          FROM distribution_records
-          WHERE ${where}
         `, params),
 
         // Daftar file upload
@@ -331,7 +472,8 @@ export async function GET(request: NextRequest) {
           
         `),
 
-        // Outlet count per tipe — ikut filter salesman (pakai whereWithSal)
+        // Outlet count per tipe — ikut filter salesman + outletType (pakai whereWithSal)
+        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
         pool.query(`
           SELECT
             outlet_type,
@@ -341,7 +483,8 @@ export async function GET(request: NextRequest) {
           GROUP BY outlet_type
         `, withSalParams),
 
-        // Total outlet — ikut filter salesman (pakai whereWithSal)
+        // Total outlet — ikut filter salesman + outletType (pakai whereWithSal)
+        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
         pool.query(`
           SELECT COUNT(DISTINCT outlet) AS total_outlets
           FROM distribution_records
@@ -349,6 +492,7 @@ export async function GET(request: NextRequest) {
         `, withSalParams),
 
         // Outlet count per outlet_type per salesman
+        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
         pool.query(`
           SELECT
             salesman,
@@ -362,63 +506,99 @@ export async function GET(request: NextRequest) {
 
         // Achievement area per SALESMAN × city × district
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              salesman,
+              city,
+              district,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY salesman, city, district, outlet
+          )
           SELECT
             salesman,
             city,
             district,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${where}
+          FROM outlet_agg
           GROUP BY salesman, city, district
           ORDER BY total_av_out DESC
         `, params),
 
         // Achievement area per PRODUCT × city × district
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              product,
+              city,
+              district,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${whereNoSalNoProd}
+            GROUP BY product, city, district, outlet
+          )
           SELECT
             product,
             city,
             district,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${whereNoSalNoProd}
+          FROM outlet_agg
           GROUP BY product, city, district
           ORDER BY total_av_out DESC
         `, noSalNoProdParams),
 
         // Achievement area per OUTLET_TYPE × city × district
         pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              outlet_type,
+              city,
+              district,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${whereNoSalNoProd}
+            GROUP BY outlet_type, city, district, outlet
+          )
           SELECT
             outlet_type,
             city,
             district,
-            SUM(plan)   AS total_plan,
-            SUM(actual) AS total_actual,
-            SUM(av_out) AS total_av_out,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avout)  AS total_av_out,
             COUNT(DISTINCT outlet) AS outlet_count,
             CASE
-              WHEN SUM(plan) > 0
-              THEN ROUND((SUM(av_out) / SUM(plan)) * 100, 1)
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
               ELSE 0
             END AS achievement_pct
-          FROM distribution_records
-          WHERE ${whereNoSalNoProd}
+          FROM outlet_agg
           GROUP BY outlet_type, city, district
           ORDER BY total_av_out DESC
         `, noSalNoProdParams),

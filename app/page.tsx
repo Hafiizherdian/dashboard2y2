@@ -72,6 +72,7 @@ const tk = {
     gridStroke:'rgba(255,255,255,0.04)',
     tooltipBg:'#13161f', tooltipBorder:'rgba(255,255,255,0.09)',
     contentBg:'#07090e', shadowCard:'none',
+    
   },
   light: {
     pagebg: '#eef1f7', sidebarbg: '#ffffff', headerbg: 'rgba(255,255,255,0.96)',
@@ -1595,17 +1596,9 @@ function DashboardInner() {
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
-      case 'distribution': return (
-        <DistributionSection
-          theme={theme} areas={areas} areaFilter={af}
-          weekStart={distWeekStart} weekEnd={distWeekEnd}
-          onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
-          cachedData={distData}
-          onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }}
-          loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading}
-        />
-      );
-      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
+      case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
+                                    cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);
+      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} theme={theme}/>
       default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit}/>;
     }
   };
