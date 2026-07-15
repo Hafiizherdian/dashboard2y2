@@ -1598,7 +1598,7 @@ function DashboardInner() {
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
       case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
                                     cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);
-      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} theme={theme}/>
+      case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
       default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit}/>;
     }
   };

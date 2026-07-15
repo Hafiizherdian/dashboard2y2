@@ -121,6 +121,17 @@ interface CovSalRow {
   av_out:          number;
   achievement_pct: number;
 }
+interface AchSalesmanProductRow {
+  salesman:        string;
+  product:         string;
+  total_plan:      number;
+  total_actual:    number;
+  total_av_in:     number;
+  total_ec:        number;
+  total_av_out:    number;
+  achievement_pct: number;
+  outlet_count:    number;
+}
 interface OutletCountByType {
   outlet_type:  string;
   outlet_count: number;
@@ -177,6 +188,7 @@ interface DistData {
   achievementAreaSalesman:      AchAreaSalesmanRow[];
   achievementAreaProduct:       AchAreaProductRow[];
   achievementAreaOutletType:    any[];
+  achievementSalesmanProduct:  AchSalesmanProductRow[]; 
 }
 
 // ─── Props dari page.tsx ──────────────────────────────────────────────────────
@@ -332,7 +344,7 @@ function DistributionTabs({
 
   return (
     <div style={{ width: '100%', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', borderBottom: `1px solid ${t.border}`, background: t.tableHeadBg, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${t.border}`, background: t.tableHeadBg, overflowX: 'auto', position: 'sticky', top: 0, zIndex: 40 }}>
         {tabs.map((tab, i) => {
           const Icon     = tab.icon;
           const isActive = tabValue === i;
@@ -403,49 +415,117 @@ function AchievementContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', gap: 4, background: t.tabBg, borderRadius: 8, padding: 3, width: 'fit-content' }}>
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setView(id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', border: 'none', cursor: 'pointer', background: view === id ? t.tabActive : 'transparent', color: view === id ? t.tabActiveText : t.textMuted, transition: 'all 0.15s' }}>
-            <Icon size={11} />{label}
-          </button>
-        ))}
+      <div style={{ position: 'sticky', top: TAB_BAR_H, zIndex: 35, background: t.cardBg, paddingTop: 4, paddingBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 4, background: t.tabBg, borderRadius: 8, padding: 3, width: 'fit-content' }}>
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setView(id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', border: 'none', cursor: 'pointer', background: view === id ? t.tabActive : 'transparent', color: view === id ? t.tabActiveText : t.textMuted, transition: 'all 0.15s' }}>
+              <Icon size={11} />{label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>
-          Plan vs Av-Out — Top {chartData.length}
+          Achievement per Salesman × Produk
         </div>
-        {chartData.length === 0 ? (
-          <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.textMuted, fontSize: 11, fontFamily: 'IBM Plex Mono,monospace' }}>Belum ada data.</div>
+        {data.achievementSalesmanProduct.length === 0 ? (
+          <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: t.textMuted, fontSize: 11, fontFamily: 'IBM Plex Mono,monospace' }}>
+            Belum ada data.
+          </div>
         ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 60, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} horizontal={false} />
-              <XAxis type="number" tick={ts} axisLine={false} tickLine={false} tickFormatter={fmtN} />
-              <YAxis type="category" dataKey="name" tick={{ ...ts, fontSize: 9 }} axisLine={false} tickLine={false} width={120} />
-              <Tooltip content={<CT theme={theme} />} />
-              <Bar dataKey="plan"   name="Plan"   fill="#3b82f6" opacity={0.35} radius={[0,3,3,0]} maxBarSize={10} />
-              <Bar dataKey="av_out" name="Av-Out" radius={[0,3,3,0]} maxBarSize={10}>
-                {chartData.map((d, i) => <Cell key={i} fill={achColor(d.pct)} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
+              <thead>
+                <tr>
+                  {['Salesman', 'Produk', 'Plan', 'Aktual', 'Av-In', 'EC', 'Av-Out', 'Achievement', 'Outlet'].map((h, i) => (
+                    <th key={i} style={{ padding: '6px 10px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 20, background: t.tableHeadBg }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  // Data dari server sudah per (salesman, product) — tinggal
+                  // dikelompokkan untuk tampilan bergaya pivot (nama salesman
+                  // cuma muncul di baris pertama grup + baris Total di akhir).
+                  const groups = new Map<string, AchSalesmanProductRow[]>();
+                  data.achievementSalesmanProduct.forEach(r => {
+                    const key = r.salesman || '-';
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key)!.push(r);
+                  });
+
+                  const rendered: React.ReactNode[] = [];
+                  const entries = Array.from(groups.entries());
+
+                  entries.forEach(([salesman, rows], gi) => {
+                    const totalPlan   = rows.reduce((s, r) => s + r.total_plan,   0);
+                    const totalActual = rows.reduce((s, r) => s + r.total_actual, 0);
+                    const totalAvIn   = rows.reduce((s, r) => s + r.total_av_in,  0);
+                    const totalEc     = rows.reduce((s, r) => s + r.total_ec,     0);
+                    const totalAvOut  = rows.reduce((s, r) => s + r.total_av_out, 0);
+                    const totalPct    = totalPlan > 0 ? (totalAvOut / totalPlan) * 100 : 0;
+
+                    rows.forEach((r, ri) => {
+                      rendered.push(
+                        <tr key={`${salesman}-${r.product}`}
+                          style={{ background: ri % 2 === 1 ? t.rowAlt : 'transparent' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                          onMouseLeave={e => (e.currentTarget.style.background = ri % 2 === 1 ? t.rowAlt : 'transparent')}>
+                          <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: ri === 0 ? 700 : 400, color: ri === 0 ? t.text : t.textSub, whiteSpace: 'nowrap' }}>
+                            {ri === 0 ? salesman : ''}
+                          </td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, color: t.textSub, whiteSpace: 'nowrap' }}>{r.product || '—'}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_plan)}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_actual)}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, color: '#3b82f6', textAlign: 'right' }}>{fmtN(r.total_av_in)}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, color: '#10b981', textAlign: 'right' }}>{fmtN(r.total_ec)}</td>
+                          <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(r.total_av_out)}</td>
+                          <td style={{ padding: '6px 10px', textAlign: 'right' }}><PBar pct={r.achievement_pct} theme={theme} /></td>
+                          <td style={{ padding: '6px 10px', fontSize: 10, color: t.textSub, textAlign: 'right' }}>
+                            {(r.outlet_count ?? 0) > 0 ? fmtN(r.outlet_count) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    });
+
+                    rendered.push(
+                      // <tr key={`${salesman}-total`} style={{ background: t.tableHeadBg, borderTop: `1px solid ${t.border}`, borderBottom: gi < entries.length - 1 ? `2px solid ${t.border}` : 'none' }}>
+                      //   <td colSpan={2} style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.text }}>{salesman} Total</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.textSub, textAlign: 'right' }}>{fmtN(totalPlan)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.textSub, textAlign: 'right' }}>{fmtN(totalActual)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#3b82f6', textAlign: 'right' }}>{fmtN(totalAvIn)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#10b981', textAlign: 'right' }}>{fmtN(totalEc)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(totalAvOut)}</td>
+                      //   <td style={{ padding: '6px 10px', textAlign: 'right' }}><AchBadge pct={totalPct} theme={theme} /></td>
+                      //   <td style={{ padding: '6px 10px' }} />
+                      // </tr>
+                    );
+                  });
+
+                  return rendered;
+                })()}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
-              <tr style={{ background: t.tableHeadBg }}>
+              <tr>
                 {(() => {
                   const headers =
                     view === 'salesman' ? ['#', 'Salesman', 'Plan', 'Av-Out', 'Achievement', 'Outlet'] :
                     view === 'product'  ? ['#', 'Produk', 'Kategori', 'Plan', 'Av-Out', 'Achievement'] :
                                          ['#', 'Kota · Kecamatan', 'Plan', 'Av-Out', 'Achievement', 'Outlet'];
                   return headers.map((h, i) => (
-                    <th key={i} style={{ padding: '8px 12px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                    <th key={i} style={{ padding: '8px 12px', textAlign: i > 1 ? 'right' : 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 20, background: t.tableHeadBg }}>{h}</th>
                   ));
                 })()}
               </tr>
@@ -555,12 +635,12 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
       </div>
 
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 420 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
-              <tr style={{ background: t.tableHeadBg }}>
+              <tr>
                 {['Minggu','Plan','Av-Out','Achievement','Av-In','EC','Actual','Outlet'].map((h, i) => (
-                  <th key={i} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={i} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 20, background: t.tableHeadBg }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -664,12 +744,12 @@ function CoverageContent({
 
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}`, fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Detail per Tipe Outlet</div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 360 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
-              <tr style={{ background: t.tableHeadBg }}>
+              <tr>
                 {['Tipe Outlet','Plan','Av-Out','Achievement','Av-In','EC','Actual','Outlet'].map((h, i) => (
-                  <th key={i} style={{ padding: '7px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={i} style={{ padding: '7px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 20, background: t.tableHeadBg }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -777,9 +857,12 @@ const EMPTY_DATA: DistData = {
   achievementAreaSalesman:   [],
   achievementAreaProduct:    [],
   achievementAreaOutletType: [],
+  achievementSalesmanProduct: [],
 };
 
 const WEEKS_ARR = Array.from({ length: 52 }, (_, i) => i + 1);
+const TAB_BAR_H = 42;
+const SUB_TAB_H = 38;
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function DistributionSection({
@@ -917,6 +1000,16 @@ export default function DistributionSection({
       salesman:     r.salesman,
       outlet_type:  r.outlet_type,
       outlet_count: parseInt(r.outlet_count ?? 0),
+    }));
+    raw.achievementSalesmanProduct = (raw.achievementSalesmanProduct ?? []).map((r: any) => ({
+      ...r,
+      total_plan:      parseFloat(r.total_plan      ?? 0),
+      total_actual:    parseFloat(r.total_actual    ?? 0),
+      total_av_in:     parseFloat(r.total_av_in     ?? 0),
+      total_ec:        parseFloat(r.total_ec        ?? 0),
+      total_av_out:    parseFloat(r.total_av_out    ?? 0),
+      achievement_pct: parseFloat(r.achievement_pct ?? 0),
+      outlet_count:    parseInt(r.outlet_count      ?? 0),
     }));
     return raw as DistData;
   };
@@ -1093,7 +1186,7 @@ export default function DistributionSection({
         </div>
       </div>
 
-      {loaded && hasActiveFilter && (
+      {/* {loaded && hasActiveFilter && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
           padding: '6px 12px', borderRadius: 8,
@@ -1110,7 +1203,7 @@ export default function DistributionSection({
           </button>
           <span style={{ color: t.textMuted, fontSize: 9 }}>· klik Terapkan untuk memuat</span>
         </div>
-      )}
+      )} */}
 
       {!loaded && !loading && (
         <div style={{ padding: '32px', textAlign: 'center', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, color: t.textMuted, fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>

@@ -208,6 +208,7 @@ export async function GET(request: NextRequest) {
         achAreaSalesmanQ,
         achAreaProductQ,
         achAreaOutletTypeQ,
+        achSalesmanProductQ,
       ] = await Promise.all([
 
         // Achievement per salesman (murni per salesman, TANPA breakdown produk).
@@ -602,6 +603,44 @@ export async function GET(request: NextRequest) {
           GROUP BY outlet_type, city, district
           ORDER BY total_av_out DESC
         `, noSalNoProdParams),
+
+        // Achievement per SALESMAN × PRODUK (dedup outlet per kombinasi salesman+product,
+        // BUKAN per salesman+week seperti coverageSalesmanQ). Ini yang tadinya hilang —
+        // coverageSalesmanQ tidak pernah SELECT product sama sekali, jadi tabel pivot
+        // Salesman×Produk di frontend selalu kosong untuk kolom Produk.
+        pool.query(`
+          WITH outlet_agg AS (
+            SELECT
+              salesman,
+              product,
+              outlet,
+              MAX(CASE WHEN plan  > 0 THEN 1 ELSE 0 END) AS f_plan,
+              MAX(CASE WHEN actual > 0 THEN 1 ELSE 0 END) AS f_actual,
+              MAX(CASE WHEN av_in > 0 THEN 1 ELSE 0 END) AS f_avin,
+              MAX(CASE WHEN ec > 0 THEN 1 ELSE 0 END) AS f_ec,
+              MAX(CASE WHEN av_in > 0 OR ec > 0 THEN 1 ELSE 0 END) AS f_avout
+            FROM distribution_records
+            WHERE ${where}
+            GROUP BY salesman, product, outlet
+          )
+          SELECT
+            salesman,
+            product,
+            SUM(f_plan)   AS total_plan,
+            SUM(f_actual) AS total_actual,
+            SUM(f_avin)   AS total_av_in,
+            SUM(f_ec)     AS total_ec,
+            SUM(f_avout)  AS total_av_out,
+            COUNT(DISTINCT outlet) AS outlet_count,
+            CASE
+              WHEN SUM(f_plan) > 0
+              THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1)
+              ELSE 0
+            END AS achievement_pct
+          FROM outlet_agg
+          GROUP BY salesman, product
+          ORDER BY salesman, total_av_out DESC
+        `, params),
       ]);
 
       return NextResponse.json({
@@ -621,6 +660,7 @@ export async function GET(request: NextRequest) {
           achievementAreaSalesman:    achAreaSalesmanQ.rows,
           achievementAreaProduct:     achAreaProductQ.rows,
           achievementAreaOutletType:  achAreaOutletTypeQ.rows,
+          achievementSalesmanProduct: achSalesmanProductQ.rows,
         },
       });
 
