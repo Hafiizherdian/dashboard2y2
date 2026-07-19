@@ -253,3 +253,4 @@ export interface PiutangRecord {
   piutang: number;     // Jumlah Piutang (Rupiah)
   giro: number;        // Jumlah Giro (Rupiah)
 }
+
