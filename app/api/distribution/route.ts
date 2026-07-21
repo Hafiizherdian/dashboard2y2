@@ -133,12 +133,16 @@ export async function GET(request: NextRequest) {
       const baseParams: any[] = [];
       let baseIdx = 1;
 
+      // 1. Tangkap filter area dari frontend jika dipilih
+      if (area) {
+        baseConditions.push(`area = $${baseIdx++}`);
+        baseParams.push(area);
+      }
+
+      // 2. Batasi area berdasarkan hak akses session user
       if (session.role !== 'root' && session.allowed_areas?.length > 0) {
         baseConditions.push(`area = ANY($${baseIdx++})`);
         baseParams.push(session.allowed_areas);
-      } else if (area) {
-        baseConditions.push(`area = $${baseIdx++}`);
-        baseParams.push(area);
       }
 
       if (product)    { baseConditions.push(`product ILIKE $${baseIdx++}`);     baseParams.push(`%${product}%`);  }
@@ -156,12 +160,16 @@ export async function GET(request: NextRequest) {
       const noSalNoProdParams: any[] = [];
       let noSalNoProdIdx = 1;
 
+      // 1. Tangkap pilihan area dari frontend (jika ada)
+      if (area) {
+        noSalNoProdConditions.push(`area = $${noSalNoProdIdx++}`);
+        noSalNoProdParams.push(area);
+      }
+
+      // 2. Batasi data sesuai hak akses user (jika bukan root)
       if (session.role !== 'root' && session.allowed_areas?.length > 0) {
         noSalNoProdConditions.push(`area = ANY($${noSalNoProdIdx++})`);
         noSalNoProdParams.push(session.allowed_areas);
-      } else if (area) {
-        noSalNoProdConditions.push(`area = $${noSalNoProdIdx++}`);
-        noSalNoProdParams.push(area);
       }
 
       if (city)       { noSalNoProdConditions.push(`city ILIKE $${noSalNoProdIdx++}`);        noSalNoProdParams.push(`%${city}%`);   }
@@ -179,12 +187,16 @@ export async function GET(request: NextRequest) {
       const withSalParams: any[] = [];
       let withSalIdx = 1;
 
+      // 1. Tangkap filter area dari frontend jika dipilih
+      if (area) {
+        withSalConditions.push(`area = $${withSalIdx++}`);
+        withSalParams.push(area);
+      }
+
+      // 2. Batasi area berdasarkan hak akses session user
       if (session.role !== 'root' && session.allowed_areas?.length > 0) {
         withSalConditions.push(`area = ANY($${withSalIdx++})`);
         withSalParams.push(session.allowed_areas);
-      } else if (area) {
-        withSalConditions.push(`area = $${withSalIdx++}`);
-        withSalParams.push(area);
       }
 
       if (salesman)   { withSalConditions.push(`salesman ILIKE $${withSalIdx++}`);    withSalParams.push(`%${salesman}%`); }
