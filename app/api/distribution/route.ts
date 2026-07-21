@@ -105,12 +105,16 @@ export async function GET(request: NextRequest) {
       let idx = 1;
       const conditions: string[] = ['1=1'];
 
+      // 1. Terapkan filter area dari frontend (jika user memilih area)
+      if (area) {
+        conditions.push(`area = $${idx++}`);
+        params.push(area);
+      }
+
+      // 2. Terapkan aturan keamanan: batasi data HANYA pada area yang diizinkan untuk user ini
       if (session.role !== 'root' && session.allowed_areas?.length > 0) {
         conditions.push(`area = ANY($${idx++})`);
         params.push(session.allowed_areas);
-      } else if (area) {
-        conditions.push(`area = $${idx++}`);
-        params.push(area);
       }
 
       if (salesman)   { conditions.push(`salesman ILIKE $${idx++}`);    params.push(`%${salesman}%`); }
