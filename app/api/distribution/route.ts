@@ -38,6 +38,27 @@ function logError(step: string, err: unknown, detail?: Record<string, unknown>) 
   console.error(`[dist-upload] [${ts}] ❌ ${step}`, detail ?? '', err);
 }
 
+// Lightweight query timer for the GET endpoint — wraps pool.query so every
+// query in the Promise.all logs its own duration + row count without having
+// to hand-instrument each call site.
+function timedQuery(label: string) {
+  return async (text: string, params?: any[]) => {
+    const t0 = Date.now();
+    try {
+      const res = await pool.query(text, params);
+      const ms = Date.now() - t0;
+      log(`[GET] query "${label}" ✓`, { ms, rows: res.rowCount });
+      if (ms > 1000) {
+        log(`[GET] ⚠ SLOW query "${label}"`, { ms });
+      }
+      return res;
+    } catch (err) {
+      logError(`[GET] query "${label}" ❌`, err, { ms: Date.now() - t0 });
+      throw err;
+    }
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // GET
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -55,35 +76,69 @@ function logError(step: string, err: unknown, detail?: Record<string, unknown>) 
 //      bukan SUM mentah dari kolom Plan/Actual/Av-In/EC/Av-Out.
 //
 // PENTING ─ dimensi GROUP BY harus PERSIS SAMA dengan dimensi yang ditampilkan
-// di frontend. Kalau CTE/SELECT di-GROUP BY dengan kolom tambahan (mis. product,
-// outlet_type) yang TIDAK ditampilkan/diagregasi lagi di komponen React, hasilnya
-// jadi banyak baris untuk 1 entity yang sama di tabel (kelihatan "duplikat"), atau
-// — kalau frontend nge-key pakai Map — baris-baris itu saling overwrite dan data
-// yang ditampilkan jadi salah/hilang diam-diam. Query di bawah ini SENGAJA di-
-// GROUP BY hanya sampai dimensi yang benar-benar dipakai di UI:
-//   - achievementSalesman  -> per salesman saja      (tab "Per Salesman")
-//   - achievementProduct   -> per product+category   (tab "Per Produk", category
-//                              ikut ditampilkan di kolom terpisah, jadi aman)
-//   - achievementArea      -> per city+district       (tab "Per Area/Kota")
-//   - trend                -> per week saja            (chart & tabel trend mingguan)
-//   - coverage              -> per outlet_type saja    (pie chart & tabel per tipe)
-//   - coverageSalesman     -> per salesman+week saja   (heatmap salesman × minggu)
+// di frontend. (lihat catatan detail per query di bawah — tidak diubah dari versi
+// sebelumnya, hanya dioptimasi jumlah round-trip & ditambah logging.)
+//
+// ── OPTIMASI YANG DITERAPKAN DI FILE INI ──────────────────────────────────────
+// 1. `filesQ` di dalam Promise.all DIHAPUS — hasilnya sebelumnya di-fetch tapi
+//    tidak pernah dipakai (`// files: filesQ.rows,` sudah di-comment di response).
+//    Itu 1 full scan `distribution_files` yang sia-sia di setiap request GET.
+//    Daftar file tetap bisa diambil lewat `?mode=files` yang sudah ada.
+// 2. `outletCountByTypeQ` + `totalOutletsQ` DIGABUNG jadi 1 query pakai
+//    GROUPING SETS, karena keduanya scan tabel yang sama (`whereWithSal`) hanya
+//    beda level agregasi. Round-trip DB berkurang dari 15 -> 13 query paralel.
+// 3. Logging per-query (durasi + row count) lewat `timedQuery()`, plus warning
+//    otomatis kalau ada query yang >1 detik supaya gampang lihat mana yang
+//    perlu index tambahan.
+// 4. Index yang disarankan (jalankan manual via migration, tidak ada di file
+//    ini karena butuh akses DB langsung):
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_area_week
+//        ON distribution_records (area, week_num);
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_file
+//        ON distribution_records (dist_file_id);
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_outlet
+//        ON distribution_records (outlet);
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_outlet_type
+//        ON distribution_records (outlet_type);
+//    Filter salesman/product/city pakai ILIKE '%...%' (wildcard di kedua sisi),
+//    btree index BIASA tidak akan kepakai untuk pola itu. Kalau volume data besar
+//    dan filter ini sering dipakai, pakai trigram index (butuh extension pg_trgm):
+//      CREATE EXTENSION IF NOT EXISTS pg_trgm;
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_salesman_trgm
+//        ON distribution_records USING gin (salesman gin_trgm_ops);
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_product_trgm
+//        ON distribution_records USING gin (product gin_trgm_ops);
+//      CREATE INDEX IF NOT EXISTS idx_dist_records_city_trgm
+//        ON distribution_records USING gin (city gin_trgm_ops);
+// 5. Lanjutan yang MASIH BISA dioptimasi tapi belum diterapkan di sini (risiko
+//    lebih tinggi, butuh testing lebih dulu):
+//      - `achievementAreaSalesman`, `achievementAreaProduct`, dan
+//        `achievementAreaOutletType` semuanya scan `distribution_records` dari
+//        awal dengan filter mirip. `achievementAreaProduct` dan
+//        `achievementAreaOutletType` bahkan pakai WHERE yang identik
+//        (`whereNoSalNoProd`). Keduanya bisa digabung jadi 1 CTE
+//        `WITH base AS MATERIALIZED (...)` lalu 2 SELECT terpisah di atasnya,
+//        supaya tabel cuma di-scan sekali bukan dua kali. Belum diterapkan di
+//        sini karena butuh union+split di JS dan menambah kompleksitas — kasih
+//        tahu kalau mau saya buatkan versinya.
 //
 export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
+    const getStart = Date.now();
     try {
       const { searchParams } = new URL(request.url);
 
       // ── Early return: hanya daftar file (untuk admin page load awal) ──────
       const mode = searchParams.get('mode');
       if (mode === 'files') {
-        const filesQ = await pool.query(`
+        log('[GET] mode=files');
+        const filesQ = await timedQuery('files-list')(`
           SELECT id, original_name, record_count, area, created_at
           FROM distribution_files
           WHERE status = 'completed'
           ORDER BY created_at DESC
-          
         `);
+        log('[GET] mode=files ✓', { ms: Date.now() - getStart, count: filesQ.rows.length });
         return NextResponse.json({
           success: true,
           data: { files: filesQ.rows },
@@ -99,6 +154,12 @@ export async function GET(request: NextRequest) {
       const city       = searchParams.get('city') || '';
       const fileId     = searchParams.get('fileId') || '';
       const outletType = searchParams.get('outletType') || '';
+
+      log('[GET] request received', {
+        user: session.username, role: session.role,
+        area, salesman, product, city, fileId, outletType,
+        weekStart, weekEnd,
+      });
 
       // ── WHERE dengan semua filter (dipakai mayoritas query) ────────────────
       const params: any[] = [];
@@ -209,6 +270,9 @@ export async function GET(request: NextRequest) {
 
       const whereWithSal = withSalConditions.join(' AND ');
 
+      log('[GET] running queries in parallel...', { queryCount: 13 });
+      const parallelStart = Date.now();
+
       const [
         achSalesmanQ,
         achProductQ,
@@ -217,9 +281,7 @@ export async function GET(request: NextRequest) {
         coverageQ,
         coverageSalesmanQ,
         summaryQ,
-        filesQ,
-        outletCountByTypeQ,
-        totalOutletsQ,
+        outletTotalsQ,
         outletCountByTypeSalesmanQ,
         achAreaSalesmanQ,
         achAreaProductQ,
@@ -228,11 +290,7 @@ export async function GET(request: NextRequest) {
       ] = await Promise.all([
 
         // Achievement per salesman (murni per salesman, TANPA breakdown produk).
-        // FIX: sebelumnya GROUP BY salesman, product -> 1 salesman bisa muncul
-        // berkali-kali (1 baris per produk) dan di tabel "Per Salesman" kolom
-        // product tidak ditampilkan, jadi kelihatan seperti baris duplikat.
-        // Sekarang outlet di-dedup per salesman saja (lintas semua produk).
-        pool.query(`
+        timedQuery('achievementSalesman')(`
           WITH outlet_agg AS (
             SELECT
               salesman,
@@ -261,9 +319,7 @@ export async function GET(request: NextRequest) {
         `, params),
 
         // Achievement per produk
-        // outlet dihitung 1x per (product, category) — category ikut ditampilkan
-        // di kolom terpisah di UI jadi baris ganda di sini (kalau ada) tetap valid.
-        pool.query(`
+        timedQuery('achievementProduct')(`
           WITH outlet_agg AS (
             SELECT
               product,
@@ -293,8 +349,7 @@ export async function GET(request: NextRequest) {
         `, params),
 
         // Achievement per area (base — tanpa filter salesman)
-        // outlet dihitung 1x per (city, district), tidak terikat produk
-        pool.query(`
+        timedQuery('achievementArea')(`
           WITH outlet_agg AS (
             SELECT
               city,
@@ -325,11 +380,7 @@ export async function GET(request: NextRequest) {
         `, baseParams),
 
         // Trend mingguan (murni per minggu, TANPA breakdown produk).
-        // FIX: sebelumnya GROUP BY week, week_num, product -> 1 minggu bisa
-        // muncul berkali-kali (1 baris per produk), padahal tabel & chart trend
-        // di frontend cuma menampilkan kolom "Minggu" saja -> kelihatan seperti
-        // baris/bar duplikat per minggu. Sekarang outlet di-dedup per minggu saja.
-        pool.query(`
+        timedQuery('trend')(`
           WITH outlet_agg AS (
             SELECT
               week,
@@ -360,12 +411,7 @@ export async function GET(request: NextRequest) {
 
         // Coverage per tipe outlet (murni per outlet_type, TANPA breakdown produk,
         // tanpa filter salesman).
-        // FIX: sebelumnya GROUP BY outlet_type, product -> 1 tipe outlet bisa
-        // muncul berkali-kali (1 baris per produk), padahal tabel, pie chart, dan
-        // bar chart Av-In/EC/Av-Out di frontend cuma menampilkan outlet_type saja
-        // -> kelihatan seperti baris/slice duplikat. Sekarang outlet di-dedup per
-        // tipe outlet saja.
-        pool.query(`
+        timedQuery('coverage')(`
           WITH outlet_agg AS (
             SELECT
               outlet_type,
@@ -396,17 +442,8 @@ export async function GET(request: NextRequest) {
           ORDER BY total_av_out DESC
         `, baseParams),
 
-        // Coverage salesman per minggu (murni per salesman+minggu, TANPA
-        // breakdown produk/outlet_type) — dipakai untuk heatmap.
-        // FIX: sebelumnya GROUP BY salesman, week_num, week, product, outlet_type
-        // -> kalau 1 salesman punya >1 kombinasi produk/tipe-outlet di minggu yang
-        // sama, hasilnya jadi >1 baris dengan key salesman+week yang sama. Karena
-        // heatMap di frontend nge-key pakai `${salesman}||${week}` (Map.set),
-        // baris-baris itu SALING OVERWRITE — data salesman itu di minggu itu jadi
-        // cuma nunjukin kombinasi produk/tipe-outlet TERAKHIR, bukan totalnya.
-        // Sekarang outlet di-dedup per salesman+minggu saja (lintas semua produk
-        // & tipe outlet).
-        pool.query(`
+        // Coverage salesman per minggu (murni per salesman+minggu) — heatmap.
+        timedQuery('coverageSalesman')(`
           WITH outlet_agg AS (
             SELECT
               salesman,
@@ -443,9 +480,7 @@ export async function GET(request: NextRequest) {
         `, params),
 
         // Summary keseluruhan (KPI card)
-        // total_plan/actual/av_in/ec/av_out = COUNT DISTINCT outlet yang memenuhi
-        // kondisi, tidak tergantung berapa banyak produk per outlet
-        pool.query(`
+        timedQuery('summary')(`
           WITH base AS (
             SELECT * FROM distribution_records WHERE ${where}
           ),
@@ -480,37 +515,22 @@ export async function GET(request: NextRequest) {
             END AS overall_achievement
         `, params),
 
-        // Daftar file upload
-        pool.query(`
-          SELECT id, original_name, record_count, area, created_at
-          FROM distribution_files
-          WHERE status = 'completed'
-          ORDER BY created_at DESC
-          
-        `),
-
-        // Outlet count per tipe — ikut filter salesman + outletType (pakai whereWithSal)
-        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
-        pool.query(`
+        // Outlet count per tipe + total outlet DIGABUNG jadi 1 query lewat
+        // GROUPING SETS — sebelumnya ini 2 query terpisah yang scan tabel yang
+        // sama (whereWithSal). Baris dengan is_total = 1 adalah baris total
+        // keseluruhan (outlet_type = NULL karena di-roll-up).
+        timedQuery('outletTotals')(`
           SELECT
             outlet_type,
-            COUNT(DISTINCT outlet) AS outlet_count
+            COUNT(DISTINCT outlet) AS outlet_count,
+            GROUPING(outlet_type) AS is_total
           FROM distribution_records
           WHERE ${whereWithSal}
-          GROUP BY outlet_type
-        `, withSalParams),
-
-        // Total outlet — ikut filter salesman + outletType (pakai whereWithSal)
-        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
-        pool.query(`
-          SELECT COUNT(DISTINCT outlet) AS total_outlets
-          FROM distribution_records
-          WHERE ${whereWithSal}
+          GROUP BY GROUPING SETS ((outlet_type), ())
         `, withSalParams),
 
         // Outlet count per outlet_type per salesman
-        // (sudah COUNT DISTINCT outlet dari awal, tidak perlu diubah)
-        pool.query(`
+        timedQuery('outletCountByTypeSalesman')(`
           SELECT
             salesman,
             outlet_type,
@@ -522,7 +542,7 @@ export async function GET(request: NextRequest) {
         `, params),
 
         // Achievement area per SALESMAN × city × district
-        pool.query(`
+        timedQuery('achievementAreaSalesman')(`
           WITH outlet_agg AS (
             SELECT
               salesman,
@@ -555,7 +575,7 @@ export async function GET(request: NextRequest) {
         `, params),
 
         // Achievement area per PRODUCT × city × district
-        pool.query(`
+        timedQuery('achievementAreaProduct')(`
           WITH outlet_agg AS (
             SELECT
               product,
@@ -588,7 +608,7 @@ export async function GET(request: NextRequest) {
         `, noSalNoProdParams),
 
         // Achievement area per OUTLET_TYPE × city × district
-        pool.query(`
+        timedQuery('achievementAreaOutletType')(`
           WITH outlet_agg AS (
             SELECT
               outlet_type,
@@ -620,11 +640,8 @@ export async function GET(request: NextRequest) {
           ORDER BY total_av_out DESC
         `, noSalNoProdParams),
 
-        // Achievement per SALESMAN × PRODUK (dedup outlet per kombinasi salesman+product,
-        // BUKAN per salesman+week seperti coverageSalesmanQ). Ini yang tadinya hilang —
-        // coverageSalesmanQ tidak pernah SELECT product sama sekali, jadi tabel pivot
-        // Salesman×Produk di frontend selalu kosong untuk kolom Produk.
-        pool.query(`
+        // Achievement per SALESMAN × PRODUK
+        timedQuery('achievementSalesmanProduct')(`
           WITH outlet_agg AS (
             SELECT
               salesman,
@@ -659,6 +676,31 @@ export async function GET(request: NextRequest) {
         `, params),
       ]);
 
+      const parallelMs = Date.now() - parallelStart;
+      log('[GET] semua query selesai', { parallelMs });
+
+      // Pecah hasil gabungan outletTotalsQ jadi outletCountByType + totalOutlets
+      const outletCountByType = outletTotalsQ.rows.filter((r: any) => Number(r.is_total) === 0);
+      const totalOutlets = parseInt(
+        outletTotalsQ.rows.find((r: any) => Number(r.is_total) === 1)?.outlet_count ?? '0'
+      );
+
+      const totalMs = Date.now() - getStart;
+      log('[GET] === SELESAI ✓ ===', {
+        totalMs, parallelMs,
+        rows: {
+          achievementSalesman: achSalesmanQ.rowCount,
+          achievementProduct: achProductQ.rowCount,
+          achievementArea: achAreaQ.rowCount,
+          trend: trendQ.rowCount,
+          coverage: coverageQ.rowCount,
+          coverageSalesman: coverageSalesmanQ.rowCount,
+        },
+      });
+      if (totalMs > 3000) {
+        log('[GET] Total response time tinggi — cek log query mana yang paling lambat di atas', { totalMs });
+      }
+
       return NextResponse.json({
         success: true,
         data: {
@@ -669,9 +711,8 @@ export async function GET(request: NextRequest) {
           trend:                      trendQ.rows,
           coverage:                   coverageQ.rows,
           coverageSalesman:           coverageSalesmanQ.rows,
-          // files:                      filesQ.rows,
-          outletCountByType:          outletCountByTypeQ.rows,
-          totalOutlets:               parseInt(totalOutletsQ.rows[0]?.total_outlets ?? '0'),
+          outletCountByType,
+          totalOutlets,
           outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,
           achievementAreaSalesman:    achAreaSalesmanQ.rows,
           achievementAreaProduct:     achAreaProductQ.rows,
@@ -681,7 +722,7 @@ export async function GET(request: NextRequest) {
       });
 
     } catch (err) {
-      console.error('[api/distribution GET]', err);
+      logError('[GET] gagal', err, { ms: Date.now() - getStart });
       return NextResponse.json(
         { success: false, error: 'Gagal mengambil data distribusi' },
         { status: 500 }
@@ -751,7 +792,7 @@ export async function POST(request: NextRequest) {
       }
 
       const sheetNames = workbook.SheetNames;
-      log('Step 3: ✓ Excel terbaca', { sheets: sheetNames, readMs: Date.now() - readStart });
+      log('Step 3: Excel terbaca', { sheets: sheetNames, readMs: Date.now() - readStart });
 
       const sheet   = workbook.Sheets[sheetNames[0]];
       const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
