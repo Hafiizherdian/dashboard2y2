@@ -224,6 +224,30 @@ function normRows(rows: any[]): any[] {
   }));
 }
 
+// NOTE:
+// Fungsi reaggregate() client-side SUDAH DIHAPUS.
+// Dulu di sini ada agregasi ulang (SUM manual) yang membuat angka Plan/Actual/
+// Av-In/EC/Av-Out di UI berbeda dari hasil query server (route.ts), karena server
+// melakukan dedup per outlet lewat CTE outlet_agg (MAX(CASE WHEN metric>0...)),
+// sedangkan reaggregate() SUM baris mentah — berpotensi double count outlet yang
+// sama di beberapa baris (misal lintas minggu / lintas tipe outlet).
+//
+// Sekarang: fetch ke /api/distribution HANYA terjadi ketika tombol "Terapkan"
+// ditekan (loadData) atau saat areaFilter berganti (reset). Filter dropdown
+// (Produk / Tipe Outlet / Salesman) TIDAK auto-fetch lagi begitu dipilih —
+// nilainya cuma disimpan di state lokal dan baru dikirim ke server saat
+// "Terapkan" ditekan. Ini sengaja dihilangkan (dulu ada useEffect yang watch
+// productFilter/outletTypeFilter/salesmanFilter dan langsung fetch) karena:
+//   1) User experience: filter dropdown ikut nunggu tombol, konsisten dengan
+//      filter minggu yang juga baru jalan pas "Terapkan" ditekan.
+//   2) Bug infinite-loop: fetchData sempat dimasukkan ke dependency array
+//      useEffect tsb. Karena fetchData (useCallback) bergantung pada
+//      onDataLoaded/setLoading dari props, dan kalau parent tidak
+//      me-memoize callback itu, fetchData dapat referensi BARU setiap kali
+//      parent re-render -> useEffect ke-trigger lagi -> fetch lagi -> parent
+//      re-render lagi -> ...berulang terus tanpa henti. Menghapus effect ini
+//      menghilangkan sumber loop tersebut sekaligus.
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 function AchBadge({ pct, theme }: { pct: number; theme: Theme }) {
   const t = tk[theme];
@@ -424,6 +448,9 @@ function AchievementContent({
               </thead>
               <tbody>
                 {(() => {
+                  // Data dari server sudah per (salesman, product) — tinggal
+                  // dikelompokkan untuk tampilan bergaya pivot (nama salesman
+                  // cuma muncul di baris pertama grup + baris Total di akhir).
                   const groups = new Map<string, AchSalesmanProductRow[]>();
                   data.achievementSalesmanProduct.forEach(r => {
                     const key = r.salesman || '-';
@@ -435,6 +462,13 @@ function AchievementContent({
                   const entries = Array.from(groups.entries());
 
                   entries.forEach(([salesman, rows], gi) => {
+                    const totalPlan   = rows.reduce((s, r) => s + r.total_plan,   0);
+                    const totalActual = rows.reduce((s, r) => s + r.total_actual, 0);
+                    const totalAvIn   = rows.reduce((s, r) => s + r.total_av_in,  0);
+                    const totalEc     = rows.reduce((s, r) => s + r.total_ec,     0);
+                    const totalAvOut  = rows.reduce((s, r) => s + r.total_av_out, 0);
+                    const totalPct    = totalPlan > 0 ? (totalAvOut / totalPlan) * 100 : 0;
+
                     rows.forEach((r, ri) => {
                       rendered.push(
                         <tr key={`${salesman}-${r.product}`}
@@ -457,6 +491,19 @@ function AchievementContent({
                         </tr>
                       );
                     });
+
+                    rendered.push(
+                      // <tr key={`${salesman}-total`} style={{ background: t.tableHeadBg, borderTop: `1px solid ${t.border}`, borderBottom: gi < entries.length - 1 ? `2px solid ${t.border}` : 'none' }}>
+                      //   <td colSpan={2} style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.text }}>{salesman} Total</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.textSub, textAlign: 'right' }}>{fmtN(totalPlan)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.textSub, textAlign: 'right' }}>{fmtN(totalActual)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#3b82f6', textAlign: 'right' }}>{fmtN(totalAvIn)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 10, fontWeight: 700, color: '#10b981', textAlign: 'right' }}>{fmtN(totalEc)}</td>
+                      //   <td style={{ padding: '6px 10px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(totalAvOut)}</td>
+                      //   <td style={{ padding: '6px 10px', textAlign: 'right' }}><AchBadge pct={totalPct} theme={theme} /></td>
+                      //   <td style={{ padding: '6px 10px' }} />
+                      // </tr>
+                    );
                   });
 
                   return rendered;
@@ -592,7 +639,7 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
               <tr>
-                {['Minggu','Plan','Actual','Av-In','EC','Av-Out','Achievement','Outlet'].map((h, i) => (
+                {['Minggu','Plan','Av-Out','Achievement','Av-In','EC','Actual','Outlet'].map((h, i) => (
                   <th key={i} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 20, background: t.tableHeadBg }}>{h}</th>
                 ))}
               </tr>
@@ -609,11 +656,11 @@ function TrendContent({ data, theme }: { data: DistData; theme: Theme }) {
                     onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 1 ? t.rowAlt : 'transparent')}>
                     <td style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, color: t.text }}>{r.week}</td>
                     <td style={{ padding: '7px 12px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_plan)}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_actual)}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 11, color: '#3b82f6', textAlign: 'right' }}>{fmtN(r.total_av_in)}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 11, color: '#10b981', textAlign: 'right' }}>{fmtN(r.total_ec)}</td>
                     <td style={{ padding: '7px 12px', fontSize: 11, fontWeight: 700, color: t.text, textAlign: 'right' }}>{fmtN(r.total_av_out)}</td>
                     <td style={{ padding: '7px 12px', textAlign: 'right' }}><AchBadge pct={pct} theme={theme} /></td>
+                    <td style={{ padding: '7px 12px', fontSize: 11, color: '#3b82f6', textAlign: 'right' }}>{fmtN(r.total_av_in)}</td>
+                    <td style={{ padding: '7px 12px', fontSize: 11, color: '#10b981', textAlign: 'right' }}>{fmtN(r.total_ec)}</td>
+                    <td style={{ padding: '7px 12px', fontSize: 11, color: t.textSub, textAlign: 'right' }}>{fmtN(r.total_actual)}</td>
                     <td style={{ padding: '7px 12px', fontSize: 10, color: t.textSub, textAlign: 'right' }}>{r.outlet_count || '—'}</td>
                   </tr>
                 );
@@ -845,11 +892,27 @@ export default function DistributionSection({
   const [outletTypeFilter, setOutletTypeFilter] = useState('');
   const [salesmanFilter,   setSalesmanFilter]   = useState('');
 
+  // Dropdown filter (product/outletType/salesman/city) tidak dari cachedData
+  // saja — kita simpan pilihan opsi dari load PERTAMA (tanpa filter) supaya
+  // opsi dropdown tidak menyusut begitu salah satu filter lain aktif.
   const [productOptions,    setProductOptions]    = useState<string[]>([]);
   const [outletTypeOptions, setOutletTypeOptions] = useState<string[]>([]);
   const [salesmanOptions,   setSalesmanOptions]   = useState<string[]>([]);
 
+  // FIX: dulu isInitialLoad dihitung dari `!loaded` (prop dari PARENT).
+  // Masalahnya `loaded` itu state punya page.tsx, bukan state lokal komponen
+  // ini — kalau parent sudah punya loaded=true duluan (misal karena pindah
+  // tab lalu balik lagi, atau area yang sama sudah pernah dimuat di sesi
+  // yang sama), klik "Terapkan" PERTAMA di komponen ini langsung dianggap
+  // "bukan initial load", sehingga productOptions/outletTypeOptions/
+  // salesmanOptions TIDAK PERNAH diisi sama sekali -> dropdown filter tidak
+  // pernah muncul. Sekarang dipakai flag LOKAL (optionsReadyRef) yang murni
+  // menandai "apakah komponen ini sendiri sudah pernah berhasil mengisi
+  // opsi dropdown", lepas dari state `loaded` milik parent.
   const optionsReadyRef = useRef(false);
+
+  // Ref untuk mencegah race condition: kalau user ganti filter dengan cepat,
+  // hanya response fetch TERAKHIR yang boleh commit ke state.
   const requestSeq = useRef(0);
 
   useEffect(() => {
@@ -859,7 +922,7 @@ export default function DistributionSection({
     setProductOptions([]);
     setOutletTypeOptions([]);
     setSalesmanOptions([]);
-    optionsReadyRef.current = false;
+    optionsReadyRef.current = false; // area ganti -> opsi dropdown harus di-fetch ulang
   }, [areaFilter]);
 
   const resetFilters = useCallback(() => {
@@ -951,37 +1014,23 @@ export default function DistributionSection({
     return raw as DistData;
   };
 
-  // ★★★ FIX ★★★
-  // SEBELUMNYA:
-  //   if (!areaFilter) return;
-  // Baris ini bikin fetchData diam-diam berhenti (tanpa error, tanpa fetch)
-  // kalau areaFilter kosong ('').
-  //
-  // areaFilter kosong itu KONDISI NORMAL untuk user yang punya lebih dari 1
-  // area di allowed_areas — parent hanya auto-assign areaFilter kalau user
-  // cuma punya TEPAT 1 area. Untuk user dengan banyak area, areaFilter
-  // sengaja dibiarkan kosong supaya backend menampilkan gabungan SEMUA area
-  // yang diizinkan (lihat route.ts: kalau query param `area` tidak dikirim,
-  // filter otomatis jatuh ke `area = ANY(session.allowed_areas)`).
-  //
-  // Guard `if (!areaFilter) return` di client menghalangi skenario itu sama
-  // sekali — makanya user dengan banyak area klik "Terapkan" tapi tidak
-  // terjadi apa-apa (bukan gagal, tapi memang tidak pernah fetch).
-  //
-  // FIX: hapus guard tsb. `area` cuma di-append ke query string KALAU ada
-  // isinya; kalau kosong, request tetap jalan tanpa parameter `area`, dan
-  // backend yang menentukan scope area lewat allowed_areas milik user.
+  // fetchData: satu-satunya jalur ambil data. Selalu request langsung ke
+  // server dengan filter aktif sebagai query param — TIDAK ADA agregasi ulang
+  // di client. `isInitialLoad` menandai fetch pertama (tanpa filter product/
+  // outletType/salesman) supaya opsi dropdown diisi dari situ.
   const fetchData = useCallback(async (opts: {
     product?:    string;
     outletType?: string;
     salesman?:   string;
     isInitialLoad?: boolean;
   } = {}) => {
+    if (!areaFilter) return;
+
     const mySeq = ++requestSeq.current;
     setLoading(true);
     try {
       const p = new URLSearchParams({ weekStart: String(weekStart), weekEnd: String(weekEnd) });
-      if (areaFilter)       p.append('area', areaFilter);
+      p.append('area', areaFilter);
       if (opts.product)    p.append('product', opts.product);
       if (opts.outletType) p.append('outletType', opts.outletType);
       if (opts.salesman)   p.append('salesman', opts.salesman);
@@ -991,6 +1040,7 @@ export default function DistributionSection({
       const j = await r.json();
       if (!j.success) return;
 
+      // Kalau ada fetch lebih baru yang sudah jalan, buang hasil yang telat ini.
       if (mySeq !== requestSeq.current) return;
 
       const data = normalizeResponse(j.data);
@@ -1014,6 +1064,14 @@ export default function DistributionSection({
     }
   }, [weekStart, weekEnd, areaFilter, onDataLoaded, setLoading]);
 
+  // Tombol "Terapkan" → SATU-SATUNYA pemicu fetch untuk minggu maupun filter
+  // dropdown (Produk / Tipe Outlet / Salesman). Nilai filter dropdown yang
+  // sedang dipilih langsung dikirim bersamaan di sini — tidak ada lagi
+  // auto-fetch terpisah saat dropdown berubah.
+  //
+  // `isInitialLoad` cuma true di load PERTAMA (saat `loaded` masih false),
+  // supaya opsi dropdown (productOptions dkk) diisi dari situ dan tidak
+  // menyusut/reset tiap kali "Terapkan" ditekan ulang dengan filter aktif.
   const loadData = useCallback(() => {
     fetchData({
       product:       productFilter    || undefined,
@@ -1061,11 +1119,6 @@ export default function DistributionSection({
             {areaName && (
               <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: t.tabBg, color: t.textSub, fontSize: 9 }}>
                 Area: {areaName}
-              </span>
-            )}
-            {!areaFilter && (
-              <span style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: t.tabBg, color: t.textSub, fontSize: 9 }}>
-                Semua area Anda
               </span>
             )}
           </div>
@@ -1132,6 +1185,25 @@ export default function DistributionSection({
           </button>
         </div>
       </div>
+
+      {/* {loaded && hasActiveFilter && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+          padding: '6px 12px', borderRadius: 8,
+          background: t.tabActive, border: `1px solid rgba(28,151,6,0.2)`,
+          fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', color: t.tabActiveText,
+        }}>
+          <Activity size={11} />
+          <span style={{ color: t.textSub }}>Filter dipilih:</span>
+          {productFilter    && <FilterBadge label="Produk"      value={productFilter}    onClear={() => setProductFilter('')}    theme={theme} />}
+          {outletTypeFilter && <FilterBadge label="Tipe Outlet" value={outletTypeFilter} onClear={() => setOutletTypeFilter('')} theme={theme} />}
+          {salesmanFilter   && <FilterBadge label="Salesman"    value={salesmanFilter}   onClear={() => setSalesmanFilter('')}   theme={theme} />}
+          <button onClick={resetFilters} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: t.textMuted, cursor: 'pointer', fontSize: 11, padding: '0 4px', fontFamily: 'IBM Plex Mono,monospace' }}>
+            Reset Semua
+          </button>
+          <span style={{ color: t.textMuted, fontSize: 9 }}>· klik Terapkan untuk memuat</span>
+        </div>
+      )} */}
 
       {!loaded && !loading && (
         <div style={{ padding: '32px', textAlign: 'center', background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 12, color: t.textMuted, fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
