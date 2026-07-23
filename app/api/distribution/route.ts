@@ -35,7 +35,7 @@ function log(step: string, detail?: Record<string, unknown>) {
 
 function logError(step: string, err: unknown, detail?: Record<string, unknown>) {
   const ts = new Date().toISOString();
-  console.error(`[dist-upload] [${ts}] ❌ ${step}`, detail ?? '', err);
+  console.error(`[dist-upload] [${ts}]  ${step}`, detail ?? '', err);
 }
 
 // Lightweight query timer for the GET endpoint — wraps pool.query so every
@@ -47,17 +47,18 @@ function timedQuery(label: string) {
     try {
       const res = await pool.query(text, params);
       const ms = Date.now() - t0;
-      log(`[GET] query "${label}" ✓`, { ms, rows: res.rowCount });
+      log(`[GET] query "${label}" `, { ms, rows: res.rowCount });
       if (ms > 1000) {
         log(`[GET] ⚠ SLOW query "${label}"`, { ms });
       }
       return res;
     } catch (err) {
-      logError(`[GET] query "${label}" ❌`, err, { ms: Date.now() - t0 });
+      logError(`[GET] query "${label}" `, err, { ms: Date.now() - t0 });
       throw err;
     }
   };
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // GET
@@ -138,7 +139,7 @@ export async function GET(request: NextRequest) {
           WHERE status = 'completed'
           ORDER BY created_at DESC
         `);
-        log('[GET] mode=files ✓', { ms: Date.now() - getStart, count: filesQ.rows.length });
+        log('[GET] mode=files ', { ms: Date.now() - getStart, count: filesQ.rows.length });
         return NextResponse.json({
           success: true,
           data: { files: filesQ.rows },
@@ -686,7 +687,7 @@ export async function GET(request: NextRequest) {
       );
 
       const totalMs = Date.now() - getStart;
-      log('[GET] === SELESAI ✓ ===', {
+      log('[GET] === SELESAI ===', {
         totalMs, parallelMs,
         rows: {
           achievementSalesman: achSalesmanQ.rowCount,
@@ -747,14 +748,14 @@ export async function POST(request: NextRequest) {
       let selectedArea = formData.get('area') as string || '';
 
       if (!file) {
-        log('Step 1: ❌ File tidak ditemukan di form data');
+        log('Step 1: File tidak ditemukan di form data');
         return NextResponse.json(
           { success: false, error: 'File tidak ditemukan' },
           { status: 400 }
         );
       }
 
-      log('Step 1: ✓ File diterima', {
+      log('Step 1: File diterima', {
         name:     file.name,
         size:     `${(file.size / 1024).toFixed(1)} KB`,
         type:     file.type,
@@ -769,7 +770,7 @@ export async function POST(request: NextRequest) {
           selectedArea = userAreas[0];
           log('Step 2: Auto-assign area dari session', { area: selectedArea });
         } else {
-          log('Step 2: ⚠ Multiple area, tidak di-assign otomatis', { available: userAreas });
+          log('Step 2: Multiple area, tidak di-assign otomatis', { available: userAreas });
         }
       } else {
         log('Step 2: Area dari request', { area: selectedArea });
@@ -851,7 +852,7 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      log('Step 5: ✓ Parse selesai', {
+      log('Step 5: Parse selesai', {
         totalRaw: rawRows.length, validRecords: records.length,
         skippedRows, skipReasons, parseMs: Date.now() - parseStart,
       });
