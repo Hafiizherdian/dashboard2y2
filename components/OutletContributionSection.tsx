@@ -36,7 +36,7 @@ const TK = {
     card4:  { bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.18)', text: '#fca5a5', val: 'rgba(255,255,255,0.9)' },
     gridStroke: 'rgba(255,255,255,0.06)', tooltipBg: '#0c0e14',
     tooltipBorder: 'rgba(255,255,255,0.12)', tooltipText: 'rgba(255,255,255,0.85)',
-    tableHeadBg: '#0c0e14', tableHeadText: 'rgba(255,255,255,0.3)',
+    tableHeadBg: '#fef08a', tableHeadText: '#0f172a',
     tableAlt: 'rgba(255,255,255,0.02)', tableHover: 'rgba(255,255,255,0.04)',
     modalOverlay: 'rgba(0,0,0,0.8)', modalBg: '#111318', modalBorder: 'rgba(255,255,255,0.08)',
     yearA: { bg: '#0f1724', border: '#1e3a5f', label: '#93c5fd', accent: '#3b82f6' },
@@ -67,7 +67,7 @@ const TK = {
     card4:  { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c', val: '#0f172a' },
     gridStroke: 'rgba(0,0,0,0.07)', tooltipBg: '#ffffff',
     tooltipBorder: 'rgba(0,0,0,0.1)', tooltipText: '#0f172a',
-    tableHeadBg: '#f8fafc', tableHeadText: '#94a3b8',
+    tableHeadBg: '#fef08a', tableHeadText: '#0f172a',
     tableAlt: 'rgba(0,0,0,0.02)', tableHover: 'rgba(0,0,0,0.03)',
     modalOverlay: 'rgba(0,0,0,0.5)', modalBg: '#ffffff', modalBorder: 'rgba(0,0,0,0.08)',
     yearA: { bg: '#eff6ff', border: '#bfdbfe', label: '#1d4ed8', accent: '#2563eb' },
@@ -538,7 +538,7 @@ function SortTh({ label, sortKey, sortState, onSort, theme, align = 'left' }: { 
   const t = TK[theme];
   const active = sortState.key === sortKey;
   return (
-    <th onClick={() => onSort(sortKey)} style={{ padding: '8px 14px', textAlign: align, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: active ? t.textSub : t.tableHeadText, background: active ? t.divider : t.tableHeadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', transition: 'background 0.15s', fontFamily: 'IBM Plex Mono, monospace' }}>
+    <th onClick={() => onSort(sortKey)} style={{ padding: '8px 14px', textAlign: align, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: active ? t.tableHeadText : t.tableHeadText, background: active ? t.divider : t.tableHeadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', transition: 'background 0.15s', fontFamily: 'IBM Plex Mono, monospace' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {label}
         <span style={{ opacity: active ? 1 : 0.3, fontSize: 8 }}>
@@ -921,7 +921,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: isMobile || compact ? 11 : 12, fontFamily: 'IBM Plex Mono, monospace' }}>
             <thead>
-              <tr style={{ background: t.tableHeadBg }}>
+              <tr style={{ color: t.tableHeadText, background: t.tableHeadBg, }}>
                 <SortTh label="Minggu"  sortKey="week"   sortState={sortState} onSort={handleSort} theme={theme} />
                 <SortTh label={`${getUnitShortLabel(selectedUnit)} Net`} sortKey="dozNet" sortState={sortState} onSort={handleSort} theme={theme} align="right" />
                 <SortTh label="%"       sortKey="pct"    sortState={sortState} onSort={handleSort} theme={theme} align="right" />
@@ -954,7 +954,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
                         <span style={{ color: w.dozNet === 0 ? t.textMuted : t.textSub }}>{fmtValExact(w.dozNet)}</span>
                       </div>
                     </td>
-                    <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', color: t.textMuted, textAlign: 'right' }}>{w.dozNet === 0 ? '—' : `${w.pct.toFixed(2)}%`}</td>
+                    <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', color: t.text, textAlign: 'right' }}>{w.dozNet === 0 ? '—' : `${w.pct.toFixed(2)}%`}</td>
                     <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px' }}>
                       <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 20, fontSize: 9, fontWeight: 700, background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
                     </td>
@@ -965,9 +965,9 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
             {sortedTable.length > 0 && (
               <tfoot>
                 <tr style={{ background: t.tableHeadBg, borderTop: `1px solid ${t.border}` }}>
-                  <td style={{ padding: '8px 14px', fontSize: 10, fontWeight: 700, color: t.textSub }}>Total</td>
-                  <td style={{ padding: '8px 14px', textAlign: 'right', fontSize: 11, fontWeight: 800, color: t.text }}>{fmtValExact(totalDoz)}</td>
-                  <td style={{ padding: '8px 14px', textAlign: 'right', fontSize: 10, color: t.textMuted }}>100%</td>
+                  <td style={{ padding: '8px 14px', fontSize: 10, fontWeight: 700, color: t.tableHeadText }}>Total</td>
+                  <td style={{ padding: '8px 14px', textAlign: 'right', fontSize: 11, fontWeight: 800, color: t.tableHeadText }}>{fmtValExact(totalDoz)}</td>
+                  <td style={{ padding: '8px 14px', textAlign: 'right', fontSize: 10, color: t.tableHeadText }}>100%</td>
                   <td />
                 </tr>
               </tfoot>

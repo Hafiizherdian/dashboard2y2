@@ -27,8 +27,8 @@ const tk = {
     textFaint:      'rgba(255,255,255,0.13)',
     inputBg:        'rgba(255,255,255,0.035)',
     inputBorder:    'rgba(255,255,255,0.09)',
-    tableHeadBg:    'rgba(255,255,255,0.03)',
-    tableHeadText:  'rgba(255,255,255,0.35)',
+    tableHeadBg:    '#fef08a',
+    tableHeadText:  'rgb(0, 0, 0)',
     rowHover:       'rgba(255,255,255,0.03)',
     rowAlt:         'rgba(255,255,255,0.01)',
     tooltipBg:      '#13161f',
@@ -37,7 +37,7 @@ const tk = {
     posBg:    'rgba(16,185,129,0.1)',  posText:  '#34d399', posBorder:  'rgba(16,185,129,0.2)',
     negBg:    'rgba(239,68,68,0.1)',   negText:  '#f87171', negBorder:  'rgba(239,68,68,0.2)',
     warnBg:   'rgba(245,158,11,0.09)', warnText: '#fbbf24', warnBorder: 'rgba(245,158,11,0.2)',
-    tabActive:      'rgba(28,151,6,0.16)', tabActiveText: '#4ade80',
+    tabActive:      'rgb(254, 255, 254)', tabActiveText: '#006826',
     tabBg:          'rgba(255,255,255,0.04)',
     selectBg:       '#0b0d13',
     accordionBg:    'rgba(255,255,255,0.02)',
@@ -53,8 +53,8 @@ const tk = {
     textFaint:      '#cbd5e1',
     inputBg:        'rgba(0,0,0,0.03)',
     inputBorder:    'rgba(0,0,0,0.1)',
-    tableHeadBg:    '#f1f5f9',
-    tableHeadText:  '#475569',
+    tableHeadBg:    '#fef08a',
+    tableHeadText:  'rgb(0, 0, 0)',
     rowHover:       '#f8fafc',
     rowAlt:         '#fafbfc',
     tooltipBg:      '#ffffff',
@@ -357,7 +357,7 @@ function DistributionTabs({
                 cursor: 'pointer', fontSize: 11,
                 fontWeight: isActive ? 700 : 500,
                 fontFamily: 'IBM Plex Mono, monospace',
-                color: isActive ? t.tabActiveText : t.textMuted,
+                color: isActive ? t.tabActiveText : t.tableHeadText,
                 whiteSpace: 'nowrap', transition: 'all 0.15s', marginBottom: -1,
               }}
             >
@@ -419,7 +419,7 @@ function AchievementContent({
         <div style={{ display: 'flex', gap: 4, background: t.tabBg, borderRadius: 8, padding: 3, width: 'fit-content' }}>
           {tabs.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setView(id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', border: 'none', cursor: 'pointer', background: view === id ? t.tabActive : 'transparent', color: view === id ? t.tabActiveText : t.textMuted, transition: 'all 0.15s' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', border: 'none', cursor: 'pointer', background: view === id ? t.tabActive : 'transparent', color: view === id ? t.tabActiveText : t.text, transition: 'all 0.15s' }}>
               <Icon size={11} />{label}
             </button>
           ))}
@@ -892,6 +892,34 @@ export default function DistributionSection({
   const [outletTypeFilter, setOutletTypeFilter] = useState('');
   const [salesmanFilter,   setSalesmanFilter]   = useState('');
 
+  // ── Snapshot filter yang TERAKHIR SUKSES di-fetch (minggu + dropdown).
+  //    Dipakai untuk menghitung "unapplied": filter di layar sudah diubah
+  //    tapi belum ditekan "Terapkan", sehingga data yang tampil belum sesuai.
+  const [appliedFilters, setAppliedFilters] = useState({
+    weekStart: weekStartProp,
+    weekEnd:   weekEndProp,
+    product:   '',
+    outletType:'',
+    salesman:  '',
+  });
+
+  const unapplied = loaded && (
+    weekStart         !== appliedFilters.weekStart  ||
+    weekEnd           !== appliedFilters.weekEnd    ||
+    productFilter      !== appliedFilters.product    ||
+    outletTypeFilter   !== appliedFilters.outletType ||
+    salesmanFilter      !== appliedFilters.salesman
+  );
+
+  // Dot animasi "mengambil data" saat loading (sinkron dengan filter bar utama)
+  const [dotStep, setDotStep] = useState(0);
+  useEffect(() => {
+    if (loading) {
+      const id = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
+      return () => clearInterval(id);
+    }
+  }, [loading]);
+
   // Dropdown filter (product/outletType/salesman/city) tidak dari cachedData
   // saja — kita simpan pilihan opsi dari load PERTAMA (tanpa filter) supaya
   // opsi dropdown tidak menyusut begitu salah satu filter lain aktif.
@@ -923,6 +951,9 @@ export default function DistributionSection({
     setOutletTypeOptions([]);
     setSalesmanOptions([]);
     optionsReadyRef.current = false; // area ganti -> opsi dropdown harus di-fetch ulang
+    // reset snapshot juga supaya indikator "Belum diterapkan" tidak salah nyala
+    setAppliedFilters({ weekStart, weekEnd, product: '', outletType: '', salesman: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areaFilter]);
 
   const resetFilters = useCallback(() => {
@@ -1059,6 +1090,14 @@ export default function DistributionSection({
       }
 
       onDataLoaded?.(data);
+      // Snapshot disimpan HANYA setelah fetch sukses → sumber kebenaran untuk
+      // indikator "Belum diterapkan".
+      setAppliedFilters({
+        weekStart, weekEnd,
+        product:    opts.product    ?? '',
+        outletType: opts.outletType ?? '',
+        salesman:   opts.salesman   ?? '',
+      });
     } finally {
       if (mySeq === requestSeq.current) setLoading(false);
     }
@@ -1109,7 +1148,10 @@ export default function DistributionSection({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans,sans-serif' }}>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fbPulseDot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+      `}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
@@ -1178,11 +1220,46 @@ export default function DistributionSection({
             </>
           )}
 
-          <button onClick={loadData} disabled={loading}
-            style={{ height: 26, padding: '0 12px', borderRadius: 5, background: '#1c9706', border: 'none', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-            {loading && <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />}
-            {loading ? 'Memuat...' : 'Terapkan'}
-          </button>
+          {/* ── Indikator status: dot animasi saat loading, atau "Belum diterapkan" saat filter berubah ── */}
+          {loading ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{
+                    width: 4, height: 4, borderRadius: '50%', background: '#4ade80',
+                    transition: 'opacity 0.2s', opacity: i === dotStep ? 1 : 0.25,
+                  }} />
+                ))}
+              </div>
+              <div style={{
+                fontSize: 9, fontFamily: 'IBM Plex Mono,monospace', color: '#4ade80', letterSpacing: '0.06em',
+                background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)',
+                borderRadius: 3, padding: '0 6px', height: 16, display: 'flex', alignItems: 'center',
+              }}>
+                mengambil data
+              </div>
+            </div>
+          ) : unapplied ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              background: t.warnBg, border: `1px solid ${t.warnBorder}`,
+              borderRadius: 3, padding: '0 7px', height: 18,
+            }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: t.warnText, animation: 'fbPulseDot 1.3s ease-in-out infinite' }} />
+              <span style={{ fontSize: 9, fontFamily: 'monospace', color: t.warnText, fontWeight: 700, letterSpacing: '0.02em' }}>Belum diterapkan</span>
+            </div>
+          ) : null}
+
+          <div style={{ position: 'relative' }}>
+            <button onClick={loadData} disabled={loading}
+              style={{ height: 26, padding: '0 12px', borderRadius: 5, background: '#1c9706', border: 'none', color: '#fff', fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+              {loading && <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />}
+              {loading ? 'Memuat...' : 'Terapkan'}
+            </button>
+            {unapplied && !loading && (
+              <span style={{ position: 'absolute', top: -3, right: -3, width: 7, height: 7, borderRadius: '50%', background: t.warnText, border: `1.5px solid ${t.cardBg}` }} />
+            )}
+          </div>
         </div>
       </div>
 

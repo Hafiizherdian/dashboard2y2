@@ -29,8 +29,8 @@ const TK = {
     cardBg:        '#111318',
     border:        'rgba(255,255,255,0.06)',
     borderCard:    'rgba(255,255,255,0.07)',
-    tableHeadBg:   '#0c0e14',
-    tableHeadText: 'rgba(255,255,255,0.3)',
+    tableHeadBg:   '#fef08a',
+    tableHeadText: 'rgb(0, 0, 0)',
     rowHover:      'rgba(255,255,255,0.03)',
     rowAlt:        'rgba(255,255,255,0.015)',
     text:          'rgba(255,255,255,0.9)',
@@ -60,8 +60,8 @@ const TK = {
     cardBg:        '#ffffff',
     border:        'rgba(0,0,0,0.07)',
     borderCard:    'rgba(0,0,0,0.08)',
-    tableHeadBg:   '#f8fafc',
-    tableHeadText: '#94a3b8',
+    tableHeadBg:   '#fef08a',
+    tableHeadText: 'rgb(0, 0, 0)',
     rowHover:      'rgba(0,0,0,0.03)',
     rowAlt:        'rgba(0,0,0,0.018)',
     text:          '#0f172a',
@@ -450,7 +450,7 @@ function WeeklyDetailView({ data, selectedUnit, theme, card, tdBase, expandModal
                                   </td>
                                 ) : (
                                   <>
-                                    <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ht ? t.textSub : t.textFaint }}>{ht ? formatUnitValue(ud.target, selectedUnit) : '—'}</td>
+                                    <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ht ? t.text : t.textFaint }}>{ht ? formatUnitValue(ud.target, selectedUnit) : '—'}</td>
                                     <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{ud.actual > 0 ? formatUnitValue(ud.actual, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
                                     <td style={{ ...tdBase, textAlign: 'right', color: ht ? varColor(w.variance) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{ht ? `${w.variance >= 0 ? '+' : ''}${formatUnitValue(w.variance, selectedUnit)}` : '—'}</td>
                                     <td style={{ ...tdBase, textAlign: 'right', color: ht ? varColor(w.variancePercentage) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{ht ? formatPercentage(w.variancePercentage) : '—'}</td>
@@ -672,7 +672,7 @@ function MonthlyDetailView({ data, selectedUnit, theme, card, tdBase, expandModa
                           <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700, color: t.text, fontSize: 11 }}>{ud.actual > 0 ? formatUnitValue(ud.actual, 'omzet') : <span style={{ color: t.textFaint }}>—</span>}</td>
                         ) : (
                           <>
-                            <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ht ? t.textSub : t.textFaint }}>{ht ? formatUnitValue(ud.target, selectedUnit) : '—'}</td>
+                            <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ht ? t.text : t.textFaint }}>{ht ? formatUnitValue(ud.target, selectedUnit) : '—'}</td>
                             <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{ud.actual > 0 ? formatUnitValue(ud.actual, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
                             <td style={{ ...tdBase, textAlign: 'right', color: ht ? varColor(m.variance) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{ht ? `${m.variance >= 0 ? '+' : ''}${formatUnitValue(m.variance, selectedUnit)}` : '—'}</td>
                             <td style={{ ...tdBase, textAlign: 'right', color: ht ? varColor(m.variancePercentage) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{ht ? formatPercentage(m.variancePercentage) : '—'}</td>
@@ -1037,7 +1037,7 @@ export default function QuarterlyAnalysisComponent({ data, theme: themeProp, sel
                             <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700, color: t.text }}>{q.actual > 0 ? formatUnitValue(q.actual, 'omzet') : '—'}</td>
                           ) : (
                             <>
-                              <td style={{ ...tdBase, textAlign: 'right', color: hasQTarget ? t.textSub : t.textFaint }}>{hasQTarget ? formatUnitValue(q.target, selectedUnit) : '—'}</td>
+                              <td style={{ ...tdBase, textAlign: 'right', color: hasQTarget ? t.text : t.textFaint }}>{hasQTarget ? formatUnitValue(q.target, selectedUnit) : '—'}</td>
                               <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700 }}>{q.actual > 0 ? formatUnitValue(q.actual, selectedUnit) : '—'}</td>
                               <td style={{ ...tdBase, textAlign: 'right', color: hasQTarget ? varColor(q.variance) : t.textFaint, fontWeight: 700 }}>{hasQTarget ? `${q.variance >= 0 ? '+' : ''}${formatUnitValue(q.variance, selectedUnit)}` : '—'}</td>
                               <td style={{ ...tdBase, textAlign: 'right', color: hasQTarget ? varColor(q.variancePercentage) : t.textFaint, fontWeight: 700 }}>{hasQTarget ? formatPercentage(q.variancePercentage) : '—'}</td>
