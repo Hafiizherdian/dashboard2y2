@@ -28,7 +28,7 @@ const TK = {
     textMuted: 'rgba(255,255,255,0.3)', textFaint: 'rgba(255,255,255,0.18)',
     infoText: 'rgba(147,197,253,0.85)', inputBg: 'rgba(255,255,255,0.03)',
     inputBorder: 'rgba(255,255,255,0.08)', selectBg: '#0c0e14',
-    theadBg: '#0c0e14', theadText: 'rgba(255,255,255,0.35)',
+    theadBg: '#fef08a', tfootBg: '#f1e71b', theadText: 'rgb(0, 0, 0)',
     rowAlt: 'rgba(255,255,255,0.015)', rowHover: 'rgba(255,255,255,0.03)',
     gridStroke: 'rgba(255,255,255,0.05)', tooltipBg: '#1a1e2e',
     tooltipBorder: 'rgba(255,255,255,0.12)', btnBg: 'rgba(37,99,235,0.12)',
@@ -44,7 +44,7 @@ const TK = {
     infoBorder: 'rgba(37,99,235,0.25)', text: '#0f172a', textSub: '#475569',
     textMuted: '#94a3b8', textFaint: '#cbd5e1', infoText: '#1d4ed8',
     inputBg: 'rgba(0,0,0,0.03)', inputBorder: 'rgba(0,0,0,0.1)',
-    selectBg: '#ffffff', theadBg: '#f8fafc', theadText: '#94a3b8',
+    selectBg: '#ffffff', theadBg: '#fef08a', tfootBg: '#f1e71b', theadText: 'rgb(0, 0, 0)',
     rowAlt: 'rgba(0,0,0,0.018)', rowHover: 'rgba(0,0,0,0.03)',
     gridStroke: 'rgba(0,0,0,0.06)', tooltipBg: '#ffffff',
     tooltipBorder: 'rgba(0,0,0,0.1)', btnBg: 'rgba(37,99,235,0.08)',
@@ -767,7 +767,7 @@ function ChartTableView({
                   onMouseLeave={e => ((e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? 'transparent' : t.rowAlt)}>
                   <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', borderBottom: `1px solid ${t.borderLight}` }}>{row.week}</td>
                   {type === 'line' && <>
-                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{valueFormatter(row.previousYear)}</td>
+                    <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{valueFormatter(row.previousYear)}</td>
                     <td style={{ padding: '8px 14px', fontSize: 12, color: t.text, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', borderBottom: `1px solid ${t.borderLight}` }}>{valueFormatter(row.currentYear)}</td>
                     <td style={{ padding: '8px 14px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 600, textAlign: 'right', borderBottom: `1px solid ${t.borderLight}`, color: pos ? POS_COLOR : NEG_COLOR }}>{pos ? '+' : ''}{valueFormatter(row.variance)}</td>
                   </>}
@@ -782,9 +782,9 @@ function ChartTableView({
           {totals && (
             <tfoot>
               <tr style={{ background: t.theadBg, borderTop: `2px solid ${t.border}` }}>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Total</td>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.p)}</td>
-                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.c)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.theadText, fontFamily: 'IBM Plex Mono,monospace' }}>Total</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.theadText, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.p)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, color: t.theadText, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right' }}>{valueFormatter(totals.c)}</td>
                 <td style={{ padding: '8px 14px', fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono,monospace', textAlign: 'right', color: totals.v >= 0 ? POS_COLOR : NEG_COLOR }}>{totals.v >= 0 ? '+' : ''}{valueFormatter(totals.v)}</td>
                 <td style={{ padding: '8px 14px', textAlign: 'right' }}><GrowthPill value={totals.pct} /></td>
               </tr>
