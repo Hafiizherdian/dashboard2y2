@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, createContext } from 'react';
 import WeekComparison from '@/components/WeekComparison';
 import QuarterlyAnalysis from '@/components/QuarterlyAnalysis';
+import QuarterlyAnalysisYearly from '@/components/QuarterlyAnalysisYearly';
 import L4WC4WAnalysis from '@/components/L4WC4WAnalysis';
 import YearOnYearGrowth from '@/components/YearOnYearGrowth';
 import AnalysisSection from '@/components/AnalysisSection';
@@ -15,7 +16,7 @@ import { useAuth, AuthProvider } from '@/lib/auth/AuthContext';
 import { UserRole } from '@/lib/auth/types';
 import { getProductCategory } from '@/lib/productCategories';
 import {
-  TrendingUp, Calendar, BarChart3, PieChart,
+  TrendingUp, Calendar, BarChart3,CalendarDays, PieChart,Calendars,
   Activity, FileText, Store, Sun, Moon,
   ChevronLeft, Filter, X, LogOut,
   ShieldAlert, ShieldCheck, Shield,
@@ -228,7 +229,8 @@ function ThemeToggle({ theme, setTheme, compact=false }:{ theme:Theme; setTheme:
 const TABS=[
   {id:'overview',      label:'Ringkasan',       shortLabel:'Ringkasan',  Icon:NotepadTextDashed},
   {id:'weekly',        label:'Mingguan',        shortLabel:'Mingguan',   Icon:Calendar  },
-  {id:'quarterly',     label:'Kuartal',         shortLabel:'Kuartal',    Icon:BarChart3 },
+  {id:'quarterly',     label:'Kuartal Target',  shortLabel:'Kuartal',    Icon:CalendarDays },
+  {id:'quarterly2',    label:'Kuartal Aktual',  shortLabel:'Kuartal',    Icon:Calendars },
   {id:'l4wc4w',        label:'L4W vs C1W',      shortLabel:'L4W',        Icon:Activity  },
   {id:'yoy',           label:'YoY Growth',      shortLabel:'YoY',        Icon:PieChart  },
   {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
@@ -271,8 +273,8 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, theme, setT
           const active=activeTab===id;
           return (
             <button key={id} onClick={()=>setActiveTab(id)} title={collapsed?label:undefined}
-              style={{display:'flex',alignItems:'center',gap:8,width:'100%',minHeight:33,padding:collapsed?'5px 0':'5px 8px',borderRadius:7,border:'none',cursor:'pointer',justifyContent:collapsed?'center':'flex-start',background:active?t.navActiveBg:'transparent',color:active?t.navActiveText:t.textNav,fontSize:12,fontWeight:active?600:400,fontFamily:'IBM Plex Sans,sans-serif',transition:'all 0.12s',marginBottom:1,position:'relative'}}>
-              <Icon size={13} color={active?t.navActiveText:t.textMuted}/>
+              style={{display:'flex',alignItems:'center',gap:8,width:'100%',minHeight:33,padding:collapsed?'5px 0':'5px 8px',borderRadius:7,border:'none',cursor:'pointer',justifyContent:collapsed?'center':'flex-start',background:active?t.navActiveBg:'transparent',color:active?t.navActiveText:t.text,fontSize:12,fontWeight:active?600:400,fontFamily:'IBM Plex Sans,sans-serif',transition:'all 0.12s',marginBottom:1,position:'relative'}}>
+              <Icon size={13} color={active?t.navActiveText:t.text}/>
               {!collapsed&&<span style={{flex:1,textAlign:'left',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{label}</span>}
               {active&&<span style={{position:'absolute',left:0,top:'20%',bottom:'20%',width:2,borderRadius:'0 2px 2px 0',background:t.navActiveDot}}/>}
             </button>
@@ -282,7 +284,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, theme, setT
       <div style={{padding:collapsed?'8px 4px':'8px',borderTop:`1px solid ${t.border}`,flexShrink:0,display:'flex',flexDirection:'column',gap:5,alignItems:collapsed?'center':'stretch'}}>
         {collapsed ? (
           <>
-            <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{background:'none',border:'none',cursor:'pointer',color:t.textMuted,borderRadius:7,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>{theme==='dark'?<Sun size={13}/>:<Moon size={13}/>}</button>
+            <button onClick={()=>setTheme(theme==='dark'?'light':'dark')} style={{background:'none',border:'none',cursor:'pointer',color:t.text,borderRadius:7,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>{theme==='dark'?<Sun size={13}/>:<Moon size={13}/>}</button>
             <button onClick={logout} style={{background:t.red.bg,border:`1px solid ${t.red.border}`,cursor:'pointer',borderRadius:7,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}><LogOut size={12} color={t.red.text}/></button>
           </>
         ) : (
@@ -1454,7 +1456,7 @@ function ContentWrapper({ children, theme }:{ children:React.ReactNode; theme:Th
 }
 
 const EMPTY_DATA: SalesData = {
-  weeklyData:[],quarterlyData:[],weekComparisons:[],
+  weeklyData:[],quarterlyData:[], QuarterlyYoYData: [], weekComparisons:[],
   l4wc4wData:{l4wAverage:0,c4wAverage:0,c1wValue:0,variance:0,variancePercentage:0},
   yearOnYearGrowth:{previousYearTotal:0,currentYearTotal:0,variance:0,variancePercentage:0},
   comparisonYears:{previousYear:null,currentYear:null},
@@ -1592,6 +1594,7 @@ function DashboardInner() {
     switch(tab){
       case 'weekly':    return <WeekComparison data={data.weekComparisons} comparisonYears={data.comparisonYears} comparisonWeeks={data.comparisonWeeks} theme={theme}/>;
       case 'quarterly': return <QuarterlyAnalysis data={data.quarterlyData} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit}/>;
+      case 'quarterly2': return <QuarterlyAnalysisYearly data={data.QuarterlyYoYData ?? []} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit} previousYearLabel={applied.y1} currentYearLabel={applied.y2}/>;
       case 'l4wc4w':   return <L4WC4WAnalysis data={data.l4wc4wData} theme={theme}/>;
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
