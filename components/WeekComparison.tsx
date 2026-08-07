@@ -864,7 +864,7 @@ export default function WeekComparisonComponent({
   const [selectedUnit,     setSelectedUnit]     = useState('units_dos');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [expandTarget,     setExpandTarget]     = useState<ExpandTarget>(null);
-  const [tableView,        setTableView]        = useState<'line' | 'bar' | null>(null);
+  const [tableView,        setTableView]        = useState({line: false, bar: false,});
   const [sortConfig,       setSortConfig]       = useState<{
     key: 'product' | 'previousYear' | 'currentYear' | 'variance' | 'variancePercentage';
     direction: 'asc' | 'desc';
@@ -1191,7 +1191,7 @@ export default function WeekComparisonComponent({
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 12 : 14 }}>
         {(['line', 'bar'] as const).map(chartType => {
           const isLine  = chartType === 'line';
-          const inTable = tableView === chartType;
+          const inTable = tableView [chartType];
 
           return (
             <div key={chartType} style={card()}>
@@ -1223,7 +1223,7 @@ export default function WeekComparisonComponent({
                       }
                     </div>
                   )}
-                  <TableBtn onClick={() => setTableView(v => v === chartType ? null : chartType)} theme={theme} active={inTable} />
+                  <TableBtn onClick={() => setTableView(prev => ({...prev,      [chartType]: !prev[chartType],    }))  }  theme={theme} active={inTable}/>
                   <ExpandBtn onClick={() => setExpandTarget({ chart: chartType, mode: inTable ? 'table' : 'chart' })} theme={theme} isTable={inTable} />
                 </div>
               </div>

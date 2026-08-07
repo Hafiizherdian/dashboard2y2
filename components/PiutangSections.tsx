@@ -512,7 +512,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', color: t.textSub, whiteSpace: 'nowrap', fontSize: 11 }}>
                       {row.jatuhTempo || '—'}
                     </td>
-                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 600, color: agingColor ? t.textSub : t.text }}>
+                    <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 600, color: agingColor }}>
                       {row.hari !== null ? fIDR(row.hari) : <span style={{ color: t.textSub }}>—</span>}
                     </td>
                     <td style={{ padding: '10px 14px', fontFamily: 'IBM Plex Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.piutang > 10_000_000 ? t.yellow.text : t.textSub }}>
