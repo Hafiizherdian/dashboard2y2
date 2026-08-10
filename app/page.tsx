@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, createContext } from 'react';
+import { createPortal } from 'react-dom';
 import WeekComparison from '@/components/WeekComparison';
 import QuarterlyAnalysis from '@/components/QuarterlyAnalysis';
 import QuarterlyAnalysisYearly from '@/components/QuarterlyAnalysisYearly';
@@ -159,7 +160,7 @@ function SessionGuard({ children }:{ children:React.ReactNode }) {
 
   if (loading || !user) return (
     <div style={{
-      minHeight: '100vh', background: '#07090e',
+      minHeight: '100dvh', background: '#07090e',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       flexDirection: 'column', gap: 0,
       fontFamily: 'IBM Plex Mono, monospace',
@@ -402,14 +403,6 @@ function DesktopFilterBar({
   const Sep=()=><div style={{width:1,height:12,background:t.border,margin:'0 1px',flexShrink:0}}/>;
   const Lbl=({c}:{c:string})=><span style={{fontSize:8,fontWeight:700,color:t.textFaint,fontFamily:'monospace',textTransform:'uppercase',letterSpacing:'0.1em',flexShrink:0}}>{c}</span>;
 
-  const [dotStep, setDotStep] = useState(0);
-  useEffect(() => {
-    if (loading) {
-      const id = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
-      return () => clearInterval(id);
-    }
-  }, [loading]);
-
   return (
     <div style={{flexShrink:0,background:t.filterbg,borderBottom:`1px solid ${t.border}`}}>
       <style>{`@keyframes fbPulseDot{0%,100%{opacity:1}50%{opacity:0.3}}`}</style>
@@ -515,35 +508,21 @@ function DesktopFilterBar({
           position:'sticky', right:0, paddingLeft:8, background:t.filterbg,
           boxShadow: theme==='dark' ? '-14px 0 12px -10px rgba(0,0,0,0.45)' : '-14px 0 12px -10px rgba(0,0,0,0.08)',
         }}>
-          {loading ? (
-            <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
-              <div style={{display:'flex',gap:3,alignItems:'center'}}>
-                {[0,1,2].map(i=>(
-                  <div key={i} style={{width:4,height:4,borderRadius:'50%',background:'#4ade80',
-                    transition:'opacity 0.2s',opacity:i===dotStep?1:0.25}}/>
-                ))}
-              </div>
-              <div style={{fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
-                background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
-                borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center'}}>
-                mengambil data
-              </div>
-            </div>
-          ) : unapplied ? (
+          {unapplied && !loading && (
             <div style={{display:'flex',alignItems:'center',gap:5,flexShrink:0,
               background:t.warnBg,border:`1px solid ${t.warnBorder}`,
               borderRadius:3,padding:'0 7px',height:18}}>
               <span style={{width:5,height:5,borderRadius:'50%',background:t.warnText,animation:'fbPulseDot 1.3s ease-in-out infinite'}}/>
               <span style={{fontSize:9,fontFamily:'monospace',color:t.warnText,fontWeight:700,letterSpacing:'0.02em'}}>Belum diterapkan</span>
             </div>
-          ) : null}
+          )}
 
           {dirty&&<button onClick={onReset} style={{height:22,padding:'0 7px',borderRadius:4,fontSize:10,fontFamily:'monospace',background:'transparent',border:`1px solid ${t.borderInput}`,color:t.textMuted,cursor:'pointer'}}>Reset</button>}
 
           <div style={{position:'relative'}}>
             <button onClick={onApply} disabled={loading}
               style={{height:22,padding:'0 11px',borderRadius:4,fontSize:10,fontWeight:700,fontFamily:'IBM Plex Mono,monospace',background:'#1c9706',border:'none',color:'#fff',cursor:loading?'not-allowed':'pointer',opacity:loading?0.5:1,flexShrink:0,boxShadow:'0 1px 4px rgba(28,151,6,0.3)'}}>
-              Terapkan
+              {loading ? 'Memuat…' : 'Terapkan'}
             </button>
             {unapplied && !loading && (
               <span style={{position:'absolute',top:-3,right:-3,width:7,height:7,borderRadius:'50%',background:t.warnText,border:`1.5px solid ${t.filterbg}`}}/>
@@ -565,14 +544,6 @@ function MobileFilterBar({
   onOpen:()=>void; loading:boolean; theme:Theme;
 }) {
   const t=tk[theme];
-  const [dotStep, setDotStep] = useState(0);
-
-  useEffect(() => {
-    if (loading) {
-      const id = setInterval(() => setDotStep(s => (s + 1) % 3), 400);
-      return () => clearInterval(id);
-    }
-  }, [loading]);
 
   type CV='blue'|'green'|'orange';
   const Chip=({v,ch}:{v:string;ch:CV})=>{
@@ -632,27 +603,6 @@ function MobileFilterBar({
           <Chip v={UNIT_OPTIONS.find(o=>o.value===applied.unit)?.label??applied.unit} ch="orange"/>
         )}
       </div>
-
-      {loading && (
-        <>
-          <div style={{display:'flex',gap:3,alignItems:'center',flexShrink:0}}>
-            {[0,1,2].map(i=>(
-              <div key={i} style={{
-                width:4,height:4,borderRadius:'50%',background:'#4ade80',
-                transition:'opacity 0.2s',opacity:i===dotStep?1:0.25,
-              }}/>
-            ))}
-          </div>
-          <div style={{
-            fontSize:9,fontFamily:'monospace',color:'#4ade80',letterSpacing:'0.06em',
-            background:'rgba(74,222,128,0.1)',border:'1px solid rgba(74,222,128,0.3)',
-            borderRadius:3,padding:'0 6px',height:16,display:'flex',alignItems:'center',
-            flexShrink:0,
-          }}>
-            mengambil data
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -813,6 +763,104 @@ function MobileFilterSheet({
         </div>
       </div>
     </>
+  );
+}
+
+// ─── LoadingOverlay ──────────────────────────────────────────────────────────
+// Card loading di tengah area konten, menggantikan indikator titik-titik kecil
+// yang sebelumnya ada di filter bar (desktop & mobile). Gaya visual mengikuti
+// screen loading sesi (SessionGuard): badge logo + ring spinner + progress bar
+// yang mengisi + teks dengan dots berjalan.
+function LoadingOverlay({ theme, targetRef }: { theme: Theme; targetRef: React.RefObject<HTMLDivElement | null> }) {
+  const t = tk[theme];
+  const [dots, setDots] = useState(0);
+  const [rect, setRect] = useState<{top:number; left:number; width:number; height:number} | null>(null);
+
+  useEffect(() => {
+    const iv = setInterval(() => setDots(d => (d + 1) % 4), 400);
+    return () => clearInterval(iv);
+  }, []);
+
+  useEffect(() => {
+    const update = () => {
+      if (!targetRef.current) return;
+      const r = targetRef.current.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true); // capture: nangkep scroll di ancestor manapun
+    const ro = new ResizeObserver(update);
+    if (targetRef.current) ro.observe(targetRef.current);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      ro.disconnect();
+    };
+  }, [targetRef]);
+
+  if (!rect || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div style={{
+      position: 'fixed',
+      top: rect.top, left: rect.left, width: rect.width, height: rect.height,
+      zIndex: 9998,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: theme === 'dark' ? 'rgba(7,9,14,0.62)' : 'rgba(238,241,247,0.68)',
+      backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+      pointerEvents: 'auto',
+    }}>
+      <style>{`
+        @keyframes lcPulse { 0%,100%{ opacity:0.7; transform:scale(1) } 50%{ opacity:1; transform:scale(1.06) } }
+        @keyframes lcRing  { to { transform: rotate(360deg) } }
+        @keyframes lcPop   { from{ opacity:0; transform:translateY(10px) scale(0.95) } to{ opacity:1; transform:translateY(0) scale(1) } }
+        @keyframes lcBar   { 0%{ width:0% } 40%{ width:60% } 70%{ width:82% } 100%{ width:96% } }
+      `}</style>
+      <div style={{
+        background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: 16,
+        padding: '26px 34px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
+        boxShadow: theme === 'dark' ? '0 24px 64px rgba(0,0,0,0.5)' : '0 24px 64px rgba(15,23,42,0.16)',
+        animation: 'lcPop 0.25s cubic-bezier(0.34,1.56,0.64,1) both',
+        minWidth: 210,
+      }}>
+        <div style={{ position:'relative', width:56, height:56 }}>
+          <svg style={{ position:'absolute', inset:0, animation:'lcRing 1.4s linear infinite' }}
+            width="56" height="56" viewBox="0 0 64 64" fill="none">
+            <circle cx="32" cy="32" r="28" stroke="rgba(28,151,6,0.15)" strokeWidth="2.5"/>
+            <path d="M32 4 a28 28 0 0 1 24.2 14" stroke="#1c9706" strokeWidth="2.5" strokeLinecap="round"/>
+          </svg>
+          <div style={{
+            position:'absolute', inset:9, borderRadius:11,
+            background:'rgba(28,151,6,0.12)', border:'1px solid rgba(28,151,6,0.25)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            animation:'lcPulse 2s ease-in-out infinite',
+          }}>
+            <img src="/logo-cgkn.png" alt="CGKN" style={{ width:24, height:24, objectFit:'contain' }}/>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:t.text, fontFamily:'IBM Plex Mono,monospace', letterSpacing:'-0.01em' }}>
+            Mengambil Data
+          </div>
+          <div style={{ fontSize:9.5, color:t.textMuted, fontFamily:'IBM Plex Mono,monospace' }}>
+            Menyesuaikan tampilan dashboard
+          </div>
+        </div>
+
+        <div style={{ width:150 }}>
+          <div style={{ height:2, borderRadius:2, background:t.borderCard, overflow:'hidden' }}>
+            <div style={{ height:'100%', background:'linear-gradient(90deg, #1c9706, #4ade80)', borderRadius:2, animation:'lcBar 2.2s cubic-bezier(0.4,0,0.2,1) forwards' }}/>
+          </div>
+        </div>
+
+        <div style={{ fontSize:9.5, color:t.textMuted, fontFamily:'IBM Plex Mono,monospace', letterSpacing:'0.04em' }}>
+          Mengambil data{'.'.repeat(dots)}
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1608,7 +1656,7 @@ function DashboardInner() {
 
   return (
     <ThemeCtx.Provider value={theme}>
-      <div style={{width:'100%',background:t.pagebg,fontFamily:'IBM Plex Sans,sans-serif',height:'100vh',display:'flex',position:'relative',overflow:'hidden'}}>
+      <div style={{width:'100%',background:t.pagebg,fontFamily:'IBM Plex Sans,sans-serif',height:'100dvh',display:'flex',position:'relative',overflow:'hidden'}}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap');
           html,body{margin:0;padding:0;height:100%}
@@ -1625,17 +1673,17 @@ function DashboardInner() {
         {!isMobile&&<Sidebar activeTab={tab} setActiveTab={setTab} collapsed={collapsed} setCollapsed={setCol} theme={theme} setTheme={applyTheme}/>}
 
         <div style={{
-          marginLeft:sideW, display:'flex', flexDirection:'column', height:'100vh', flex:1,
+          marginLeft:sideW, display:'flex', flexDirection:'column', height:'100dvh', flex:1,
           transition:isMobile?'none':'margin-left 0.2s cubic-bezier(.4,0,.2,1)',
           overflow:'hidden', minWidth:0,
         }}>
           {isMobile&&<MobileHeader theme={theme} setTheme={applyTheme}/>}
 
-          {isRO&&(
+          {/* {isRO&&(
             <div style={{padding:'3px 12px',background:t.warnBg,borderBottom:`1px solid ${t.warnBorder}`,display:'flex',alignItems:'center',gap:5,fontSize:10,color:t.warnText,flexShrink:0}}>
               <Shield size={10}/> Login sebagai <strong>User</strong> — hanya bisa melihat.
             </div>
-          )}
+          )} */}
 
           {isMobile?(
             <>
@@ -1674,8 +1722,10 @@ function DashboardInner() {
                 : `${pad}px`,
               background:t.contentBg,
               overflow:(tab==='overview'&&!isMobile)?'hidden':'auto',
+              position:'relative',
             }}
           >
+            {loading && <LoadingOverlay theme={theme} targetRef={mainRef}/>}
             {tab==='overview'
               ? renderContent()
               : <ContentWrapper theme={theme}>{renderContent()}</ContentWrapper>
