@@ -965,6 +965,7 @@ export async function POST(request: NextRequest) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export async function DELETE(request: NextRequest) {
   return withAuth(request, 'delete_file', async () => {
+    const deleteStart = Date.now();
     try {
       const { searchParams } = new URL(request.url);
       const fileId = searchParams.get('id');
@@ -976,48 +977,71 @@ export async function DELETE(request: NextRequest) {
         );
       }
 
-      log('DELETE distribusi file', { fileId });
+      log('DELETE distribusi file - mulai', { fileId });
 
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
+      // ── Batch delete records ────────────────────────────────────────────
+      // Hapus per-batch (bukan 1 statement raksasa) supaya lock per statement
+      // pendek dan progress bisa dipantau. Konsekuensinya: TIDAK ada 1
+      // transaksi besar yang membungkus semua batch, jadi kalau proses gagal
+      // di tengah jalan, sebagian record file ini sudah kehapus (bukan
+      // all-or-nothing lagi seperti versi lama). Untuk operasi delete/cleanup
+      // ini trade-off yang wajar — retry DELETE lagi dengan id yang sama akan
+      // otomatis melanjutkan (WHERE dist_file_id makin sedikit tiap retry).
+      const BATCH = 5000;
+      let totalDeleted = 0;
+      let batchNum = 0;
 
-        const delRecords = await client.query(
-          'DELETE FROM distribution_records WHERE dist_file_id = $1',
-          [fileId]
+      while (true) {
+        batchNum++;
+        const batchStart = Date.now();
+
+        const res = await pool.query(
+          `DELETE FROM distribution_records
+           WHERE ctid IN (
+             SELECT ctid FROM distribution_records
+             WHERE dist_file_id = $1
+             LIMIT $2
+           )`,
+          [fileId, BATCH]
         );
 
-        const res = await client.query(
-          'DELETE FROM distribution_files WHERE id = $1 RETURNING original_name',
-          [fileId]
-        );
+        const deletedInBatch = res.rowCount ?? 0;
+        totalDeleted += deletedInBatch;
 
-        await client.query('COMMIT');
-
-        if (!res.rows.length) {
-          return NextResponse.json(
-            { success: false, error: 'File tidak ditemukan' },
-            { status: 404 }
-          );
-        }
-
-        log('DELETE selesai', {
-          fileId,
-          deletedFile:    res.rows[0].original_name,
-          deletedRecords: delRecords.rowCount,
+        log(`DELETE batch ${batchNum}`, {
+          fileId, deletedInBatch, totalDeleted,
+          ms: Date.now() - batchStart,
         });
 
-        return NextResponse.json({
-          success: true,
-          deleted: res.rows[0].original_name,
-        });
-
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
+        if (deletedInBatch < BATCH) break; // batch terakhir, tidak ada sisa
       }
+
+      // ── Hapus row file setelah semua record beres ───────────────────────
+      const fileRes = await pool.query(
+        'DELETE FROM distribution_files WHERE id = $1 RETURNING original_name',
+        [fileId]
+      );
+
+      if (!fileRes.rows.length) {
+        logError('DELETE distribusi: file row tidak ditemukan', null, { fileId, totalDeleted });
+        return NextResponse.json(
+          { success: false, error: 'File tidak ditemukan' },
+          { status: 404 }
+        );
+      }
+
+      log('DELETE selesai', {
+        fileId,
+        deletedFile: fileRes.rows[0].original_name,
+        deletedRecords: totalDeleted,
+        batches: batchNum,
+        totalMs: Date.now() - deleteStart,
+      });
+
+      return NextResponse.json({
+        success: true,
+        deleted: fileRes.rows[0].original_name,
+      });
 
     } catch (err) {
       logError('DELETE distribusi gagal', err);
