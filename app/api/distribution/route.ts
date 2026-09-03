@@ -987,7 +987,7 @@ export async function DELETE(request: NextRequest) {
       // all-or-nothing lagi seperti versi lama). Untuk operasi delete/cleanup
       // ini trade-off yang wajar — retry DELETE lagi dengan id yang sama akan
       // otomatis melanjutkan (WHERE dist_file_id makin sedikit tiap retry).
-      const BATCH = 5000;
+      const BATCH = 1000;
       let totalDeleted = 0;
       let batchNum = 0;
 
