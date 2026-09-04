@@ -282,7 +282,7 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
               {collapsed && <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '4px 10px 8px' }} />}
               {visible.map(item => (
                 <NavItem key={item.id} label={item.label} icon={item.icon} active={activeTab === item.id} collapsed={collapsed}
-                  badge={item.id === 'upload-penjualan' ? uploadedFiles.length : undefined}
+                  // badge={item.id === 'upload-penjualan' ? uploadedFiles.length : undefined}
                   accent={item.accent}
                   onClick={() => { setActiveTab(item.id); if (isMobile) onClose(); }} />
               ))}
