@@ -570,7 +570,7 @@ function PreviewModal({
             gap: 12,
           }}
         >
-          <div
+          {/* <div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -632,7 +632,7 @@ function PreviewModal({
             }}
           >
             <X size={14} color={t.red.text} />
-          </button>
+          </button> */}
         </div>
 
         {/* Modal body */}
