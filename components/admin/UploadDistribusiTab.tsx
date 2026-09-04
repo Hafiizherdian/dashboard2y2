@@ -1008,7 +1008,7 @@ function FilesTable({
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            maxWidth: isMobile ? 100 : 220,
+                            maxWidth: isMobile ? 100 : 520,
                           }}
                         >
                           {file.original_name}
