@@ -275,7 +275,7 @@ function DesktopFilterBar({
 
 }) {
   const t=tk[theme];
-  // "dirty" = beda dari DEFAULT (untuk tombol Reset).
+  // dirty = beda dari DEFAULT (untuk tombol Reset).
   const dirty = wStart1!==0 || w1!==0 || wStart2!==0 || w2!==0 || !!af || !!rf || selectedUnit!=='units_dos';
   const yO=YEARS.map(y=>({value:y,label:String(y)}));
   const aO=[{value:'',label:'Semua Area'},...areas.map(a=>({value:a.id,label:a.name}))];
@@ -918,7 +918,7 @@ function DashboardInner() {
     if (wStart2 > 0) p.append('weekStart2', String(wStart2));
     if (w2 > 0)      p.append('weekEnd2',   String(w2));
 
-    // Area & regional mutually exclusive regional diprioritaskan kalau somehow keduanya terisi
+    // Area & regional mutually exclusive regional diprioritaskan kalau semisal e keduanya terisi
     if (rf.trim())       p.append('regional', rf.trim());
     else if (af.trim())  p.append('area', af.trim());
 
@@ -929,8 +929,8 @@ function DashboardInner() {
     const j = await r.json();
     if (j.success) {
       setData(j.data);
-      // Snapshot disimpan HANYA setelah fetch sukses, ini sumber
-      // untuk chip mobile, KPI/chart (selectedUnit di OverviewTab), dan "unapplied".
+      // Snapshot disimpan HANYA setelah fetch sukses, 
+      // iki sumber untuk chip mobile, KPI/chart (selectedUnit di OverviewTab), dan "unapplied".
       setApplied({ y1, wStart1, w1, y2, wStart2, w2, af, regional: rf, unit: selectedUnit });
     }
     else console.error('API error:', j.error);
@@ -954,11 +954,41 @@ function DashboardInner() {
   const pad=isMobile?10:12;
   const isRO=user?.role==='user';
 
+  const rng = (ws: number, we: number) =>
+  we > 0 ? `W${ws > 0 ? ws : 1}–${we}` : ws > 0 ? `W${ws}–akhir` : 'semua minggu';
+  const sameYearP = applied.y1 === applied.y2;
+  const p1Label = sameYearP ? `${applied.y1} ${rng(applied.wStart1, applied.w1)}` : String(applied.y1);
+  const p2Label = sameYearP ? `${applied.y2} ${rng(applied.wStart2, applied.w2)}` : String(applied.y2);
+
+  // Range minggu tiap periode (null = tidak difilter / semua minggu)
+  const rangeOf = (ws: number, we: number) =>
+    (ws > 0 || we > 0) ? { start: ws > 0 ? ws : 1, end: we > 0 ? we : 52 } : null;
+  const r1 = rangeOf(applied.wStart1, applied.w1);
+  const r2 = rangeOf(applied.wStart2, applied.w2);
+  // Sama dengan backend: shift hanya jika kedua range eksplisit
+  const weekShift = r1 && r2 ? r2.start - r1.start : 0;
+  // Gabungkan range jika P1 dan P2 ada di tahun yang sama
+  let combinedRange = r2; 
+  if (sameYearP) {
+    if (!r1 || !r2) {
+      // Jika salah satu diset "Semua Minggu", maka tampilkan semua tanpa dipotong
+      combinedRange = null; 
+    } else {
+      // Ambil nilai terkecil dari start, dan nilai terbesar dari end
+      combinedRange = {
+        start: Math.min(r1.start, r2.start),
+        end: Math.max(r1.end, r2.end)
+      };
+    }
+  }
+
   const renderContent=()=>{
     switch(tab){
       case 'weekly':    return <WeekComparison data={data.weekComparisons} comparisonYears={data.comparisonYears} comparisonWeeks={data.comparisonWeeks} theme={theme}/>;
-      case 'quarterly': return <QuarterlyAnalysis data={data.quarterlyData} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit}/>;
-      case 'quarterly2': return <QuarterlyAnalysisYearly data={data.QuarterlyYoYData ?? []} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit} previousYearLabel={applied.y1} currentYearLabel={applied.y2}/>;
+      case 'quarterly':
+        return <QuarterlyAnalysis data={data.quarterlyData} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit} year={applied.y2} weekRange={combinedRange}/>;
+      case 'quarterly2':
+        return <QuarterlyAnalysisYearly data={data.QuarterlyYoYData ?? []} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit} previousYearLabel={p1Label} currentYearLabel={p2Label} year={applied.y2} weekShift={weekShift}/>;
       case 'l4wc4w':   return <L4WC4WAnalysis data={data.l4wc4wData} theme={theme}/>;
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
       case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
@@ -966,7 +996,7 @@ function DashboardInner() {
       case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
                                     cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);
       case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
-      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit}/>;
+      default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit} p1Label={p1Label} p2Label={p2Label}/>;
     }
   };
 

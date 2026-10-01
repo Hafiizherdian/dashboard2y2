@@ -20,9 +20,12 @@ import {
 } from 'recharts';
 
 // Types
-// Data-nya sekarang murni Actual vs Actual (dua tahun/periode berbeda), BUKAN
-// Target vs Actual. `previous` = periode/tahun pertama, `current` = periode/
-// tahun kedua. Semua unit (termasuk Omzet) selalu punya dua-duanya.
+// Data murni Actual vs Actual. `previous` = P1, `current` = P2.
+//
+// TANPA PAIRING. Growth mingguan/bulanan dibaca berurutan sepanjang tahun
+// (WoW / MoM): nilai periode ini dibanding periode sebelumnya, dari awal.
+// Kalau satu baris sudah punya previous DAN current (data sejajar dari
+// backend), growth pakai rumus normal (cur - prev) / prev.
 export interface YoYWeekUnitData {
   units_dos: number; units_bks: number; units_slop: number; units_bal: number;
   omzet?: number;
@@ -65,6 +68,8 @@ export interface QuarterlyYoYData {
   weeklyBreakdown?: YoYWeekBreakdown[];
   monthlyBreakdown?: YoYMonthBreakdown[];
 }
+
+type QuarterRow = QuarterlyYoYData & { hasPair: boolean };
 
 type Theme = 'dark' | 'light';
 
@@ -139,8 +144,8 @@ const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'];
 const QUARTER_COLORS: Record<string, string> = {
   Q1: '#3b82f6', Q2: '#10b981', Q3: '#f59e0b', Q4: '#a855f7',
 };
-const PREV_COLOR = '#94a3b8'; // periode/tahun pertama — abu netral
-const CURR_COLOR = '#3b82f6'; // periode/tahun kedua — biru, jadi fokus utama
+const PREV_COLOR = '#94a3b8';
+const CURR_COLOR = '#3b82f6';
 const varColor = (v: number) => v >= 0 ? '#10b981' : '#ef4444';
 
 const UNIT_OPTIONS = [
@@ -194,6 +199,12 @@ function getMonthFromWeek(week: number, year: number): string {
   return months[date.getMonth()];
 }
 
+const unitValues = (x: any, unit: string): { previous: number; current: number } =>
+  (x as any)[unit] || { previous: x.previous, current: x.current };
+
+const growthPct = (prev: number, cur: number): number | null =>
+  prev > 0 ? ((cur - prev) / prev) * 100 : null;
+
 function comparisonState(previous: number, current: number) {
   const hasComparison = previous > 0 || current > 0;
   const isNew  = previous === 0 && current > 0;
@@ -201,20 +212,63 @@ function comparisonState(previous: number, current: number) {
   return { hasComparison, isNew, pct };
 }
 
+// Timeline berurutan (WoW / MoM)
+// - Baris dengan previous & current sekaligus -> growth normal (cur vs prev).
+// - Selain itu -> nilai baris ini vs nilai baris sebelumnya yang ada datanya.
+type TLRow = {
+  item: any; quarter: string;
+  prev: number; cur: number; value: number;
+  growth: number | null; variance: number | null;
+};
+
+function buildTimeline(items: any[], unit: string): TLRow[] {
+  let last: number | null = null;
+  return items.map(item => {
+    const u    = unitValues(item, unit);
+    const prev = u.previous > 0 ? u.previous : 0;
+    const cur  = u.current  > 0 ? u.current  : 0;
+    const value = cur > 0 ? cur : prev;
+    let growth: number | null = null;
+    let variance: number | null = null;
+    if (prev > 0 && cur > 0) {
+      growth = growthPct(prev, cur);
+      variance = cur - prev;
+    } else if (value > 0 && last !== null) {
+      growth = growthPct(last, value);
+      variance = value - last;
+    }
+    if (value > 0) last = value;
+    return { item, quarter: item.quarter, prev, cur, value, growth, variance };
+  });
+}
+
 // GrowthBadge
-// Ganti AchieveBadge: dulu "achievement vs target", sekarang "growth YoY".
+const badgeBase: React.CSSProperties = { padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace' };
+
 function GrowthBadge({ previous, current, theme }: { previous: number; current: number; theme: Theme }) {
   const t = TK[theme];
   const { hasComparison, isNew, pct } = comparisonState(previous, current);
   if (!hasComparison) {
-    return <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', background: t.inputBg, color: t.textMuted, border: `1px solid ${t.inputBorder}` }}>N/A</span>;
+    return <span style={{ ...badgeBase, background: t.inputBg, color: t.textMuted, border: `1px solid ${t.inputBorder}` }}>N/A</span>;
   }
   if (isNew || pct === null) {
-    return <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', background: t.neuBg, color: t.neuText, border: `1px solid ${t.inputBorder}` }}>BARU</span>;
+    return <span style={{ ...badgeBase, background: t.neuBg, color: t.neuText, border: `1px solid ${t.inputBorder}` }}>BARU</span>;
   }
   const pos = pct >= 0;
   return (
-    <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', background: pos ? t.posBg : t.negBg, color: pos ? t.posText : t.negText }}>
+    <span style={{ ...badgeBase, background: pos ? t.posBg : t.negBg, color: pos ? t.posText : t.negText }}>
+      {formatPercentage(pct)}
+    </span>
+  );
+}
+
+// Badge dari persen yang sudah dihitung (untuk timeline)
+function PctBadge({ pct, theme }: { pct: number | null; theme: Theme }) {
+  const t = TK[theme];
+  if (pct === null) return <span style={{ color: t.textFaint, fontSize: 11 }}>—</span>;
+  const pos = pct >= 0;
+  return (
+    <span style={{ ...badgeBase, background: pos ? t.posBg : t.negBg, color: pos ? t.posText : t.negText }}>
       {formatPercentage(pct)}
     </span>
   );
@@ -266,7 +320,7 @@ function ExpandBtn({ onClick, theme }: { onClick: () => void; theme: Theme }) {
 function TableBtn({ onClick, theme, active }: { onClick: () => void; theme: Theme; active?: boolean }) {
   const t = TK[theme];
   return (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, background: active ? `${t.btnText}42` : t.inputBg, border: `1px solid ${active ? t.text : t.text}`, color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0, transition: 'all 0.15s' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 6, background: active ? `${t.btnText}42` : t.inputBg, border: `1px solid ${t.text}`, color: t.text, cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace', flexShrink: 0, transition: 'all 0.15s' }}>
       {active
         ? <svg width={12} height={12} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}><polyline points="1,12 5,7 8,9 11,4 15,2" /></svg>
         : <svg width={12} height={12} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5}><rect x="1" y="1" width="14" height="14" rx="2" /><line x1="1" y1="5.5" x2="15" y2="5.5" /><line x1="1" y1="10.5" x2="15" y2="10.5" /><line x1="5.5" y1="5.5" x2="5.5" y2="15" /></svg>
@@ -277,7 +331,7 @@ function TableBtn({ onClick, theme, active }: { onClick: () => void; theme: Them
 }
 
 // ChartTooltip
-function ChartTooltip({ active, payload, label, labelPrefix, theme, unit, previousLabel, currentLabel }: any) {
+function ChartTooltip({ active, payload, label, labelPrefix, theme, unit }: any) {
   const t = TK[theme as Theme];
   if (!active || !payload?.length) return null;
   const visible = payload.filter((p: any) => p.value != null);
@@ -309,8 +363,8 @@ function ChartTooltip({ active, payload, label, labelPrefix, theme, unit, previo
 }
 
 // WeeklyYoYDetailView
-function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandModal, previousLabel, currentLabel }: {
-  data: QuarterlyYoYData[]; selectedUnit: string; theme: Theme;
+function WeeklyYoYDetailView({ data, fullData, selectedUnit, theme, card, tdBase, expandModal, previousLabel, currentLabel }: {
+  data: QuarterlyYoYData[]; fullData: QuarterlyYoYData[]; selectedUnit: string; theme: Theme;
   card: (extra?: React.CSSProperties) => React.CSSProperties;
   tdBase: React.CSSProperties;
   expandModal: (content: React.ReactNode, title: string) => void;
@@ -328,39 +382,42 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
     tickLine: false as const,
   };
 
-  const allWeekly = useMemo(() =>
-    data.flatMap(q => (q.weeklyBreakdown ?? []).map(w => ({ ...w, quarter: q.quarter }))),
-    [data]
-  );
-  const filteredWeekly = useMemo(() =>
-    selectedQ === 'all' ? allWeekly : allWeekly.filter(w => (w as any).quarter === selectedQ),
-    [allWeekly, selectedQ]
+  // Timeline dihitung dari SEMUA kuartal (urut minggu) supaya growth nyambung dari awal;
+  // filter kuartal hanya menyaring tampilan.
+  const timeline = useMemo(() => {
+    const all = fullData
+      .flatMap(q => (q.weeklyBreakdown ?? []).map(w => ({ ...w, quarter: q.quarter })))
+      .sort((a, b) => a.week - b.week);
+    return buildTimeline(all, selectedUnit);
+  }, [fullData, selectedUnit]);
+
+  const visibleQuarters = useMemo(() => new Set(data.map(q => q.quarter)), [data]);
+
+  const rows = useMemo(
+    () => timeline.filter(r => visibleQuarters.has(r.quarter) && (selectedQ === 'all' || r.quarter === selectedQ)),
+    [timeline, visibleQuarters, selectedQ],
   );
 
-  const weeksWithData = useMemo(() => filteredWeekly.filter(w => w.previous > 0 || w.current > 0), [filteredWeekly]);
-  const growthPcts     = weeksWithData.filter(w => w.previous > 0).map(w => w.variancePercentage);
-  const avgGrowth      = growthPcts.length > 0 ? growthPcts.reduce((s, v) => s + v, 0) / growthPcts.length : 0;
-  const weeksUp   = weeksWithData.filter(w => w.previous > 0 && w.current >= w.previous).length;
-  const weeksDown = weeksWithData.filter(w => w.previous > 0 && w.current <  w.previous).length;
+  const growthRows = rows.filter(r => r.growth !== null);
+  const avgGrowth  = growthRows.length > 0 ? growthRows.reduce((s, r) => s + (r.growth as number), 0) / growthRows.length : 0;
+  const weeksUp    = growthRows.filter(r => (r.growth as number) >= 0).length;
+  const weeksDown  = growthRows.filter(r => (r.growth as number) <  0).length;
 
-  const chartData = filteredWeekly
-    .filter(w => w.previous > 0 || w.current > 0)
-    .map(w => {
-      const ud = (w as any)[selectedUnit] || { previous: w.previous, current: w.current };
-      return {
-        name:        `W${w.week}`,
-        quarter:     (w as any).quarter,
-        previous:    ud.previous > 0 ? ud.previous : null,
-        current:     ud.current  > 0 ? ud.current  : null,
-        growth:      ud.previous > 0 ? ((ud.current - ud.previous) / ud.previous) * 100 : null,
-      };
-    });
+  const chartData = rows
+    .filter(r => r.value > 0)
+    .map(r => ({
+      name:     `W${r.item.week}`,
+      quarter:  r.quarter,
+      previous: r.prev > 0 ? r.prev : null,
+      current:  r.cur  > 0 ? r.cur  : null,
+      growth:   r.growth,
+    }));
 
   const renderChart = (height: number | string) => (
     <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
       <ComposedChart data={chartData} margin={{ top: 6, right: 16, bottom: 4, left: 8 }} barGap={2}>
         <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} />
-        <XAxis dataKey="name" {...axisProps} interval={selectedQ === 'all' ? 3 : 0} />
+        <XAxis dataKey="name" {...axisProps} interval={selectedQ === 'all' ? 4 : 0} />
         <YAxis
           yAxisId="left"
           tickFormatter={yFmt}
@@ -370,10 +427,10 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
           label={{ value: getUnitShortLabel(selectedUnit), angle: -90, position: 'insideLeft', offset: 10, style: { fill: t.axisColor, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace' } }}
         />
         <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v.toFixed(0)}%`} {...axisProps} axisLine={false} />
-        <Tooltip content={<ChartTooltip labelPrefix="Minggu: " theme={theme} unit={selectedUnit} previousLabel={previousLabel} currentLabel={currentLabel} />} />
+        <Tooltip content={<ChartTooltip labelPrefix="Minggu: " theme={theme} unit={selectedUnit} />} />
         <Bar yAxisId="left" dataKey="previous" fill={PREV_COLOR} name={previousLabel} radius={[3,3,0,0]} maxBarSize={22} opacity={0.75} />
         <Bar yAxisId="left" dataKey="current" fill={CURR_COLOR} name={currentLabel} radius={[3,3,0,0]} maxBarSize={22} />
-        <Line yAxisId="right" type="monotone" dataKey="growth" connectNulls={false} stroke="#f87171" strokeWidth={2} dot={{ r: 4, fill: '#f87171', strokeWidth: 0 }} name="Growth %" />
+        <Line yAxisId="right" type="monotone" dataKey="growth" connectNulls={true} stroke="#f87171" strokeWidth={2} dot={{ r: 4, fill: '#f87171', strokeWidth: 0 }} name="Growth %" />
         <ReferenceLine yAxisId="right" y={0} stroke={t.textMuted} strokeDasharray="4 4" strokeWidth={1.5} />
       </ComposedChart>
     </ResponsiveContainer>
@@ -383,8 +440,8 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         {[
-          { label: 'Total Minggu', value: filteredWeekly.length, color: t.text },
-          { label: `Rata-rata Growth (${growthPcts.length}W)`, value: growthPcts.length > 0 ? formatPercentage(avgGrowth) : 'N/A', color: growthPcts.length > 0 ? (avgGrowth >= 0 ? t.posText : t.negText) : t.textMuted },
+          { label: 'Total Minggu', value: rows.length, color: t.text },
+          { label: `Rata-rata Growth (${growthRows.length}W)`, value: growthRows.length > 0 ? formatPercentage(avgGrowth) : 'N/A', color: growthRows.length > 0 ? (avgGrowth >= 0 ? t.posText : t.negText) : t.textMuted },
           { label: 'Minggu Naik',  value: weeksUp,   color: t.posText },
           { label: 'Minggu Turun', value: weeksDown, color: t.negText },
         ].map((s, i) => (
@@ -433,17 +490,18 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {data.filter(q => selectedQ === 'all' || q.quarter === selectedQ).map(quarter => {
-              const wd = quarter.weeklyBreakdown?.filter(w => w.previous > 0) ?? [];
-              const best  = wd.length > 0 ? wd.reduce((m, w) => w.variancePercentage > m.variancePercentage ? w : m) : null;
-              const worst = wd.length > 0 ? wd.reduce((m, w) => w.variancePercentage < m.variancePercentage ? w : m) : null;
-              if (!quarter.weeklyBreakdown?.length) return null;
+              const qAll  = rows.filter(r => r.quarter === quarter.quarter);
+              if (!qAll.length) return null;
+              const qRows = qAll.filter(r => r.growth !== null);
+              const best  = qRows.length > 0 ? qRows.reduce((m, r) => (r.growth as number) > (m.growth as number) ? r : m) : null;
+              const worst = qRows.length > 0 ? qRows.reduce((m, r) => (r.growth as number) < (m.growth as number) ? r : m) : null;
               return (
                 <div key={quarter.quarter}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${t.border}` }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{quarter.quarter}</span>
                     <div style={{ display: 'flex', gap: 12, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}>
                       {best
-                        ? <><span style={{ color: t.posText }}>Week Tertinggi: W{best.week} ({formatPercentage(best.variancePercentage)})</span>{worst && <span style={{ color: t.negText }}>Week Terendah: W{worst.week} ({formatPercentage(worst.variancePercentage)})</span>}</>
+                        ? <><span style={{ color: t.posText }}>Week Tertinggi: W{best.item.week} ({formatPercentage(best.growth as number)})</span>{worst && <span style={{ color: t.negText }}>Week Terendah: W{worst.item.week} ({formatPercentage(worst.growth as number)})</span>}</>
                         : <span style={{ color: t.textMuted }}>Belum ada pembanding</span>
                       }
                     </div>
@@ -453,25 +511,23 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr>
-                            {['Week', `${previousLabel} (${getUnitShortLabel(selectedUnit)})`, `${currentLabel} (${getUnitShortLabel(selectedUnit)})`, 'Variance',  'Growth'].map((h, i) => (
+                            {['Week', `${previousLabel} (${getUnitShortLabel(selectedUnit)})`, `${currentLabel} (${getUnitShortLabel(selectedUnit)})`, 'Variance', 'Growth'].map((h, i) => (
                               <th key={h} style={{ padding: '8px 12px', textAlign: i === 0 ? 'left' : 'right', fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, color: t.tableHeadText, background: t.tableHeadBg, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {quarter.weeklyBreakdown.map((w, idx) => {
-                            const ud = (w as any)[selectedUnit] || { previous: w.previous, current: w.current };
-                            const hasCmp = ud.previous > 0;
+                          {qAll.map((r, idx) => {
+                            const hasCmp = r.growth !== null && r.variance !== null;
                             return (
-                              <tr key={w.week} style={{ background: idx % 2 !== 0 ? t.rowAlt : 'transparent' }}
+                              <tr key={r.item.week} style={{ background: idx % 2 !== 0 ? t.rowAlt : 'transparent' }}
                                 onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
                                 onMouseLeave={e => (e.currentTarget.style.background = idx % 2 !== 0 ? t.rowAlt : 'transparent')}>
-                                <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontSize: 11 }}>W{w.week}</td>
-                                <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ud.previous > 0 ? t.text : t.textFaint }}>{ud.previous > 0 ? formatUnitValue(ud.previous, selectedUnit) : '—'}</td>
-                                <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{ud.current > 0 ? formatUnitValue(ud.current, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
-                                <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(ud.current - ud.previous) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? `${ud.current - ud.previous >= 0 ? '+' : ''}${formatUnitValue(ud.current - ud.previous, selectedUnit)}` : '—'}</td>
-                                {/* <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(((ud.current - ud.previous) / ud.previous) * 100) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? formatPercentage(((ud.current - ud.previous) / ud.previous) * 100) : '—'}</td> */}
-                                <td style={{ ...tdBase, textAlign: 'right' }}><GrowthBadge previous={ud.previous} current={ud.current} theme={theme} /></td>
+                                <td style={{ ...tdBase, color: t.text, fontWeight: 600, fontSize: 11 }}>W{r.item.week}</td>
+                                <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: r.prev > 0 ? t.text : t.textFaint }}>{r.prev > 0 ? formatUnitValue(r.prev, selectedUnit) : '—'}</td>
+                                <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{r.cur > 0 ? formatUnitValue(r.cur, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
+                                <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(r.variance as number) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? `${(r.variance as number) >= 0 ? '+' : ''}${formatUnitValue(r.variance as number, selectedUnit)}` : '—'}</td>
+                                <td style={{ ...tdBase, textAlign: 'right' }}><PctBadge pct={r.growth} theme={theme} /></td>
                               </tr>
                             );
                           })}
@@ -490,8 +546,8 @@ function WeeklyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandMo
 }
 
 // MonthlyYoYDetailView
-function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandModal, previousLabel, currentLabel }: {
-  data: QuarterlyYoYData[]; selectedUnit: string; theme: Theme;
+function MonthlyYoYDetailView({ data, fullData, selectedUnit, theme, card, tdBase, expandModal, previousLabel, currentLabel }: {
+  data: QuarterlyYoYData[]; fullData: QuarterlyYoYData[]; selectedUnit: string; theme: Theme;
   card: (extra?: React.CSSProperties) => React.CSSProperties;
   tdBase: React.CSSProperties;
   expandModal: (content: React.ReactNode, title: string) => void;
@@ -509,29 +565,31 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
     tickLine: false as const,
   };
 
-  const allMonthly = useMemo(() =>
-    data.flatMap(q => (q.monthlyBreakdown ?? []).map(m => ({ ...m, quarter: q.quarter }))),
-    [data]
-  );
-  const filteredMonthly = useMemo(() =>
-    selectedQ === 'all' ? allMonthly : allMonthly.filter(m => (m as any).quarter === selectedQ),
-    [allMonthly, selectedQ]
+  const timeline = useMemo(() => {
+    const all = fullData.flatMap(q => (q.monthlyBreakdown ?? []).map(m => ({ ...m, quarter: q.quarter })));
+    return buildTimeline(all, selectedUnit);
+  }, [fullData, selectedUnit]);
+
+  const visibleQuarters = useMemo(() => new Set(data.map(q => q.quarter)), [data]);
+
+  const rows = useMemo(
+    () => timeline.filter(r => visibleQuarters.has(r.quarter) && (selectedQ === 'all' || r.quarter === selectedQ)),
+    [timeline, visibleQuarters, selectedQ],
   );
 
-  const monthsWithData = useMemo(() => filteredMonthly.filter(m => m.previous > 0 && m.current >= 0), [filteredMonthly]);
-  const avgGrowth = monthsWithData.length > 0 ? monthsWithData.reduce((s, m) => s + m.variancePercentage, 0) / monthsWithData.length : 0;
-  const monthsUp  = monthsWithData.filter(m => m.current >= m.previous).length;
+  const growthRows = rows.filter(r => r.growth !== null);
+  const avgGrowth  = growthRows.length > 0 ? growthRows.reduce((s, r) => s + (r.growth as number), 0) / growthRows.length : 0;
+  const monthsUp   = growthRows.filter(r => (r.growth as number) >= 0).length;
 
-  const chartData = filteredMonthly.filter(m => m.previous > 0 || m.current > 0).map(m => {
-    const ud = (m as any)[selectedUnit] || { previous: m.previous, current: m.current };
-    return {
-      name:     m.month,
-      quarter:  (m as any).quarter,
-      previous: ud.previous > 0 ? ud.previous : null,
-      current:  ud.current  > 0 ? ud.current  : null,
-      growth:   ud.previous > 0 ? ((ud.current - ud.previous) / ud.previous) * 100 : null,
-    };
-  });
+  const chartData = rows
+    .filter(r => r.value > 0)
+    .map(r => ({
+      name:     r.item.month,
+      quarter:  r.quarter,
+      previous: r.prev > 0 ? r.prev : null,
+      current:  r.cur  > 0 ? r.cur  : null,
+      growth:   r.growth,
+    }));
 
   const renderBarLine = (height: number | string) => (
     <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
@@ -547,10 +605,10 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
           label={{ value: getUnitShortLabel(selectedUnit), angle: -90, position: 'insideLeft', offset: 10, style: { fill: t.axisColor, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace' } }}
         />
         <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v.toFixed(0)}%`} {...axisProps} axisLine={false} />
-        <Tooltip content={<ChartTooltip labelPrefix="Bulan: " theme={theme} unit={selectedUnit} previousLabel={previousLabel} currentLabel={currentLabel} />} />
+        <Tooltip content={<ChartTooltip labelPrefix="Bulan: " theme={theme} unit={selectedUnit} />} />
         <Bar yAxisId="left" dataKey="previous" fill={PREV_COLOR} name={previousLabel} radius={[4,4,0,0]} maxBarSize={26} opacity={0.75} />
         <Bar yAxisId="left" dataKey="current" fill={CURR_COLOR} name={currentLabel} radius={[4,4,0,0]} maxBarSize={26} />
-        <Line yAxisId="right" type="monotone" dataKey="growth" connectNulls={false} stroke="#f87171" strokeWidth={2.5} dot={{ r: 4, fill: '#f87171', strokeWidth: 0 }} name="Growth %" />
+        <Line yAxisId="right" type="monotone" dataKey="growth" connectNulls={true} stroke="#f87171" strokeWidth={2.5} dot={{ r: 4, fill: '#f87171', strokeWidth: 0 }} name="Growth %" />
         <ReferenceLine yAxisId="right" y={0} stroke={t.text} strokeDasharray="4 4" strokeWidth={1.5} />
       </ComposedChart>
     </ResponsiveContainer>
@@ -560,10 +618,10 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
         {[
-          { label: 'Total Bulan', value: filteredMonthly.length, color: t.text },
-          { label: `Rata-rata Growth (${monthsWithData.length}B)`, value: monthsWithData.length > 0 ? formatPercentage(avgGrowth) : 'N/A', color: monthsWithData.length > 0 ? (avgGrowth >= 0 ? t.posText : t.negText) : t.textMuted },
+          { label: 'Total Bulan', value: rows.length, color: t.text },
+          { label: `Rata-rata Growth (${growthRows.length}B)`, value: growthRows.length > 0 ? formatPercentage(avgGrowth) : 'N/A', color: growthRows.length > 0 ? (avgGrowth >= 0 ? t.posText : t.negText) : t.textMuted },
           { label: 'Bulan Naik',  value: monthsUp, color: t.posText },
-          { label: 'Bulan Turun', value: monthsWithData.length - monthsUp, color: t.negText },
+          { label: 'Bulan Turun', value: growthRows.length - monthsUp, color: t.negText },
         ].map((s, i) => (
           <div key={i} style={{ padding: '10px 14px', borderRadius: 10, background: t.qCardBg, border: `1px solid ${t.borderCard}`, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: 10, color: t.text, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{s.label}</span>
@@ -578,19 +636,19 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
           Growth per Bulan · {getUnitLabel(selectedUnit)}
         </span>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-          {filteredMonthly.map((m, i) => {
-            const hasCmp = m.previous > 0;
-            const hit    = hasCmp && m.current >= m.previous;
-            const pct    = hasCmp ? Math.min(100, Math.max(0, 50 + m.variancePercentage / 2)) : 0;
+          {rows.map((r, i) => {
+            const hasCmp = r.growth !== null;
+            const hit    = hasCmp && (r.growth as number) >= 0;
+            const pct    = hasCmp ? Math.min(100, Math.max(0, 50 + (r.growth as number) / 2)) : 0;
             return (
               <div key={i} style={{ padding: '10px 12px', borderRadius: 10, background: !hasCmp ? t.inputBg : (hit ? t.posBg : t.negBg), border: `1px solid ${!hasCmp ? t.inputBorder : (hit ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)')}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono, monospace' }}>{m.month}</span>
-                  <span style={{ fontSize: 9, color: QUARTER_COLORS[(m as any).quarter], fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700 }}>{(m as any).quarter}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono, monospace' }}>{r.item.month}</span>
+                  <span style={{ fontSize: 9, color: QUARTER_COLORS[r.quarter], fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700 }}>{r.quarter}</span>
                 </div>
                 {hasCmp
-                  ? <div style={{ fontSize: 16, fontWeight: 800, color: hit ? t.posText : t.negText, fontFamily: 'IBM Plex Mono, monospace', lineHeight: 1 }}>{formatPercentage(m.variancePercentage)}</div>
-                  : <div style={{ fontSize: 13, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', lineHeight: 1 }}>{m.current > 0 ? 'BARU' : 'N/A'}</div>
+                  ? <div style={{ fontSize: 16, fontWeight: 800, color: hit ? t.posText : t.negText, fontFamily: 'IBM Plex Mono, monospace', lineHeight: 1 }}>{formatPercentage(r.growth as number)}</div>
+                  : <div style={{ fontSize: 13, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', lineHeight: 1 }}>{r.value > 0 ? 'AWAL' : 'N/A'}</div>
                 }
                 {hasCmp && (
                   <div style={{ height: 4, background: 'rgba(0,0,0,0.1)', borderRadius: 2, overflow: 'hidden' }}>
@@ -598,7 +656,7 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: t.text, fontFamily: 'IBM Plex Mono, monospace' }}>
-                  {m.current > 0 ? `${formatUnitValue(m.current, selectedUnit)} ${getUnitShortLabel(selectedUnit)}` : '—'}
+                  {r.value > 0 ? `${formatUnitValue(r.value, selectedUnit)} ${getUnitShortLabel(selectedUnit)}` : '—'}
                 </div>
               </div>
             );
@@ -633,7 +691,7 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
               <span style={{ width: 10, height: 10, borderRadius: 3, background: CURR_COLOR }} />{currentLabel}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#f87171', fontFamily: 'IBM Plex Sans, sans-serif' }}>
-              <span style={{ width: 18, height: 2, background: '#f87171', borderRadius: 2 }} />Growth %
+              <span style={{ width: 18, height: 2, background: '#f87171', borderRadius: 2 }} />Growth % (vs bulan sebelumnya)
             </span>
           </div>
         )}
@@ -646,26 +704,24 @@ function MonthlyYoYDetailView({ data, selectedUnit, theme, card, tdBase, expandM
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    {['Quarter', 'Month', `${previousLabel} (${getUnitShortLabel(selectedUnit)})`, `${currentLabel} (${getUnitShortLabel(selectedUnit)})`, 'Variance',  'Growth'].map((h, i) => (
+                    {['Quarter', 'Month', `${previousLabel} (${getUnitShortLabel(selectedUnit)})`, `${currentLabel} (${getUnitShortLabel(selectedUnit)})`, 'Variance', 'Growth'].map((h, i) => (
                       <th key={h} style={{ padding: '8px 12px', textAlign: i <= 1 ? 'left' : 'right', fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, color: t.tableHeadText, background: t.tableHeadBg, borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMonthly.map((m, idx) => {
-                    const ud = (m as any)[selectedUnit] || { previous: m.previous, current: m.current };
-                    const hasCmp = ud.previous > 0;
+                  {rows.map((r, idx) => {
+                    const hasCmp = r.growth !== null && r.variance !== null;
                     return (
-                      <tr key={`${(m as any).quarter}-${m.month}`} style={{ background: idx % 2 !== 0 ? t.rowAlt : 'transparent' }}
+                      <tr key={`${r.quarter}-${r.item.month}`} style={{ background: idx % 2 !== 0 ? t.rowAlt : 'transparent' }}
                         onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
                         onMouseLeave={e => (e.currentTarget.style.background = idx % 2 !== 0 ? t.rowAlt : 'transparent')}>
-                        <td style={{ padding: '11px 18px', fontSize: 11, fontWeight: 700, color: QUARTER_COLORS[(m as any).quarter] ?? t.text, borderBottom: `1px solid ${t.border}` }}>{(m as any).quarter}</td>
-                        <td style={{ padding: '11px 18px', fontSize: 11, color: t.text, fontWeight: 600, borderBottom: `1px solid ${t.border}` }}>{m.month}</td>
-                        <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: ud.previous > 0 ? t.text : t.textFaint }}>{ud.previous > 0 ? formatUnitValue(ud.previous, selectedUnit) : '—'}</td>
-                        <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{ud.current > 0 ? formatUnitValue(ud.current, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
-                        <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(ud.current - ud.previous) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? `${ud.current - ud.previous >= 0 ? '+' : ''}${formatUnitValue(ud.current - ud.previous, selectedUnit)}` : '—'}</td>
-                        {/* <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(((ud.current - ud.previous) / ud.previous) * 100) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? formatPercentage(((ud.current - ud.previous) / ud.previous) * 100) : '—'}</td> */}
-                        <td style={{ ...tdBase, textAlign: 'right' }}><GrowthBadge previous={ud.previous} current={ud.current} theme={theme} /></td>
+                        <td style={{ padding: '11px 18px', fontSize: 11, fontWeight: 700, color: QUARTER_COLORS[r.quarter] ?? t.text, borderBottom: `1px solid ${t.border}` }}>{r.quarter}</td>
+                        <td style={{ padding: '11px 18px', fontSize: 11, color: t.text, fontWeight: 600, borderBottom: `1px solid ${t.border}` }}>{r.item.month}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', fontSize: 11, color: r.prev > 0 ? t.text : t.textFaint }}>{r.prev > 0 ? formatUnitValue(r.prev, selectedUnit) : '—'}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700, fontSize: 11 }}>{r.cur > 0 ? formatUnitValue(r.cur, selectedUnit) : <span style={{ color: t.textFaint }}>—</span>}</td>
+                        <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(r.variance as number) : t.textFaint, fontWeight: 700, fontSize: 11 }}>{hasCmp ? `${(r.variance as number) >= 0 ? '+' : ''}${formatUnitValue(r.variance as number, selectedUnit)}` : '—'}</td>
+                        <td style={{ ...tdBase, textAlign: 'right' }}><PctBadge pct={r.growth} theme={theme} /></td>
                       </tr>
                     );
                   })}
@@ -684,7 +740,7 @@ type OverviewSortKey = 'quarter' | 'previous' | 'current' | 'variance' | 'varian
 
 function OverviewYoYTableView({ type, data, selectedUnit, theme, previousLabel, currentLabel }: {
   type: 'bar' | 'pie';
-  data: QuarterlyYoYData[];
+  data: QuarterRow[];
   selectedUnit: string;
   theme: Theme;
   previousLabel: string; currentLabel: string;
@@ -700,7 +756,7 @@ function OverviewYoYTableView({ type, data, selectedUnit, theme, previousLabel, 
     current: q.current ?? 0,
     variance: q.variance ?? 0,
     variancePercentage: q.variancePercentage ?? 0,
-    hasComparison: (q.previous ?? 0) > 0,
+    hasComparison: q.hasPair,
     percentOfTotal: totalCurrent > 0 ? (q.current / totalCurrent) * 100 : 0,
   })), [data, totalCurrent]);
 
@@ -762,7 +818,9 @@ function OverviewYoYTableView({ type, data, selectedUnit, theme, previousLabel, 
                     <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', color: r.previous > 0 ? t.text : t.textFaint, borderBottom: `1px solid ${t.border}` }}>{r.previous > 0 ? formatUnitValue(r.previous, selectedUnit) : '—'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', color: t.text, fontWeight: 700, borderBottom: `1px solid ${t.border}` }}>{r.current > 0 ? formatUnitValue(r.current, selectedUnit) : '—'}</td>
                     <td style={{ padding: '10px 14px', textAlign: 'right', fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, color: r.hasComparison ? varColor(r.variance) : t.textFaint, borderBottom: `1px solid ${t.border}` }}>{r.hasComparison ? `${r.variance >= 0 ? '+' : ''}${formatUnitValue(r.variance, selectedUnit)}` : '—'}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', borderBottom: `1px solid ${t.border}` }}><GrowthBadge previous={r.previous} current={r.current} theme={theme} /></td>
+                    <td style={{ padding: '10px 14px', textAlign: 'right', borderBottom: `1px solid ${t.border}` }}>
+                      <GrowthBadge previous={r.previous} current={r.current} theme={theme} />
+                    </td>
                   </>
                 ) : (
                   <>
@@ -785,13 +843,16 @@ interface QuarterlyYoYProps {
   theme?: Theme;
   selectedUnit?: string;
   onUnitChange?: (unit: string) => void;
-  previousYearLabel?: string | number; // default: 'Tahun Lalu'
-  currentYearLabel?: string | number;  // default: 'Tahun Ini'
+  previousYearLabel?: string | number;
+  currentYearLabel?: string | number;
+  year?: number;       // tahun, untuk pemetaan minggu ke bulan
+  weekShift?: number;  // deprecated: tidak dipakai lagi (pairing dihapus)
 }
 
 export default function QuarterlyYoYComponent({
   data, theme: themeProp, selectedUnit: propSelectedUnit, onUnitChange,
   previousYearLabel = 'Tahun Lalu', currentYearLabel = 'Tahun Ini',
+  year,
 }: QuarterlyYoYProps) {
   const theme: Theme = themeProp ?? 'light';
   const t = TK[theme];
@@ -810,6 +871,8 @@ export default function QuarterlyYoYComponent({
   const [modalContent, setModalContent]         = useState<React.ReactNode>(null);
   const [modalTitle, setModalTitle]             = useState('');
   const [overviewTableView, setOverviewTableView] = useState({ bar: false, pie: false });
+
+  const yearForMonth = year ?? new Date().getFullYear();
 
   const openModal  = (content: React.ReactNode, title: string) => { setModalContent(content); setModalTitle(title); };
   const closeModal = () => { setModalContent(null); setModalTitle(''); };
@@ -832,7 +895,6 @@ export default function QuarterlyYoYComponent({
     return Array.from(prods).sort();
   }, [data, selectedCategory]);
 
-  // reset produk kalau kategori berubah dan produk lama sudah tidak ada di daftar
   useEffect(() => {
     if (selectedProduct !== 'all' && !availableProducts.includes(selectedProduct)) {
       setSelectedProduct('all');
@@ -841,105 +903,106 @@ export default function QuarterlyYoYComponent({
 
   const quarterOptions = useMemo(() => Array.from(new Set(data.map(q => q.quarter))).sort(), [data]);
 
-  // Rebuild quarter/weekly/monthly berdasar Unit + Kategori + Kuartal terpilih.
-  // Karena dua-duanya "actual" (previous & current), tidak perlu ratio-hack
-  // seperti versi Target vs Actual — tinggal jumlahkan langsung dari
-  // weeklyPrevious/weeklyCurrent per detail produk.
-  const filteredData = useMemo(() => {
-    return data
-      .filter(q => selectedQuarter === 'all' || q.quarter === selectedQuarter)
-      .map(q => {
-        const filteredDetails = (q.details ?? []).filter((d: any) => {
-          if (selectedCategory !== 'all' && d.productCategory !== selectedCategory) return false;
-          if (selectedProduct  !== 'all' && d.product !== selectedProduct) return false;
-          return true;
-        });
+  // Rebuild quarter/weekly/monthly berdasar Unit + Kategori + Brand (SEMUA kuartal).
+  const filteredAll = useMemo(() => {
+    return data.map(q => {
+      const filteredDetails = (q.details ?? []).filter((d: any) => {
+        if (selectedCategory !== 'all' && d.productCategory !== selectedCategory) return false;
+        if (selectedProduct  !== 'all' && d.product !== selectedProduct) return false;
+        return true;
+      });
 
-        if (!filteredDetails.length) {
-          return {
-            ...q,
-            details: [], previous: 0, current: 0, variance: 0, variancePercentage: 0,
-            weeklyBreakdown:  (q.weeklyBreakdown ?? []).map((wb: any) => ({ ...wb, previous:0, current:0, variance:0, variancePercentage:0, units_dos:{previous:0,current:0}, units_bks:{previous:0,current:0}, units_slop:{previous:0,current:0}, units_bal:{previous:0,current:0} })),
-            monthlyBreakdown: (q.monthlyBreakdown ?? []).map((mb: any) => ({ ...mb, previous:0, current:0, variance:0, variancePercentage:0, units_dos:{previous:0,current:0}, units_bks:{previous:0,current:0}, units_slop:{previous:0,current:0}, units_bal:{previous:0,current:0} })),
-          };
-        }
-
-        let pv = 0, cv = 0;
-        filteredDetails.forEach((d: any) => {
-          pv += getDetailValue(d, selectedUnit, 'previous');
-          cv += getDetailValue(d, selectedUnit, 'current');
-        });
-        const vr = cv - pv;
-
-        const newWeeklyBreakdown = (q.weeklyBreakdown ?? []).map((wb: any) => {
-          const week = wb.week;
-          let dosP = 0, bksP = 0, slopP = 0, balP = 0, omzP = 0;
-          let dosC = 0, bksC = 0, slopC = 0, balC = 0, omzC = 0;
-          filteredDetails.forEach((d: any) => {
-            const wp = d.weeklyPrevious?.[week];
-            if (wp) { dosP += wp.units_dos ?? 0; bksP += wp.units_bks ?? 0; slopP += wp.units_slop ?? 0; balP += wp.units_bal ?? 0; omzP += wp.omzet ?? 0; }
-            const wc = d.weeklyCurrent?.[week];
-            if (wc) { dosC += wc.units_dos ?? 0; bksC += wc.units_bks ?? 0; slopC += wc.units_slop ?? 0; balC += wc.units_bal ?? 0; omzC += wc.omzet ?? 0; }
-          });
-
-          const selP = selectedUnit === 'omzet' ? omzP : selectedUnit === 'units_bks' ? bksP : selectedUnit === 'units_slop' ? slopP : selectedUnit === 'units_bal' ? balP : dosP;
-          const selC = selectedUnit === 'omzet' ? omzC : selectedUnit === 'units_bks' ? bksC : selectedUnit === 'units_slop' ? slopC : selectedUnit === 'units_bal' ? balC : dosC;
-          const selVar    = selC - selP;
-          const selVarPct = selP > 0 ? (selVar / selP) * 100 : 0;
-          return {
-            ...wb,
-            previous: parseFloat(selP.toFixed(2)), current: parseFloat(selC.toFixed(2)),
-            variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
-            units_dos: { previous: dosP, current: dosC }, units_bks: { previous: bksP, current: bksC },
-            units_slop: { previous: slopP, current: slopC }, units_bal: { previous: balP, current: balC },
-          };
-        });
-
-        const yearForMonth = new Date().getFullYear();
-        const newMonthlyBreakdown = (q.monthlyBreakdown ?? []).map((mb: any) => {
-          const monthWeeks = newWeeklyBreakdown.filter((wb: any) => getMonthFromWeek(wb.week, yearForMonth) === mb.month);
-          const dosP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.previous  ?? 0), 0);
-          const bksP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.previous  ?? 0), 0);
-          const slopP = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.previous ?? 0), 0);
-          const balP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.previous  ?? 0), 0);
-          const dosC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.current  ?? 0), 0);
-          const bksC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.current  ?? 0), 0);
-          const slopC = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.current ?? 0), 0);
-          const balC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.current  ?? 0), 0);
-          const omzP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.previous ?? 0), 0);
-          const omzC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.current ?? 0), 0);
-
-          const selP = selectedUnit === 'omzet' ? omzP : selectedUnit === 'units_bks' ? bksP : selectedUnit === 'units_slop' ? slopP : selectedUnit === 'units_bal' ? balP : dosP;
-          const selC = selectedUnit === 'omzet' ? omzC : selectedUnit === 'units_bks' ? bksC : selectedUnit === 'units_slop' ? slopC : selectedUnit === 'units_bal' ? balC : dosC;
-          const selVar    = selC - selP;
-          const selVarPct = selP > 0 ? (selVar / selP) * 100 : 0;
-          return {
-            ...mb,
-            previous: parseFloat(selP.toFixed(2)), current: parseFloat(selC.toFixed(2)),
-            variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
-            units_dos: { previous: parseFloat(dosP.toFixed(2)), current: parseFloat(dosC.toFixed(2)) },
-            units_bks: { previous: parseFloat(bksP.toFixed(2)), current: parseFloat(bksC.toFixed(2)) },
-            units_slop: { previous: parseFloat(slopP.toFixed(2)), current: parseFloat(slopC.toFixed(2)) },
-            units_bal: { previous: parseFloat(balP.toFixed(2)), current: parseFloat(balC.toFixed(2)) },
-          };
-        });
-
+      if (!filteredDetails.length) {
         return {
-          ...q, details: filteredDetails,
-          previous: Math.round(pv * 100) / 100, current: Math.round(cv * 100) / 100,
-          variance: Math.round(vr * 100) / 100,
-          variancePercentage: Math.round(pv > 0 ? (vr / pv) * 100 * 10 : 0) / 10,
-          weeklyBreakdown: newWeeklyBreakdown, monthlyBreakdown: newMonthlyBreakdown,
+          ...q,
+          details: [], previous: 0, current: 0, variance: 0, variancePercentage: 0,
+          weeklyBreakdown:  (q.weeklyBreakdown ?? []).map((wb: any) => ({ ...wb, previous:0, current:0, variance:0, variancePercentage:0, units_dos:{previous:0,current:0}, units_bks:{previous:0,current:0}, units_slop:{previous:0,current:0}, units_bal:{previous:0,current:0} })),
+          monthlyBreakdown: (q.monthlyBreakdown ?? []).map((mb: any) => ({ ...mb, previous:0, current:0, variance:0, variancePercentage:0, units_dos:{previous:0,current:0}, units_bks:{previous:0,current:0}, units_slop:{previous:0,current:0}, units_bal:{previous:0,current:0} })),
+        };
+      }
+
+      let pv = 0, cv = 0;
+      filteredDetails.forEach((d: any) => {
+        pv += getDetailValue(d, selectedUnit, 'previous');
+        cv += getDetailValue(d, selectedUnit, 'current');
+      });
+      const vr = cv - pv;
+
+      const newWeeklyBreakdown = (q.weeklyBreakdown ?? []).map((wb: any) => {
+        const week = wb.week;
+        let dosP = 0, bksP = 0, slopP = 0, balP = 0, omzP = 0;
+        let dosC = 0, bksC = 0, slopC = 0, balC = 0, omzC = 0;
+        filteredDetails.forEach((d: any) => {
+          const wp = d.weeklyPrevious?.[week];
+          if (wp) { dosP += wp.units_dos ?? 0; bksP += wp.units_bks ?? 0; slopP += wp.units_slop ?? 0; balP += wp.units_bal ?? 0; omzP += wp.omzet ?? 0; }
+          const wc = d.weeklyCurrent?.[week];
+          if (wc) { dosC += wc.units_dos ?? 0; bksC += wc.units_bks ?? 0; slopC += wc.units_slop ?? 0; balC += wc.units_bal ?? 0; omzC += wc.omzet ?? 0; }
+        });
+
+        const selP = selectedUnit === 'omzet' ? omzP : selectedUnit === 'units_bks' ? bksP : selectedUnit === 'units_slop' ? slopP : selectedUnit === 'units_bal' ? balP : dosP;
+        const selC = selectedUnit === 'omzet' ? omzC : selectedUnit === 'units_bks' ? bksC : selectedUnit === 'units_slop' ? slopC : selectedUnit === 'units_bal' ? balC : dosC;
+        const selVar    = selC - selP;
+        const selVarPct = selP > 0 ? (selVar / selP) * 100 : 0;
+        return {
+          ...wb,
+          previous: parseFloat(selP.toFixed(2)), current: parseFloat(selC.toFixed(2)),
+          variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
+          units_dos: { previous: dosP, current: dosC }, units_bks: { previous: bksP, current: bksC },
+          units_slop: { previous: slopP, current: slopC }, units_bal: { previous: balP, current: balC },
         };
       });
-  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedQuarter]);
 
-  const performanceData = filteredData.map(q => ({ quarter: q.quarter, previous: q.previous, current: q.current, growth: q.previous > 0 ? ((q.current - q.previous) / q.previous) * 100 : null }));
+      const newMonthlyBreakdown = (q.monthlyBreakdown ?? []).map((mb: any) => {
+        const monthWeeks = newWeeklyBreakdown.filter((wb: any) => getMonthFromWeek(wb.week, yearForMonth) === mb.month);
+        const dosP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.previous  ?? 0), 0);
+        const bksP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.previous  ?? 0), 0);
+        const slopP = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.previous ?? 0), 0);
+        const balP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.previous  ?? 0), 0);
+        const dosC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.current  ?? 0), 0);
+        const bksC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.current  ?? 0), 0);
+        const slopC = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.current ?? 0), 0);
+        const balC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.current  ?? 0), 0);
+        const omzP  = monthWeeks.reduce((s: number, wb: any) => s + (wb.previous ?? 0), 0);
+        const omzC  = monthWeeks.reduce((s: number, wb: any) => s + (wb.current ?? 0), 0);
+
+        const selP = selectedUnit === 'omzet' ? omzP : selectedUnit === 'units_bks' ? bksP : selectedUnit === 'units_slop' ? slopP : selectedUnit === 'units_bal' ? balP : dosP;
+        const selC = selectedUnit === 'omzet' ? omzC : selectedUnit === 'units_bks' ? bksC : selectedUnit === 'units_slop' ? slopC : selectedUnit === 'units_bal' ? balC : dosC;
+        const selVar    = selC - selP;
+        const selVarPct = selP > 0 ? (selVar / selP) * 100 : 0;
+        return {
+          ...mb,
+          previous: parseFloat(selP.toFixed(2)), current: parseFloat(selC.toFixed(2)),
+          variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
+          units_dos: { previous: parseFloat(dosP.toFixed(2)), current: parseFloat(dosC.toFixed(2)) },
+          units_bks: { previous: parseFloat(bksP.toFixed(2)), current: parseFloat(bksC.toFixed(2)) },
+          units_slop: { previous: parseFloat(slopP.toFixed(2)), current: parseFloat(slopC.toFixed(2)) },
+          units_bal: { previous: parseFloat(balP.toFixed(2)), current: parseFloat(balC.toFixed(2)) },
+        };
+      });
+
+      return {
+        ...q, details: filteredDetails,
+        previous: Math.round(pv * 100) / 100, current: Math.round(cv * 100) / 100,
+        variance: Math.round(vr * 100) / 100,
+        variancePercentage: Math.round(pv > 0 ? (vr / pv) * 100 * 10 : 0) / 10,
+        weeklyBreakdown: newWeeklyBreakdown, monthlyBreakdown: newMonthlyBreakdown,
+      };
+    });
+  }, [data, selectedUnit, selectedCategory, selectedProduct, yearForMonth]);
+
+  const filteredData = useMemo(
+    () => filteredAll.filter(q => selectedQuarter === 'all' || q.quarter === selectedQuarter),
+    [filteredAll, selectedQuarter],
+  );
+
+  const quarterRows: QuarterRow[] = useMemo(
+    () => filteredData.map((q: any) => ({ ...q, hasPair: q.previous > 0 })),
+    [filteredData],
+  );
+
+  const performanceData = filteredData.map(q => ({ quarter: q.quarter, previous: q.previous, current: q.current }));
   const pieData         = filteredData.map(q => ({ name: q.quarter, value: q.current }));
-  const quartersWithCmp = filteredData.filter(q => q.previous > 0);
-  const avgGrowth        = quartersWithCmp.length > 0 ? quartersWithCmp.reduce((s, q) => s + ((q.current - q.previous) / q.previous) * 100, 0) / quartersWithCmp.length : 0;
-  const bestQ            = filteredData.length > 0 ? filteredData.reduce((m, q) => q.current > m.current ? q : m) : null;
-  const yTickFmt          = makeYFmt(selectedUnit);
+  const yTickFmt        = makeYFmt(selectedUnit);
 
   const axisProps = {
     tick: { fill: t.axisColor, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' },
@@ -961,7 +1024,7 @@ export default function QuarterlyYoYComponent({
           <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} />
           <XAxis dataKey="quarter" {...axisProps} />
           <YAxis tickFormatter={yTickFmt} {...axisProps} axisLine={false} width={selectedUnit === 'omzet' ? 84 : 72} label={{ value: getUnitShortLabel(selectedUnit), angle: -90, position: 'insideLeft', offset: 10, style: { fill: t.axisColor, fontSize: 9, fontFamily: 'IBM Plex Mono, monospace' } }} />
-          <Tooltip content={<ChartTooltip labelPrefix="Quarter: " theme={theme} unit={selectedUnit} previousLabel={previousLabel} currentLabel={currentLabel} />} />
+          <Tooltip content={<ChartTooltip labelPrefix="Quarter: " theme={theme} unit={selectedUnit} />} />
           {withLegend && <Legend wrapperStyle={{ fontSize: 12, color: t.textSub, paddingTop: 12 }} />}
           <Bar dataKey="previous" fill={PREV_COLOR} name={previousLabel} radius={[3,3,0,0]} maxBarSize={40} opacity={0.75} />
           <Bar dataKey="current" fill={CURR_COLOR} name={currentLabel} radius={[3,3,0,0]} maxBarSize={40} />
@@ -977,7 +1040,7 @@ export default function QuarterlyYoYComponent({
           <Pie data={pieData} cx="50%" cy="50%" labelLine={false} label={({ name, percent }: any) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} outerRadius={outerR} dataKey="value">
             {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
           </Pie>
-          <Tooltip content={<ChartTooltip theme={theme} unit={selectedUnit} previousLabel={previousLabel} currentLabel={currentLabel} />} />
+          <Tooltip content={<ChartTooltip theme={theme} unit={selectedUnit} />} />
           {withLegend && <Legend wrapperStyle={{ fontSize: 12, color: t.textSub, paddingTop: 12 }} formatter={(v: string) => <span style={{ color: t.textSub }}>{v}</span>} />}
         </RechartsPieChart>
       </ResponsiveContainer>
@@ -1035,7 +1098,7 @@ export default function QuarterlyYoYComponent({
                   <ExpandBtn
                     onClick={() => overviewTableView.bar
                       ? openModal(
-                          <OverviewYoYTableView type="bar" data={filteredData} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />,
+                          <OverviewYoYTableView type="bar" data={quarterRows} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />,
                           `${previousLabel} vs ${currentLabel} · ${getUnitLabel(selectedUnit)} — Tabel Data`,
                         )
                       : setExpandedChart('bar')}
@@ -1044,7 +1107,7 @@ export default function QuarterlyYoYComponent({
                 </div>
               </div>
               {overviewTableView.bar ? (
-                <OverviewYoYTableView type="bar" data={filteredData} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />
+                <OverviewYoYTableView type="bar" data={quarterRows} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />
               ) : (
                 <div style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 6px 6px' }}>{renderBarChart(260)}</div>
               )}
@@ -1057,7 +1120,7 @@ export default function QuarterlyYoYComponent({
                   <ExpandBtn
                     onClick={() => overviewTableView.pie
                       ? openModal(
-                          <OverviewYoYTableView type="pie" data={filteredData} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />,
+                          <OverviewYoYTableView type="pie" data={quarterRows} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />,
                           `Distribusi ${currentLabel} · ${getUnitLabel(selectedUnit)} — Tabel Data`,
                         )
                       : setExpandedChart('pie')}
@@ -1066,7 +1129,7 @@ export default function QuarterlyYoYComponent({
                 </div>
               </div>
               {overviewTableView.pie ? (
-                <OverviewYoYTableView type="pie" data={filteredData} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />
+                <OverviewYoYTableView type="pie" data={quarterRows} selectedUnit={selectedUnit} theme={theme} previousLabel={previousLabel} currentLabel={currentLabel} />
               ) : (
                 <div style={{ background: t.inputBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: '10px 6px 6px' }}>{renderPieChart(80, 276)}</div>
               )}
@@ -1079,16 +1142,16 @@ export default function QuarterlyYoYComponent({
               Performa per Kuartal · {getUnitLabel(selectedUnit)}
             </span>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-              {filteredData.map(q => {
-                const hasCmp = q.previous > 0;
+              {quarterRows.map(q => {
+                const hasCmp = q.hasPair;
                 const hit    = q.current >= q.previous;
                 return (
                   <div key={q.quarter} style={{ background: t.qCardBg, border: `1px solid ${!hasCmp ? t.borderCard : (hit ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)')}`, borderLeft: `3px solid ${!hasCmp ? t.textFaint : (hit ? '#10b981' : '#ef4444')}`, borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <span style={{ fontSize: 16, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace' }}>{q.quarter}</span>
                       {!hasCmp
-                        ? <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', background: t.inputBg, color: t.text, border: `1px solid ${t.inputBorder}` }}>{q.current > 0 ? 'BARU' : 'N/A'}</span>
-                        : <span style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', background: hit ? t.posBg : t.negBg, color: hit ? t.posText : t.negText }}>{hit ? 'NAIK' : 'TURUN'}</span>
+                        ? <span style={{ ...badgeBase, background: t.inputBg, color: t.text, border: `1px solid ${t.inputBorder}` }}>{q.current > 0 ? 'BARU' : 'N/A'}</span>
+                        : <span style={{ ...badgeBase, background: hit ? t.posBg : t.negBg, color: hit ? t.posText : t.negText }}>{hit ? 'NAIK' : 'TURUN'}</span>
                       }
                     </div>
                     {[
@@ -1111,7 +1174,7 @@ export default function QuarterlyYoYComponent({
               })}
             </div>
             <p style={{ margin: '12px 0 0', fontSize: 11, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>
-              {filteredData.length} kuartal · {getUnitLabel(selectedUnit)}{selectedCategory !== 'all' ? ` · ${selectedCategory}` : ''}
+              {quarterRows.length} kuartal · {getUnitLabel(selectedUnit)}{selectedCategory !== 'all' ? ` · ${selectedCategory}` : ''}
             </p>
           </div>
 
@@ -1131,8 +1194,8 @@ export default function QuarterlyYoYComponent({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredData.map((q, idx) => {
-                      const hasCmp = q.previous > 0;
+                    {quarterRows.map((q, idx) => {
+                      const hasCmp = q.hasPair;
                       return (
                         <tr key={q.quarter} style={{ background: idx % 2 !== 0 ? t.rowAlt : 'transparent' }}
                           onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
@@ -1141,7 +1204,9 @@ export default function QuarterlyYoYComponent({
                           <td style={{ ...tdBase, textAlign: 'right', color: q.previous > 0 ? t.text : t.textFaint }}>{q.previous > 0 ? formatUnitValue(q.previous, selectedUnit) : '—'}</td>
                           <td style={{ ...tdBase, textAlign: 'right', color: t.text, fontWeight: 700 }}>{q.current > 0 ? formatUnitValue(q.current, selectedUnit) : '—'}</td>
                           <td style={{ ...tdBase, textAlign: 'right', color: hasCmp ? varColor(q.variance) : t.textFaint, fontWeight: 700 }}>{hasCmp ? `${q.variance >= 0 ? '+' : ''}${formatUnitValue(q.variance, selectedUnit)}` : '—'}</td>
-                          <td style={{ ...tdBase, textAlign: 'right' }}><GrowthBadge previous={q.previous} current={q.current} theme={theme} /></td>
+                          <td style={{ ...tdBase, textAlign: 'right' }}>
+                            <GrowthBadge previous={q.previous} current={q.current} theme={theme} />
+                          </td>
                         </tr>
                       );
                     })}
@@ -1153,8 +1218,8 @@ export default function QuarterlyYoYComponent({
         </>
       )}
 
-      {viewMode === 'weekly'  && <WeeklyYoYDetailView  data={filteredData} selectedUnit={selectedUnit} theme={theme} card={card} tdBase={tdBase} expandModal={openModal} previousLabel={previousLabel} currentLabel={currentLabel} />}
-      {viewMode === 'monthly' && <MonthlyYoYDetailView data={filteredData} selectedUnit={selectedUnit} theme={theme} card={card} tdBase={tdBase} expandModal={openModal} previousLabel={previousLabel} currentLabel={currentLabel} />}
+      {viewMode === 'weekly'  && <WeeklyYoYDetailView  data={filteredData} fullData={filteredAll} selectedUnit={selectedUnit} theme={theme} card={card} tdBase={tdBase} expandModal={openModal} previousLabel={previousLabel} currentLabel={currentLabel} />}
+      {viewMode === 'monthly' && <MonthlyYoYDetailView data={filteredData} fullData={filteredAll} selectedUnit={selectedUnit} theme={theme} card={card} tdBase={tdBase} expandModal={openModal} previousLabel={previousLabel} currentLabel={currentLabel} />}
 
       {/* Overview modal (chart) */}
       {expandedChart && (

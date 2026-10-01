@@ -12,8 +12,6 @@ import {
   Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine,
 } from 'recharts';
 import { ChevronUpIcon, ChevronDownIcon, Maximize2, X } from 'lucide-react';
-
-// IMPORT dari dashboard-theme (Sesuaikan path-nya dengan struktur folder Anda)
 import { 
   Theme, tk, PREV_COLOR, CURR_COLOR, POS_COLOR, NEG_COLOR, 
   UNIT_OPTIONS, useBreakpoint 
@@ -63,6 +61,13 @@ const formatWeekRange = (range?: { start: number; end: number } | null) => {
   if (!range) return 'Week 1–52';
   if (range.start === range.end) return `Week ${range.start}`;
   return `Week ${range.start}–${range.end}`;
+};
+
+// Versi singkat untuk label periode: "W5–7"
+const shortWeekRange = (range?: { start: number; end: number } | null) => {
+  if (!range) return 'W1–52';
+  if (range.start === range.end) return `W${range.start}`;
+  return `W${range.start}–${range.end}`;
 };
 
 // Responsive hooks
@@ -291,6 +296,14 @@ function ChartViewport<T extends ChartEntry>({
   const innerWidthPct = data.length > 0 ? (data.length / visibleCount) * 100 : 100;
   const offsetPct = data.length > 0 ? (startIndex / data.length) * innerWidthPct : 0;
 
+  // Label rentang yang sedang terlihat: pakai label minggu asli dari data (bukan nomor indeks), 
+  // supaya range yang tidak mulai dari W1 tampil benar.
+  const firstLabel = String(data[startIndex]?.week ?? `W${startIndex + 1}`);
+  const lastLabel  = String(
+    data[Math.min(data.length - 1, startIndex + visibleCount - 1)]?.week
+      ?? `W${startIndex + visibleCount}`,
+  );
+
   const mmPanFromEvent = useCallback((clientX: number) => {
     const el = mmRef.current; if (!el) return;
     const r  = el.getBoundingClientRect();
@@ -379,7 +392,7 @@ function ChartViewport<T extends ChartEntry>({
           fontWeight: isWindowed ? 600 : 400, letterSpacing: '.02em',
         }}>
           {isWindowed
-            ? `W${startIndex + 1}–W${startIndex + visibleCount} dari ${data.length} minggu`
+            ? `${firstLabel} – ${lastLabel} dari ${data.length} minggu`
             : `${data.length} minggu`}
         </span>
         {isWindowed && <PBtn dir="left" />}
@@ -654,6 +667,8 @@ function ChartTableView({
     setSort(p => ({ key, dir: p.key === key && p.dir === 'asc' ? 'desc' : 'asc' }));
   }, []);
 
+  // Label bisa "W8" atau "W5→W8", ambil angka pertama saja 
+  // (urutan tetap benar karena selisih pasangan minggu konstan).
   const weekNum = (w: string) => parseInt(w.replace('W', ''), 10);
 
   const sorted = useMemo(() => [...data].sort((a, b) => {
@@ -939,8 +954,19 @@ export default function WeekComparisonComponent({
   const { isMobile, isTablet } = useBreakpoint();
   const winSize = useWindowSize();
 
-  const previousYearLabel      = comparisonYears?.previousYear ?? 'Tahun 1';
-  const currentYearLabel       = comparisonYears?.currentYear  ?? 'Tahun 2';
+  // Kalau P1 dan P2 tahunnya sama, 
+  // label memuat range minggu supaya tidak tertulis "2026 vs 2026" (mis. "2026 W5–7" vs "2026 W8–9").
+  const isSameYear =
+    comparisonYears?.previousYear != null &&
+    comparisonYears.previousYear === comparisonYears.currentYear;
+
+  const previousYearLabel = isSameYear
+    ? `${comparisonYears?.previousYear} ${shortWeekRange(comparisonWeeks?.previousYear)}`
+    : (comparisonYears?.previousYear ?? 'Tahun 1');
+  const currentYearLabel = isSameYear
+    ? `${comparisonYears?.currentYear} ${shortWeekRange(comparisonWeeks?.currentYear)}`
+    : (comparisonYears?.currentYear ?? 'Tahun 2');
+
   const previousWeekRangeLabel = formatWeekRange(comparisonWeeks?.previousYear ?? undefined);
   const currentWeekRangeLabel  = formatWeekRange(comparisonWeeks?.currentYear  ?? undefined);
 
@@ -948,6 +974,18 @@ export default function WeekComparisonComponent({
     () => Array.from(new Set(data.map(d => d.week))).sort((a, b) => a - b),
     [data],
   );
+
+  // Pasangan minggu: `week` = nomor minggu P2, `previousWeek` = minggu P1 yang dipasangkan
+  const prevWeekOf = useMemo(() => {
+    const m = new Map<number, number>();
+    data.forEach(d => m.set(d.week, d.previousWeek ?? d.week));
+    return m;
+  }, [data]);
+
+  const weekLabel = useCallback((w: number) => {
+    const p = prevWeekOf.get(w);
+    return p !== undefined && p !== w ? `W${p}:W${w}` : `W${w}`;
+  }, [prevWeekOf]);
 
   const [selectedWeek,     setSelectedWeek]     = useState<number | null>(null);
   const [selectedUnit,     setSelectedUnit]     = useState('units_dos');
@@ -1130,11 +1168,11 @@ export default function WeekComparisonComponent({
       }
       const variance = currVal - prevVal;
       return {
-        week: `W${item.week}`, previousYear: prevVal, currentYear: currVal,
+        week: weekLabel(item.week), previousYear: prevVal, currentYear: currVal,
         variance, variancePercentage: prevVal > 0 ? (variance / prevVal) * 100 : 0,
       };
     });
-  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedWeek]);
+  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedWeek, weekLabel]);
 
   // Heights
   const inlineChartH = isMobile ? 180 : isTablet ? 220 : 250;
@@ -1321,7 +1359,14 @@ export default function WeekComparisonComponent({
           <div style={{ gridColumn: isMobile ? '1 / -1' : undefined }}>
             <FilterSelect label="Minggu" accentColor="#3b82f6" value={selectedWeek ?? 'all'} onChange={e => setSelectedWeek(e.target.value === 'all' ? null : Number(e.target.value))} theme={theme} fullWidth={isMobile}>
               <option value="all" style={{ background: t.selectBg }}>Semua Minggu</option>
-              {weekOptions.map(w => <option key={w} value={w} style={{ background: t.selectBg }}>Week {w}</option>)}
+              {weekOptions.map(w => {
+                const pw = prevWeekOf.get(w);
+                return (
+                  <option key={w} value={w} style={{ background: t.selectBg }}>
+                    Week {w}{pw !== undefined && pw !== w ? ` (P1: W${pw})` : ''}
+                  </option>
+                );
+              })}
             </FilterSelect>
           </div>
           <FilterSelect label="Kategori" accentColor="#8b5cf6" value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} theme={theme} fullWidth={isMobile}>
@@ -1527,7 +1572,7 @@ export default function WeekComparisonComponent({
                           color: t.theadText, background: t.theadBg,
                           borderBottom: `1px solid ${t.border}`, whiteSpace: 'nowrap',
                         }}>
-                          W{w}
+                          {weekLabel(w)}
                         </th>
                       ))}
                       <th style={{

@@ -124,9 +124,9 @@ function KpiMini({ bg, border, labelColor, label, value, sub, badge, theme, acce
   );
 }
 
-export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos' }:{
+export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit = 'units_dos', p1Label, p2Label }:{
   data:SalesData; theme:Theme; y1:number; y2:number;
-  availH:number; selectedUnit?: string;
+  availH:number; selectedUnit?: string; p1Label?: string; p2Label?: string;
 }) {
   const t=tk[theme];
   const {isMobile,isTablet}=useBreakpoint();
@@ -169,7 +169,8 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
   );
 
   const { yearOnYearGrowth:yoy, weekComparisons:wc, quarterlyData:qd, comparisonYears:cy, l4wc4wData:l4w, outletData=[] } = data as any;
-  const pL=cy?.previousYear??y1; const cL=cy?.currentYear??y2;
+  const pL = p1Label ?? cy?.previousYear ?? y1;
+  const cL = p2Label ?? cy?.currentYear ?? y2;
   const gPct=yoy.variancePercentage; const isPos=gPct>=0;
   const posW=wc.filter((w:any)=>w.variancePercentage>0).length;
 
@@ -204,13 +205,22 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
   const bodyH=availH-KPI_H-GAP-PADBOT;
   const cH=Math.max(64, Math.floor((bodyH-46*2-GAP)/2)-10);
 
-  const weekData=wc.map((w:any)=>({w:`W${w.week}`,p:w.previousYear,c:w.currentYear,g:w.variancePercentage}));
+  const weekData = wc.map((w:any) => ({
+  w: w.previousWeek !== undefined && w.previousWeek !== w.week
+    ? `W${w.previousWeek}:W${w.week}`
+    : `W${w.week}`,
+  p: w.previousYear, c: w.currentYear, g: w.variancePercentage,
+}));
   const mnths=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const mData=mnths.map((m,mi)=>{
-    const s=mi*4+1;
-    const ws=wc.filter((w:any)=>w.week>=s&&w.week<=s+3);
-    return {m,p:ws.reduce((a:number,w:any)=>a+(w.previousYear||0),0),c:ws.reduce((a:number,w:any)=>a+(w.currentYear||0),0)};
-  }).filter((d:any)=>d.p>0||d.c>0);
+  const mData = mnths.map((m, mi) => {
+    const s = mi * 4 + 1;
+    const inM = (n: number) => n >= s && n <= s + 3;
+    return {
+      m,
+      p: wc.filter((w: any) => inM(w.previousWeek ?? w.week)).reduce((a: number, w: any) => a + (w.previousYear || 0), 0),
+      c: wc.filter((w: any) => inM(w.week)).reduce((a: number, w: any) => a + (w.currentYear || 0), 0),
+    };
+  }).filter((d: any) => d.p > 0 || d.c > 0);
 
   const l4wAvg=l4w.l4wAverage; const c1w=l4w.c1wValue; const lPos=c1w>=l4wAvg; const lc=lPos?'#10b981':'#ef4444';
   const lData=l4w.weeklyTrendData?.map((item:any)=>({w:item.week,v:item.value,avg:l4wAvg}))||[];
@@ -224,7 +234,8 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
   };
   const fmtOutlet = (v:number) => selectedUnit==='omzet' ? fmtRp(v) : fmtK(v);
 
-  const curR=rows.filter((r:any)=>r.year===(cy?.currentYear??y2));
+  const curR = rows.filter((r: any) =>
+  r.period !== undefined ? r.period === 2 : r.year === (cy?.currentYear ?? y2));
   const oTypes=Array.from(new Set(curR.map((r:any)=>r.outletType))).filter(Boolean) as string[];
   const totDoz=curR.reduce((s:number,r:any)=>s+getOutletUnitValue(r),0);
   const dData=oTypes.map((ot,i)=>({n:ot,v:curR.filter((r:any)=>r.outletType===ot).reduce((s:number,r:any)=>s+getOutletUnitValue(r),0),fill:CC[i%CC.length]}));
@@ -384,7 +395,7 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
           )}
         </Card>
 
-        <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={topP.length>0?`${cL} · ${unitLabel}`:'Belum ada data produk'}>
+        <Card theme={theme} accent="#f97316" title={`Top Produk ${cL}`}  icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={topP.length>0?`${cL} · ${unitLabel}`:'Belum ada data produk'}>
           {topP.length>0 ? (
             <ResponsiveContainer width="100%" height={MOBILE_CHART_H}>
               <BarChart data={topP} layout="vertical" margin={{top:0,right:6,left:0,bottom:0}}>
@@ -627,7 +638,7 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
               </ResponsiveContainer>
             </Card>
 
-            <Card theme={theme} accent="#f97316" title="Top Produk" icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={`${cL} · ${unitLabel}`} style={{flex:'1 1 0'}}>
+            <Card theme={theme} accent="#f97316" title={`Top Produk ${cL}`} icon={<BarChart3 size={10} color="#f97316"/>} color="#f97316" sub={`${cL} · ${unitLabel}`} style={{flex:'1 1 0'}}>
               {topP.length>0 ? (
                 <ResponsiveContainer width="100%" height={cH}>
                   <BarChart data={topP} layout="vertical" margin={{top:0,right:6,left:0,bottom:0}}>

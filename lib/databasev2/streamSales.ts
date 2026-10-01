@@ -1,6 +1,6 @@
 /**
- * Streaming query sales_records pakai pg-cursor supaya tidak OOM di dataset
- * besar (~jutaan baris). Dipanggil dari index.ts (processSalesRecords).
+ * Streaming query sales_records pakai pg-cursor supaya tidak OOM di dataset besar. 
+ * Dipanggil dari index.ts (processSalesRecords).
  */
 
 import Cursor from 'pg-cursor';
@@ -10,7 +10,7 @@ import { FetchFilters } from './types';
 
 const STREAM_BATCH_SIZE = 20_000;
 
-// ─── Streaming query dengan pg-cursor ────────────────────────────────────────
+// Streaming query dengan pg-cursor
 export async function streamSalesRecords(
   filters: FetchFilters | undefined,
   onBatch: (rows: any[]) => void,
@@ -37,18 +37,32 @@ export async function streamSalesRecords(
     dateConditions.push(`date BETWEEN $${idxStart} AND $${idxEnd}`);
   };
 
+  // Periode 1
+  const ws1 = filters?.weekStart1 ?? 1;
+  const we1 = filters?.weekEnd1   ?? 53;
+
   if (filters?.year1 !== undefined) {
-    const ws = filters.weekStart1 ?? 1;
-    const we = filters.weekEnd1   ?? 53;
-    addDateRange(filters.year1, ws, we);
-    console.log(` year1=${filters.year1} W${ws}-W${we} → date range ditambahkan`);
+    addDateRange(filters.year1, ws1, we1);
+    console.log(` year1=${filters.year1} W${ws1}-W${we1} → date range ditambahkan`);
   }
 
-  if (filters?.year2 !== undefined && filters.year2 !== filters.year1) {
-    const ws = filters.weekStart2 ?? 1;
-    const we = filters.weekEnd2   ?? 53;
-    addDateRange(filters.year2, ws, we);
-    console.log(` year2=${filters.year2} W${ws}-W${we} → date range ditambahkan`);
+  // Periode 2
+  // Dedup berdasarkan RANGE (tahun + week), bukan cuma tahun. 
+  // Sebelumnya `year2 !== year1` bikin periode 2 hilang saat tahun sama tapi week beda.
+  if (filters?.year2 !== undefined) {
+    const ws2 = filters.weekStart2 ?? 1;
+    const we2 = filters.weekEnd2   ?? 53;
+
+    const sameRangeAsPeriod1 =
+      filters.year1 !== undefined &&
+      filters.year2 === filters.year1 &&
+      ws2 === ws1 &&
+      we2 === we1;
+
+    if (!sameRangeAsPeriod1) {
+      addDateRange(filters.year2, ws2, we2);
+      console.log(` year2=${filters.year2} W${ws2}-W${we2} → date range ditambahkan`);
+    }
   }
 
   if (dateConditions.length === 0 && filters?.year1 === undefined && filters?.year2 === undefined) {

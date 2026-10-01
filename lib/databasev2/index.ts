@@ -17,6 +17,13 @@
  *   - emptyData.ts        → fallback data kosong
  *   - types.ts            → tipe internal (FetchFilters, UnitAgg, dst)
  *
+ * CATATAN PERIODE:
+ * Agregasi utama sekarang dipisah per PERIODE (P1 / P2), bukan per tahun,
+ * supaya perbandingan tahun yang sama dengan week berbeda (mis. 2026 W5-7
+ * vs 2026 W8-9) tidak saling menimpa. Map lama yang berbasis tahun
+ * (weekProductMap, omzetByProductWeek) tetap ada untuk generator L4W
+ * yang belum period-aware.
+ * SUMPAH COK AKU YO MUMET NGERJAKNO IKI WKWKWKW
  */
 
 import {
@@ -46,6 +53,23 @@ import { FetchFilters, UnitAgg, OutletAgg, TargetQueriesResult } from './types';
 export type { FetchFilters };
 
 const OMZET_SCALE = 1;
+
+type Period = 1 | 2;
+
+// Key agregasi per periode: "<periode>|<week>|<produk>"
+const pk = (p: Period, week: number, product: string) => `${p}|${week}|${product}`;
+
+const addUnitAgg = (
+  map: Map<string, UnitAgg>, key: string,
+  bks: number, slop: number, bal: number, dos: number,
+) => {
+  const e = map.get(key);
+  if (e) {
+    e.bks += bks; e.slop += slop; e.bal += bal; e.dos += dos;
+  } else {
+    map.set(key, { bks, slop, bal, dos });
+  }
+};
 
 export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData> {
   try {
@@ -99,14 +123,26 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       ? { start: clampWeek(filters?.weekStart2 ?? 1), end: clampWeek(filters?.weekEnd2 ?? 52) }
       : null;
 
-  console.log(`\n [PRE-RANGE] year1=${year1} range=${preRangeYear1 ? `W${preRangeYear1.start}-W${preRangeYear1.end}` : 'all'}`);
+  const fmtRange = (r: { start: number; end: number } | null) => r ? `W${r.start}-W${r.end}` : 'all';
+  console.log(`\n [PRE-RANGE] P1 year1=${year1} range=${fmtRange(preRangeYear1)} | P2 year2=${year2} range=${fmtRange(preRangeYear2)}`);
 
-  const weekProductMap     = new Map<string, UnitAgg>();
-  const weekYearSet        = new Map<number, Set<number>>();
-  const allProductsSet     = new Set<string>();
-  const outletAggMap       = new Map<string, OutletAgg>();
-  const yearUnitMap        = new Map<number, number>();
+  // Map lama (berbasis tahun) dipakai generator L4W
+  const weekProductMap     = new Map<string, UnitAgg>();   // union P1 ∪ P2, tiap record sekali
   const omzetByProductWeek = new Map<string, number>();
+  const weekYearSet        = new Map<number, Set<number>>();
+
+  // Khusus P2 (format key sama dgn map lama) — untuk Kuartal Target
+  const p2WeekProductMap     = new Map<string, UnitAgg>();
+  const p2OmzetByProductWeek = new Map<string, number>();
+
+  // Map baru (berbasis periode)
+  const periodWeekProductMap = new Map<string, UnitAgg>();
+  const periodOmzet          = new Map<string, number>();
+  const periodWeeks: Record<Period, Set<number>> = { 1: new Set(), 2: new Set() };
+  const periodUnitTotal: Record<Period, number>  = { 1: 0, 2: 0 };
+
+  const allProductsSet = new Set<string>();
+  const outletAggMap   = new Map<string, OutletAgg>();
 
   let crossYearCount    = 0;
   let totalRecordCount  = 0;
@@ -117,14 +153,15 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   if (filters?.year1 !== undefined) requestedISOYears.add(filters.year1);
   if (filters?.year2 !== undefined) requestedISOYears.add(filters.year2);
 
-  const isWeekInRange = (isoYear: number, isoWeek: number): boolean => {
-    if (isoYear === year1 && preRangeYear1 !== null) {
-      return isoWeek >= preRangeYear1.start && isoWeek <= preRangeYear1.end;
-    }
-    if (isoYear === year2 && preRangeYear2 !== null) {
-      return isoWeek >= preRangeYear2.start && isoWeek <= preRangeYear2.end;
-    }
-    return true;
+  // Record boleh masuk P1 dan/atau P2 (kalau range-nya overlap, masuk keduanya).
+  // Tanpa filter tahun sama sekali → semua record dianggap P2 (perilaku tunggal).
+  const noYearFilter = year1 === undefined && year2 === undefined;
+  const inPeriod = (p: Period, isoYear: number, isoWeek: number): boolean => {
+    if (noYearFilter) return p === 2;
+    const y = p === 1 ? year1 : year2;
+    const r = p === 1 ? preRangeYear1 : preRangeYear2;
+    if (y === undefined || isoYear !== y) return false;
+    return r === null || (isoWeek >= r.start && isoWeek <= r.end);
   };
 
   const targetAreasPromise = resolveTargetAreas(filters?.area, filters?.allowedAreas);
@@ -163,7 +200,10 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
           continue;
         }
 
-        if (!isWeekInRange(isoYear, isoWeek)) {
+        const inP1 = inPeriod(1, isoYear, isoWeek);
+        const inP2 = inPeriod(2, isoYear, isoWeek);
+
+        if (!inP1 && !inP2) {
           filteredOutByWeek++;
           continue;
         }
@@ -188,26 +228,26 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
           boundaryDosTotal += dos;
         }
 
-        const wpKey    = `${isoYear}-${isoWeek}-${product}`;
-        const existing = weekProductMap.get(wpKey);
-        if (existing) {
-          existing.bks  += bks;
-          existing.slop += slop;
-          existing.bal  += bal;
-          existing.dos  += dos;
-        } else {
-          weekProductMap.set(wpKey, { bks, slop, bal, dos });
-        }
-
+        // Map lama (berbasis tahun), tiap record dihitung SEKALI
+        const wpKey = `${isoYear}-${isoWeek}-${product}`;
+        addUnitAgg(weekProductMap, wpKey, bks, slop, bal, dos);
         omzetByProductWeek.set(wpKey, (omzetByProductWeek.get(wpKey) || 0) + omz);
+
+        // Gabung P1 dan P2 jika tahunnya sama
+        const isQuarterlyTarget = inP2 || (year1 === year2 && inP1);
+
+        if (isQuarterlyTarget) {
+          addUnitAgg(p2WeekProductMap, wpKey, bks, slop, bal, dos);
+          p2OmzetByProductWeek.set(wpKey, (p2OmzetByProductWeek.get(wpKey) || 0) + omz);
+        }
 
         const unitVal = selectedUnit === 'omzet'      ? omz
                       : selectedUnit === 'units_bks'  ? bks
                       : selectedUnit === 'units_slop' ? slop
                       : selectedUnit === 'units_bal'  ? bal
                       : dos;
-        yearUnitMap.set(isoYear, (yearUnitMap.get(isoYear) || 0) + unitVal);
 
+        // Info outlet (dihitung sekali per record)
         const outletType  = record.customer_type || 'Tipe Customer tidak diketahui';
         const category    = getProductCategory(product);
         const customer    = record.customer    || 'Unknown';
@@ -230,34 +270,47 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         const salesman = record.salesman || 'Unknown';
 
         const customerKey = customer_no ? `${customer_no}||${customer}` : `||${customer}`;
-        const outletKey   = `${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
 
-        const existingOutlet = outletAggMap.get(outletKey);
-        if (existingOutlet) {
-          existingOutlet.dozNet    += dos;
-          existingOutlet.unitsBks  += bks;
-          existingOutlet.unitsSlop += slop;
-          existingOutlet.unitsBal  += bal;
-          existingOutlet.omzet     += omz;
-          existingOutlet.weeklyDozNet[isoWeek]    = (existingOutlet.weeklyDozNet[isoWeek]    ?? 0) + dos;
-          existingOutlet.weeklyUnitsBks[isoWeek]  = (existingOutlet.weeklyUnitsBks[isoWeek]  ?? 0) + bks;   // NEW
-          existingOutlet.weeklyUnitsSlop[isoWeek] = (existingOutlet.weeklyUnitsSlop[isoWeek] ?? 0) + slop;  // NEW
-          existingOutlet.weeklyUnitsBal[isoWeek]  = (existingOutlet.weeklyUnitsBal[isoWeek]  ?? 0) + bal;   // NEW
-          existingOutlet.weeklyOmzet[isoWeek]     = (existingOutlet.weeklyOmzet[isoWeek]     ?? 0) + omz;   // NEW
-          if (isoWeek < existingOutlet.weekMin) existingOutlet.weekMin = isoWeek;
-          if (isoWeek > existingOutlet.weekMax) existingOutlet.weekMax = isoWeek;
-        } else {
-          outletAggMap.set(outletKey, {
-            dozNet: dos, unitsBks: bks, unitsSlop: slop, unitsBal: bal, omzet: omz,
-            weeklyDozNet:    { [isoWeek]: dos },
-            weeklyUnitsBks:  { [isoWeek]: bks },    // NEW
-            weeklyUnitsSlop: { [isoWeek]: slop },   // NEW
-            weeklyUnitsBal:  { [isoWeek]: bal },    // NEW
-            weeklyOmzet:     { [isoWeek]: omz },    // NEW
-            city, district, village, salesman, customer_no,
-            year: isoYear, outletType, category, product, customer,
-            weekMin: isoWeek, weekMax: isoWeek,
-          });
+        // Agregasi per periode
+        const periods: Period[] = [];
+        if (inP1) periods.push(1);
+        if (inP2) periods.push(2);
+
+        for (const p of periods) {
+          const key = pk(p, isoWeek, product);
+          addUnitAgg(periodWeekProductMap, key, bks, slop, bal, dos);
+          periodOmzet.set(key, (periodOmzet.get(key) || 0) + omz);
+          periodWeeks[p].add(isoWeek);
+          periodUnitTotal[p] += unitVal;
+
+          const outletKey      = `${p}|${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
+          const existingOutlet = outletAggMap.get(outletKey);
+          if (existingOutlet) {
+            existingOutlet.dozNet    += dos;
+            existingOutlet.unitsBks  += bks;
+            existingOutlet.unitsSlop += slop;
+            existingOutlet.unitsBal  += bal;
+            existingOutlet.omzet     += omz;
+            existingOutlet.weeklyDozNet[isoWeek]    = (existingOutlet.weeklyDozNet[isoWeek]    ?? 0) + dos;
+            existingOutlet.weeklyUnitsBks[isoWeek]  = (existingOutlet.weeklyUnitsBks[isoWeek]  ?? 0) + bks;
+            existingOutlet.weeklyUnitsSlop[isoWeek] = (existingOutlet.weeklyUnitsSlop[isoWeek] ?? 0) + slop;
+            existingOutlet.weeklyUnitsBal[isoWeek]  = (existingOutlet.weeklyUnitsBal[isoWeek]  ?? 0) + bal;
+            existingOutlet.weeklyOmzet[isoWeek]     = (existingOutlet.weeklyOmzet[isoWeek]     ?? 0) + omz;
+            if (isoWeek < existingOutlet.weekMin) existingOutlet.weekMin = isoWeek;
+            if (isoWeek > existingOutlet.weekMax) existingOutlet.weekMax = isoWeek;
+          } else {
+            outletAggMap.set(outletKey, {
+              dozNet: dos, unitsBks: bks, unitsSlop: slop, unitsBal: bal, omzet: omz,
+              weeklyDozNet:    { [isoWeek]: dos },
+              weeklyUnitsBks:  { [isoWeek]: bks },
+              weeklyUnitsSlop: { [isoWeek]: slop },
+              weeklyUnitsBal:  { [isoWeek]: bal },
+              weeklyOmzet:     { [isoWeek]: omz },
+              city, district, village, salesman, customer_no,
+              year: isoYear, period: p, outletType, category, product, customer,
+              weekMin: isoWeek, weekMax: isoWeek,
+            });
+          }
         }
       }
     }),
@@ -270,6 +323,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`   Records masuk agregasi: ${totalRecordCount - filteredOutByWeek} records`);
   console.log(`   outletAggMap size: ${outletAggMap.size}`);
   console.log(`   weekProductMap size: ${weekProductMap.size}`);
+  console.log(`   periodWeekProductMap size: ${periodWeekProductMap.size}`);
   console.log(`   allProductsSet size: ${allProductsSet.size}`);
   console.log(`   Fetched ${totalRecordCount} records dari DB`);
 
@@ -298,9 +352,8 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     currentYear:  currentYear  ?? null,
   };
 
-  const getWeekRangeFromData = (year: number): { start: number; end: number } | null => {
-    const weeks = weekYearSet.get(year);
-    if (!weeks || weeks.size === 0) return null;
+  const getWeekRange = (weeks: Set<number>): { start: number; end: number } | null => {
+    if (weeks.size === 0) return null;
     let minWeek = Infinity;
     let maxWeek = -Infinity;
     weeks.forEach(w => {
@@ -311,35 +364,41 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     return { start: minWeek, end: maxWeek };
   };
 
-  const dataRangeYear1 = previousYear !== undefined ? getWeekRangeFromData(previousYear) : null;
-  const dataRangeYear2 = currentYear  !== undefined ? getWeekRangeFromData(currentYear)  : null;
+  const dataRangeP1 = getWeekRange(periodWeeks[1]);
+  const dataRangeP2 = getWeekRange(periodWeeks[2]);
 
   const previousYearWeekRange: { start: number; end: number } | null =
     previousYear !== undefined
-      ? (preRangeYear1 ?? dataRangeYear1 ?? { start: 1, end: 52 })
+      ? (preRangeYear1 ?? dataRangeP1 ?? { start: 1, end: 52 })
       : null;
 
   const currentYearWeekRange: { start: number; end: number } | null =
     currentYear !== undefined
-      ? (preRangeYear2 ?? dataRangeYear2 ?? { start: 1, end: 52 })
+      ? (preRangeYear2 ?? dataRangeP2 ?? { start: 1, end: 52 })
       : null;
 
   console.log(`\n [STEP-2] Week ranges:`);
-  console.log(`   Data range year1=${previousYear}: [${dataRangeYear1?.start ?? '-'} - ${dataRangeYear1?.end ?? '-'}]`);
-  console.log(`   Data range year2=${currentYear}:  [${dataRangeYear2?.start ?? '-'} - ${dataRangeYear2?.end ?? '-'}]`);
-  console.log(`   Final range year1: [${previousYearWeekRange?.start ?? '-'} - ${previousYearWeekRange?.end ?? '-'}] ${preRangeYear1 ? '(dari filter)' : '(dari data)'}`);
-  console.log(`   Final range year2: [${currentYearWeekRange?.start ?? '-'} - ${currentYearWeekRange?.end ?? '-'}] ${preRangeYear2 ? '(dari filter)' : '(dari data)'}`);
+  console.log(`   Data range P1 (year=${previousYear}): [${dataRangeP1?.start ?? '-'} - ${dataRangeP1?.end ?? '-'}]`);
+  console.log(`   Data range P2 (year=${currentYear}):  [${dataRangeP2?.start ?? '-'} - ${dataRangeP2?.end ?? '-'}]`);
+  console.log(`   Final range P1: [${previousYearWeekRange?.start ?? '-'} - ${previousYearWeekRange?.end ?? '-'}] ${preRangeYear1 ? '(dari filter)' : '(dari data)'}`);
+  console.log(`   Final range P2: [${currentYearWeekRange?.start ?? '-'} - ${currentYearWeekRange?.end ?? '-'}] ${preRangeYear2 ? '(dari filter)' : '(dari data)'}`);
 
   const comparisonWeeks: ComparisonWeeks = {
     previousYear: previousYearWeekRange,
     currentYear:  currentYearWeekRange,
   };
 
-  const getAgg = (year: number, week: number, product: string): UnitAgg =>
-    weekProductMap.get(`${year}-${week}-${product}`) ?? { bks: 0, slop: 0, bal: 0, dos: 0 };
+  // Pergeseran minggu: kalau kedua range eksplisit dan start-nya beda (mis. P1 W5-7 vs P2 W8-9 → shift 3), 
+  // minggu dipasangkan berdasarkan urutan: W5↔W8, W6↔W9, W7↔W10. 
+  // lah lek semisal start sama / gaonok filter dadi shift 0 (dipasangkan berdasarkan nomor minggu, sama seperti sebelumnya).
+  const weekShift = (preRangeYear1 && preRangeYear2) ? preRangeYear2.start - preRangeYear1.start : 0;
+  console.log(`   Week shift P1→P2: ${weekShift}`);
 
-  const getUnitFromAgg = (agg: UnitAgg, wpKey?: string): number => {
-    if (selectedUnit === 'omzet' && wpKey) return omzetByProductWeek.get(wpKey) ?? 0;
+  const getAgg = (p: Period, week: number, product: string): UnitAgg =>
+    periodWeekProductMap.get(pk(p, week, product)) ?? { bks: 0, slop: 0, bal: 0, dos: 0 };
+
+  const getUnitFromAgg = (agg: UnitAgg, p: Period, week: number, product: string): number => {
+    if (selectedUnit === 'omzet') return periodOmzet.get(pk(p, week, product)) ?? 0;
     if (selectedUnit === 'units_bks')  return agg.bks;
     if (selectedUnit === 'units_slop') return agg.slop;
     if (selectedUnit === 'units_bal')  return agg.bal;
@@ -349,12 +408,13 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const weeklyData: WeeklySales[]         = [];
   const weekComparisons: WeekComparison[] = [];
 
-  const allWeeks = new Set<number>();
-  if (previousYear !== undefined) weekYearSet.get(previousYear)?.forEach(w => allWeeks.add(w));
-  if (currentYear  !== undefined) weekYearSet.get(currentYear)?.forEach(w  => allWeeks.add(w));
+  // Sumbu minggu memakai penomoran P2: minggu P1 digeser sebesar weekShift.
+  const axisWeeks = new Set<number>();
+  periodWeeks[2].forEach(w => axisWeeks.add(w));
+  periodWeeks[1].forEach(w => axisWeeks.add(w + weekShift));
 
   const sortedWeeks: number[] = [];
-  allWeeks.forEach(w => sortedWeeks.push(w));
+  axisWeeks.forEach(w => sortedWeeks.push(w));
   sortedWeeks.sort((a, b) => a - b);
 
   type ProductTotals = {
@@ -378,7 +438,11 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     });
   });
 
+  const weeklySeen = new Set<string>(); // hindari entry weeklyData ganda (tahun+minggu sama)
+
   for (const week of sortedWeeks) {
+    const prevWeek = week - weekShift;
+
     productTotalsMap.forEach(t => {
       t.previous = 0; t.current = 0;
       t.units_bks.previous  = 0; t.units_bks.current  = 0;
@@ -391,34 +455,32 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     let prevYearSales = 0;
     let currYearSales = 0;
 
-    if (previousYear !== undefined && weekYearSet.get(previousYear)?.has(week)) {
+    if (periodWeeks[1].has(prevWeek)) {
       for (const product of allProductsSet) {
-        const agg    = getAgg(previousYear, week, product);
+        const agg    = getAgg(1, prevWeek, product);
         const totals = productTotalsMap.get(product)!;
-        const wpKey  = `${previousYear}-${week}-${product}`;
-        const uval   = getUnitFromAgg(agg, wpKey);
+        const uval   = getUnitFromAgg(agg, 1, prevWeek, product);
         totals.previous              += uval;
         totals.units_bks.previous    += agg.bks;
         totals.units_slop.previous   += agg.slop;
         totals.units_bal.previous    += agg.bal;
         totals.units_dos.previous    += agg.dos;
-        totals.omzet.previous        += omzetByProductWeek.get(wpKey) ?? 0;
+        totals.omzet.previous        += periodOmzet.get(pk(1, prevWeek, product)) ?? 0;
         prevYearSales                += uval;
       }
     }
 
-    if (currentYear !== undefined && weekYearSet.get(currentYear)?.has(week)) {
+    if (periodWeeks[2].has(week)) {
       for (const product of allProductsSet) {
-        const agg    = getAgg(currentYear, week, product);
+        const agg    = getAgg(2, week, product);
         const totals = productTotalsMap.get(product)!;
-        const wpKey  = `${currentYear}-${week}-${product}`;
-        const uval   = getUnitFromAgg(agg, wpKey);
+        const uval   = getUnitFromAgg(agg, 2, week, product);
         totals.current             += uval;
         totals.units_bks.current   += agg.bks;
         totals.units_slop.current  += agg.slop;
         totals.units_bal.current   += agg.bal;
         totals.units_dos.current   += agg.dos;
-        totals.omzet.current       += omzetByProductWeek.get(wpKey) ?? 0;
+        totals.omzet.current       += periodOmzet.get(pk(2, week, product)) ?? 0;
         currYearSales              += uval;
       }
     }
@@ -444,7 +506,8 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
 
     if (prevYearSales > 0 || currYearSales > 0) {
       weekComparisons.push({
-        week,
+        week,                       // nomor minggu P2 (dipakai sebagai label sumbu)
+        previousWeek:       prevWeek, // nomor minggu P1 yang dipasangkan
         previousYear:       prevYearSales,
         currentYear:        currYearSales,
         variance:           currYearSales - prevYearSales,
@@ -454,22 +517,32 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     }
 
     // Omzet murni minggu ini (independen dari selectedUnit), untuk card "Omzet 1 Bulan" di Piutang
-    const weekOmzetCurrent = currentYear !== undefined
-      ? Array.from(allProductsSet).reduce(
-          (s, p) => s + (omzetByProductWeek.get(`${currentYear}-${week}-${p}`) ?? 0), 0,
-        )
-      : 0;
-    const weekOmzetPrevious = previousYear !== undefined
-      ? Array.from(allProductsSet).reduce(
-          (s, p) => s + (omzetByProductWeek.get(`${previousYear}-${week}-${p}`) ?? 0), 0,
-        )
-      : 0;
+    const weekOmzetCurrent = Array.from(allProductsSet).reduce(
+      (s, p) => s + (periodOmzet.get(pk(2, week, p)) ?? 0), 0,
+    );
+    const weekOmzetPrevious = Array.from(allProductsSet).reduce(
+      (s, p) => s + (periodOmzet.get(pk(1, prevWeek, p)) ?? 0), 0,
+    );
 
-    if (currYearSales > 0 && currentYear !== undefined)
-      weeklyData.push({ week, year: currentYear,  sales: currYearSales, target: currYearSales * 1.1, omzetTotal: weekOmzetCurrent });
-    if (prevYearSales > 0 && previousYear !== undefined)
-      weeklyData.push({ week, year: previousYear, sales: prevYearSales, target: prevYearSales * 1.1, omzetTotal: weekOmzetPrevious });
+    // weeklyData memakai nomor minggu ASELI tiap periode
+    if (currYearSales > 0 && currentYear !== undefined) {
+      const k = `${currentYear}-${week}`;
+      if (!weeklySeen.has(k)) {
+        weeklySeen.add(k);
+        weeklyData.push({ week, year: currentYear, sales: currYearSales, target: currYearSales * 1.1, omzetTotal: weekOmzetCurrent });
+      }
+    }
+    if (prevYearSales > 0 && previousYear !== undefined) {
+      const k = `${previousYear}-${prevWeek}`;
+      if (!weeklySeen.has(k)) {
+        weeklySeen.add(k);
+        weeklyData.push({ week: prevWeek, year: previousYear, sales: prevYearSales, target: prevYearSales * 1.1, omzetTotal: weekOmzetPrevious });
+      }
+    }
   }
+
+  // Tahun sama dadi ne entry P1 dan P2 bercampur urutannya, urutkan per minggu
+  if (previousYear === currentYear) weeklyData.sort((a, b) => a.week - b.week);
 
   console.log(`\n [STEP-4] outletAggMap size=${outletAggMap.size}`);
 
@@ -478,6 +551,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     outletData.push({
       week:         agg.weekMin,
       year:         agg.year,
+      period:       agg.period,      // 1 = P1, 2 = P2 (penting saat tahun P1 = P2)
       outletType:   agg.outletType,
       category:     agg.category,
       product:      agg.product,
@@ -487,10 +561,10 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       unitsBal:     agg.unitsBal,
       omzet:        agg.omzet,
       weeklyDozNet: agg.weeklyDozNet,
-      weeklyUnitsBks:  agg.weeklyUnitsBks,   // NEW
-      weeklyUnitsSlop: agg.weeklyUnitsSlop,  // NEW
-      weeklyUnitsBal:  agg.weeklyUnitsBal,   // NEW
-      weeklyOmzet:     agg.weeklyOmzet,      // NEW
+      weeklyUnitsBks:  agg.weeklyUnitsBks,
+      weeklyUnitsSlop: agg.weeklyUnitsSlop,
+      weeklyUnitsBal:  agg.weeklyUnitsBal,
+      weeklyOmzet:     agg.weeklyOmzet,
       city:         agg.city,
       district:     agg.district,
       village:      agg.village,
@@ -508,9 +582,10 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
 
   const toFixed2 = (n: number) => Math.round(n * 100) / 100;
 
+  // Total per PERIODE (bukan per tahun) supaya tahun sama tidak tertukar
   const yearOnYearGrowth: YearOnYearGrowth = (() => {
-    const prevTotal = yearUnitMap.get(effectivePrevYear) || 0;
-    const currTotal = yearUnitMap.get(effectiveYear)     || 0;
+    const prevTotal = periodUnitTotal[1];
+    const currTotal = periodUnitTotal[2];
     const variance  = currTotal - prevTotal;
     return {
       previousYearTotal:  toFixed2(prevTotal),
@@ -523,11 +598,40 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const targetResults = await targetQueriesPromise;
   const resolvedTargetAreas = await targetAreasPromise;
 
-  const byWeekMap = buildByWeekMap(weekProductMap);
+  const sameYear  = previousYear === currentYear;
+  const byWeekMap = buildByWeekMap(weekProductMap); // tetap dipakai L4W
+
+  // Kuartal Target: actual hanya dari P2 (baik tahun sama maupun beda)
+  const quarterlyWeekMap  = buildByWeekMap(p2WeekProductMap);
+  const quarterlyOmzetMap = p2OmzetByProductWeek;
+
+  // Kuartal Aktual (P1 vs P2)
+  // Bangun map khusus: data P1 dipindah dan nomor minggunya digeser (+weekShift) agar sejajar dengan penomoran P2.
+  // Contoh: P1 W1-10 vs P2 W11-20 → P1 W1 disimpan sebagai W11.
+  // Kalau tahun sama, P1 disimpan di (tahun - 1) supaya key tidak bentrok dengan P2 di generateQuarterlyYoYData.
+  const yoyPrevYear = sameYear ? effectiveYear - 1 : effectivePrevYear;
+  const yoyAggMap   = new Map<string, UnitAgg>();
+  const yoyOmzetMap = new Map<string, number>();
+
+  periodWeekProductMap.forEach((agg, key) => {
+    const [pStr, wStr, ...rest] = key.split('|');
+    const product = rest.join('|');
+    const p = Number(pStr);
+    const w = Number(wStr);
+
+    const alignedWeek = w;
+    if (alignedWeek < 1 || alignedWeek > 53) return;
+
+    const yr = p === 1 ? yoyPrevYear : effectiveYear;
+    const k  = `${yr}-${alignedWeek}-${product}`;
+
+    addUnitAgg(yoyAggMap, k, agg.bks, agg.slop, agg.bal, agg.dos);
+    yoyOmzetMap.set(k, (yoyOmzetMap.get(k) || 0) + (periodOmzet.get(key) ?? 0));
+  });
 
   const quarterlyData = await generateQuarterlyData(
-    byWeekMap,
-    omzetByProductWeek,
+    quarterlyWeekMap,
+    quarterlyOmzetMap,
     effectiveYear,
     areaId,
     filters?.selectedUnit,
@@ -536,10 +640,10 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   );
 
   const QuarterlyYoYData = await generateQuarterlyYoYData(
-    byWeekMap,
-    omzetByProductWeek,
+    buildByWeekMap(yoyAggMap),
+    yoyOmzetMap,
     effectiveYear,
-    effectivePrevYear,
+    yoyPrevYear,
     areaId,
   );
 

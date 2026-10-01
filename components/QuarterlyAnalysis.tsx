@@ -741,14 +741,19 @@ function OverviewTableView({
 }
 
 // Main Component
+// props
 interface QuarterlyAnalysisProps {
   data: QuarterlyData[];
   theme?: Theme;
   selectedUnit?: string;
   onUnitChange?: (unit: string) => void;
+  year?: number;
+  periodLabel?: string;
+  /** Range minggu P2 yang difilter user. null/undefined = semua minggu. */
+  weekRange?: { start: number; end: number } | null;
 }
 
-export default function QuarterlyAnalysisComponent({ data, theme: themeProp, selectedUnit: propSelectedUnit, onUnitChange }: QuarterlyAnalysisProps) {
+export default function QuarterlyAnalysisComponent({ data, theme: themeProp, selectedUnit: propSelectedUnit, onUnitChange, year, periodLabel, weekRange }: QuarterlyAnalysisProps) {
   const theme: Theme = themeProp ?? 'light';
   const t = tk[theme];
 
@@ -799,9 +804,28 @@ useEffect(() => {
   const quarterOptions = useMemo(() => Array.from(new Set(data.map(q => q.quarter))).sort(), [data]);
 
   const filteredData = useMemo(() => {
+    const yearForMonth = year ?? new Date().getFullYear();
+    const zeroUnits = {
+      units_dos:  { target: 0, actual: 0 }, units_bks: { target: 0, actual: 0 },
+      units_slop: { target: 0, actual: 0 }, units_bal: { target: 0, actual: 0 },
+    };
+    const zeroed = (x: any) => ({
+      ...x, target: 0, actual: 0, variance: 0, variancePercentage: 0,
+      achievement: 0, hasTarget: false, ...zeroUnits,
+    });
+
     return data
       .filter(q => selectedQuarter === 'all' || q.quarter === selectedQuarter)
       .map(q => {
+        // 1. Langsung ambil semua data minggu dan bulan tanpa dipotong (filter inRange dihapus)
+        const qWeeks   = (q.weeklyBreakdown ?? []) as any[];
+        const qMonths  = (q.monthlyBreakdown ?? []) as any[];
+
+        // 2. Target per produk juga tidak perlu dipotong rasio
+        const detailTarget = (d: any): number => {
+          return getDetailTarget(d, selectedUnit);
+        };
+
         const filteredDetails = (q.details ?? []).filter((d: any) => {
           if (selectedCategory !== 'all') {
             const cat = d.productCategory ?? getProductCategory(d.product);
@@ -813,31 +837,27 @@ useEffect(() => {
 
         if (!filteredDetails.length) {
           return {
-            ...q,
-            details: [], target: 0, actual: 0, variance: 0, variancePercentage: 0,
-            weeklyBreakdown:  (q.weeklyBreakdown ?? []).map((wb: any) => ({ ...wb, target:0, actual:0, variance:0, variancePercentage:0, achievement:0, hasTarget:false, units_dos:{target:0,actual:0}, units_bks:{target:0,actual:0}, units_slop:{target:0,actual:0}, units_bal:{target:0,actual:0} })),
-            monthlyBreakdown: (q.monthlyBreakdown ?? []).map((mb: any) => ({ ...mb, target:0, actual:0, variance:0, variancePercentage:0, achievement:0, hasTarget:false, units_dos:{target:0,actual:0}, units_bks:{target:0,actual:0}, units_slop:{target:0,actual:0}, units_bal:{target:0,actual:0} })),
+            ...q, details: [], target: 0, actual: 0, variance: 0, variancePercentage: 0,
+            weeklyBreakdown:  qWeeks.map(zeroed),
+            monthlyBreakdown: qMonths.map(zeroed),
           };
         }
 
         let tv = 0, av = 0;
         filteredDetails.forEach((d: any) => {
-          tv += getDetailTarget(d, selectedUnit);
+          tv += detailTarget(d);
           av += getDetailActual(d, selectedUnit);
         });
         const vr = av - tv;
 
-        const newWeeklyBreakdown = (q.weeklyBreakdown ?? []).map((wb: any) => {
+        const newWeeklyBreakdown = qWeeks.map((wb: any) => {
           const week = wb.week;
           let dos = 0, bks = 0, slop = 0, bal = 0, omz = 0;
           filteredDetails.forEach((d: any) => {
             const wa = (d.weeklyActuals as Record<number, WeekUnitData> | undefined)?.[week];
             if (wa) {
-              dos  += wa.units_dos  ?? 0;
-              bks  += wa.units_bks  ?? 0;
-              slop += wa.units_slop ?? 0;
-              bal  += wa.units_bal  ?? 0;
-              omz  += wa.omzet      ?? 0; 
+              dos += wa.units_dos ?? 0; bks += wa.units_bks ?? 0;
+              slop += wa.units_slop ?? 0; bal += wa.units_bal ?? 0; omz += wa.omzet ?? 0;
             }
           });
 
@@ -845,7 +865,11 @@ useEffect(() => {
           let hasWeeklyTargets = false;
           filteredDetails.forEach((d: any) => {
             const wt = (d.weeklyTargets as Record<number, WeekUnitData> | undefined)?.[week];
-            if (wt) { tgtDos += wt.units_dos ?? 0; tgtBks += wt.units_bks ?? 0; tgtSlop += wt.units_slop ?? 0; tgtBal += wt.units_bal ?? 0; hasWeeklyTargets = true; }
+            if (wt) {
+              tgtDos += wt.units_dos ?? 0; tgtBks += wt.units_bks ?? 0;
+              tgtSlop += wt.units_slop ?? 0; tgtBal += wt.units_bal ?? 0;
+              hasWeeklyTargets = true;
+            }
           });
           if (!hasWeeklyTargets) {
             const totalActualDos = wb.units_dos?.actual ?? wb.actual ?? 0;
@@ -859,44 +883,73 @@ useEffect(() => {
             tgtSlop = parseFloat(tgtSlop.toFixed(2)); tgtBal = parseFloat(tgtBal.toFixed(2));
           }
 
-          const selActual = isOmzet
-            ? omz
-            : selectedUnit === 'units_bks'  ? bks
+          const selActual = isOmzet ? omz
+            : selectedUnit === 'units_bks' ? bks
             : selectedUnit === 'units_slop' ? slop
-            : selectedUnit === 'units_bal'  ? bal
-            : dos;
-          const selTarget = isOmzet ? 0 : selectedUnit === 'units_bks' ? tgtBks : selectedUnit === 'units_slop' ? tgtSlop : selectedUnit === 'units_bal' ? tgtBal : tgtDos;
+            : selectedUnit === 'units_bal' ? bal : dos;
+          const selTarget = isOmzet ? 0
+            : selectedUnit === 'units_bks' ? tgtBks
+            : selectedUnit === 'units_slop' ? tgtSlop
+            : selectedUnit === 'units_bal' ? tgtBal : tgtDos;
           const hasRebuildTarget = !isOmzet && selTarget > 0;
           const selVar    = selActual - selTarget;
           const selVarPct = hasRebuildTarget ? (selVar / selTarget) * 100 : 0;
           const selAch    = hasRebuildTarget ? (selActual / selTarget) * 100 : selActual > 0 ? -1 : 0;
-          return { ...wb, target:parseFloat(selTarget.toFixed(2)), actual:parseFloat(selActual.toFixed(2)), variance:parseFloat(selVar.toFixed(2)), variancePercentage:parseFloat(selVarPct.toFixed(1)), achievement:parseFloat(selAch.toFixed(1)), hasTarget:hasRebuildTarget, units_dos:{target:tgtDos,actual:parseFloat(dos.toFixed(2))}, units_bks:{target:tgtBks,actual:parseFloat(bks.toFixed(2))}, units_slop:{target:tgtSlop,actual:parseFloat(slop.toFixed(2))}, units_bal:{target:tgtBal,actual:parseFloat(bal.toFixed(2))} };
+          return {
+            ...wb,
+            target: parseFloat(selTarget.toFixed(2)), actual: parseFloat(selActual.toFixed(2)),
+            variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
+            achievement: parseFloat(selAch.toFixed(1)), hasTarget: hasRebuildTarget,
+            units_dos:  { target: tgtDos,  actual: parseFloat(dos.toFixed(2)) },
+            units_bks:  { target: tgtBks,  actual: parseFloat(bks.toFixed(2)) },
+            units_slop: { target: tgtSlop, actual: parseFloat(slop.toFixed(2)) },
+            units_bal:  { target: tgtBal,  actual: parseFloat(bal.toFixed(2)) },
+          };
         });
 
-        const yearForMonth = new Date().getFullYear();
-        const newMonthlyBreakdown = (q.monthlyBreakdown ?? []).map((mb: any) => {
+        const newMonthlyBreakdown = qMonths.map((mb: any) => {
           const monthWeeks = newWeeklyBreakdown.filter((wb: any) => getMonthFromWeek(wb.week, yearForMonth) === mb.month);
-          const dos  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.actual  ?? 0), 0);
-          const bks  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.actual  ?? 0), 0);
-          const slop = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.actual ?? 0), 0);
-          const bal  = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.actual  ?? 0), 0);
-          const omzMonth = monthWeeks.reduce((s: number, wb: any) => s + (wb.actual ?? 0), 0);
-          const tDos = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_dos?.target  ?? 0), 0);
-          const tBks = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bks?.target  ?? 0), 0);
-          const tSlop= monthWeeks.reduce((s: number, wb: any) => s + (wb.units_slop?.target ?? 0), 0);
-          const tBal = monthWeeks.reduce((s: number, wb: any) => s + (wb.units_bal?.target  ?? 0), 0);
-          const selActual = isOmzet ? omzMonth : selectedUnit === 'units_bks' ? bks : selectedUnit === 'units_slop' ? slop : selectedUnit === 'units_bal' ? bal : dos;
-          const selTarget = isOmzet ? 0 : selectedUnit === 'units_bks' ? tBks : selectedUnit === 'units_slop' ? tSlop : selectedUnit === 'units_bal' ? tBal : tDos;
+          const sum = (f: (wb: any) => number) => monthWeeks.reduce((s: number, wb: any) => s + f(wb), 0);
+          const dos = sum(wb => wb.units_dos?.actual ?? 0),  tDos  = sum(wb => wb.units_dos?.target ?? 0);
+          const bks = sum(wb => wb.units_bks?.actual ?? 0),  tBks  = sum(wb => wb.units_bks?.target ?? 0);
+          const slop = sum(wb => wb.units_slop?.actual ?? 0), tSlop = sum(wb => wb.units_slop?.target ?? 0);
+          const bal = sum(wb => wb.units_bal?.actual ?? 0),  tBal  = sum(wb => wb.units_bal?.target ?? 0);
+          const omzMonth = sum(wb => wb.actual ?? 0);
+
+          const selActual = isOmzet ? omzMonth
+            : selectedUnit === 'units_bks' ? bks
+            : selectedUnit === 'units_slop' ? slop
+            : selectedUnit === 'units_bal' ? bal : dos;
+          const selTarget = isOmzet ? 0
+            : selectedUnit === 'units_bks' ? tBks
+            : selectedUnit === 'units_slop' ? tSlop
+            : selectedUnit === 'units_bal' ? tBal : tDos;
           const hasRebuildTarget = !isOmzet && selTarget > 0;
           const selVar    = selActual - selTarget;
           const selVarPct = hasRebuildTarget ? (selVar / selTarget) * 100 : 0;
           const selAch    = hasRebuildTarget ? (selActual / selTarget) * 100 : 0;
-          return { ...mb, target:parseFloat(selTarget.toFixed(2)), actual:parseFloat(selActual.toFixed(2)), variance:parseFloat(selVar.toFixed(2)), variancePercentage:parseFloat(selVarPct.toFixed(1)), achievement:parseFloat(selAch.toFixed(1)), hasTarget:hasRebuildTarget, units_dos:{target:parseFloat(tDos.toFixed(2)),actual:parseFloat(dos.toFixed(2))}, units_bks:{target:parseFloat(tBks.toFixed(2)),actual:parseFloat(bks.toFixed(2))}, units_slop:{target:parseFloat(tSlop.toFixed(2)),actual:parseFloat(slop.toFixed(2))}, units_bal:{target:parseFloat(tBal.toFixed(2)),actual:parseFloat(bal.toFixed(2))} };
+          return {
+            ...mb,
+            target: parseFloat(selTarget.toFixed(2)), actual: parseFloat(selActual.toFixed(2)),
+            variance: parseFloat(selVar.toFixed(2)), variancePercentage: parseFloat(selVarPct.toFixed(1)),
+            achievement: parseFloat(selAch.toFixed(1)), hasTarget: hasRebuildTarget,
+            units_dos:  { target: parseFloat(tDos.toFixed(2)),  actual: parseFloat(dos.toFixed(2)) },
+            units_bks:  { target: parseFloat(tBks.toFixed(2)),  actual: parseFloat(bks.toFixed(2)) },
+            units_slop: { target: parseFloat(tSlop.toFixed(2)), actual: parseFloat(slop.toFixed(2)) },
+            units_bal:  { target: parseFloat(tBal.toFixed(2)),  actual: parseFloat(bal.toFixed(2)) },
+          };
         });
 
-        return { ...q, details:filteredDetails, target:Math.round(tv*100)/100, actual:Math.round(av*100)/100, variance:Math.round(vr*100)/100, variancePercentage:Math.round(tv>0?(vr/tv)*100*10:0)/10, weeklyBreakdown:newWeeklyBreakdown, monthlyBreakdown:newMonthlyBreakdown };
+        return {
+          ...q, details: filteredDetails,
+          target: Math.round(tv * 100) / 100, actual: Math.round(av * 100) / 100,
+          variance: Math.round(vr * 100) / 100,
+          variancePercentage: Math.round(tv > 0 ? (vr / tv) * 100 * 10 : 0) / 10,
+          weeklyBreakdown: newWeeklyBreakdown, monthlyBreakdown: newMonthlyBreakdown,
+        };
       });
-  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedQuarter, isOmzet]);
+  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedQuarter, isOmzet, year]); 
+  // weekRange juga sudah saya hapus dari array dependency di atas
 
   const performanceData = filteredData.map(q => ({ quarter: q.quarter, target: q.target, actual: q.actual, achievement: q.target > 0 ? (q.actual / q.target) * 100 : 0 }));
   const pieData         = filteredData.map(q => ({ name: q.quarter, value: q.actual }));
@@ -1085,7 +1138,7 @@ useEffect(() => {
               })}
             </div>
             <p style={{ margin: '12px 0 0', fontSize: 11, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>
-              {filteredData.length} kuartal · {getUnitLabel(selectedUnit)}{selectedCategory !== 'all' ? ` · ${selectedCategory}` : ''}
+              {filteredData.length} kuartal · {getUnitLabel(selectedUnit)}{weekRange ? ` · W${weekRange.start}–${weekRange.end}` : ''}{selectedCategory !== 'all' ? ` · ${selectedCategory}` : ''}
             </p>
           </div>
 

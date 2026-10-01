@@ -18,7 +18,7 @@ export interface FetchFilters {
   allowedAreas?: string[];
 }
 
-// ─── Tipe internal untuk agregasi streaming ───────────────────────────────────
+// Tipe internal untuk agregasi streaming
 export interface UnitAgg {
   bks:  number;
   slop: number;
@@ -43,6 +43,7 @@ export interface OutletAgg {
   salesman:        string;
   customer_no:     string;
   year:            number;
+  period:          1 | 2;   
   outletType:      string;
   category:        string;
   product:         string;
@@ -51,8 +52,7 @@ export interface OutletAgg {
   weekMax:         number;
 }
 
-// ─── Tipe untuk hasil query target (dipakai antara targetQueries.ts &
-//     quarterlyData.ts / index.ts) ─────────────────────────────────────────
+// Tipe untuk hasil query target (dipakai antara targetQueries.ts & quarterlyData.ts / index.ts)
 export interface ProductTargetRow {
   product:    string;
   units_dos:  number;
@@ -79,7 +79,7 @@ export interface ProductQuarterRawRow {
   units_dos: string; units_bks: string; units_slop: string; units_bal: string;
 }
 export interface ProductWeekRawRow {
-  product: string; week: string;
+  product: string; week: string; 
   units_dos: string; units_bks: string; units_slop: string; units_bal: string;
 }
 

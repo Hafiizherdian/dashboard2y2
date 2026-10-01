@@ -21,6 +21,7 @@ export interface WeeklySales {
 export interface OutletSalesData {
   week: number;           // Nomor minggu (1-52)
   year: number;           // Tahun penjualan
+  period: 1 | 2;           // Periode (1 atau 2)
   outletType: string;     // Tipe outlet (contoh: Retail, Whole Sale)
   category: string;       // Kategori produk (contoh: Food, Beverage)
   product: string;        // Nama produk (contoh: CAKRA PRIMA 16 K)
@@ -62,7 +63,7 @@ export interface QuarterlyProductDetail {
   omzet?:      { target: number; actual: number };
 }
 
-// ─── QuarterlyData — versi baru dengan field details ──────────────────────────
+// QuarterlyData — versi baru dengan field details
 export interface WeeklyBreakdown {
   week: number;
   target: number;
@@ -128,14 +129,14 @@ export interface WeekComparisonProductDetail {
 }
 
 export interface WeekComparison {
-  week: number;                    // Nomor minggu
-  previousYear: number;            // Penjualan tahun sebelumnya
-  currentYear: number;             // Penjualan tahun sekarang
-  variance: number;                // Selisih penjualan
-  variancePercentage: number;      // Persentase variance
+  week: number;                    // Nomor minggu (penomoran P2, dipakai sebagai label sumbu)
+  previousWeek?: number;           // ← BARU: nomor minggu P1 yang dipasangkan dengan `week`
+  previousYear: number;            // Penjualan tahun/periode sebelumnya
+  currentYear: number;             // Penjualan tahun/periode sekarang
+  variance: number;
+  variancePercentage: number;
   details?: WeekComparisonProductDetail[];
 }
-
 /**
  * Data L4W vs C4W
  */
