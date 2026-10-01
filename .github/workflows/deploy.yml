@@ -27,7 +27,8 @@ jobs:
             cd ~/app
 
             echo "=== Pull kode terbaru ==="
-            git pull origin master
+            git fetch origin
+            git reset --hard origin/master
 
             echo "=== Install dependencies ==="
             npm ci 
