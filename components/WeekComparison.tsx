@@ -4,7 +4,7 @@ import React, {
   useEffect, useMemo, useState, useRef, useCallback,
 } from 'react';
 import {
-  WeekComparison, ComparisonYears, ComparisonWeeks, WeekComparisonProductDetail,
+  WeekComparison, ComparisonYears, ComparisonWeeks, WeekComparisonProductDetail, WeekComparisonLocationDetail,
 } from '@/types/sales';
 import { getProductCategory } from '@/lib/productCategories';
 import {
@@ -21,19 +21,46 @@ import {
 type UnitKey = 'units_dos' | 'units_bal' | 'units_slop' | 'units_bks' | 'omzet';
 
 // Helpers
+type PrevCurr = { previous: number; current: number };
+type UnitFields = Partial<Record<UnitKey, PrevCurr>>;
+interface LocationFilter { city: string; district: string }   // 'all' = tidak difilter
+
+const UNIT_KEYS: UnitKey[] = ['units_dos', 'units_bal', 'units_slop', 'units_bks', 'omzet'];
+
+const isLocationActive = (loc?: LocationFilter) =>
+  !!loc && (loc.city !== 'all' || loc.district !== 'all');
+
+// Jumlahkan breakdown lokasi yang lolos filter
+function sumLocations(detail: WeekComparisonProductDetail, loc: LocationFilter): UnitFields {
+  const acc: UnitFields = {};
+  detail.locations?.forEach(l => {
+    if (loc.city     !== 'all' && l.city     !== loc.city)     return;
+    if (loc.district !== 'all' && l.district !== loc.district) return;
+    UNIT_KEYS.forEach(k => {
+      const f = l[k]; if (!f) return;
+      const a = (acc[k] ??= { previous: 0, current: 0 });
+      a.previous += f.previous; a.current += f.current;
+    });
+  });
+  return acc;
+}
+
 function resolveUnitValues(
   detail: WeekComparisonProductDetail,
   unit: string,
-): { previous: number; current: number } {
-  const key   = unit as UnitKey;
-  const field = detail[key] as { previous: number; current: number } | undefined;
+  loc?: LocationFilter,
+): PrevCurr {
+  const key      = unit as UnitKey;
+  const filtered = isLocationActive(loc);
+  const src: UnitFields = filtered ? sumLocations(detail, loc!) : detail;
+
+  const field = src[key];
   if (field && typeof field.previous === 'number') return { previous: field.previous, current: field.current };
-  
-  // Omzet tidak boleh fallback ke Dos — satuannya beda total (Rupiah vs unit jual).
-  // Kalau backend lama belum kirim field omzet, tampilkan 0 daripada salah label.
-  if (key === 'omzet') return { previous: 0, current: 0 };
-  
-  const dos = detail.units_dos as { previous: number; current: number } | undefined;
+
+  // Omzet tidak boleh fallback ke Dos; saat filter lokasi aktif juga tidak ada fallback
+  if (key === 'omzet' || filtered) return { previous: 0, current: 0 };
+
+  const dos = src.units_dos;
   if (dos && typeof dos.previous === 'number') return { previous: dos.previous, current: dos.current };
   return { previous: 0, current: 0 };
 }
@@ -999,6 +1026,43 @@ export default function WeekComparisonComponent({
     key: 'product' | 'previousYear' | 'currentYear' | 'variance' | 'variancePercentage';
     direction: 'asc' | 'desc';
   } | null>(null);
+  const [selectedCity,     setSelectedCity]     = useState('all');
+const [selectedDistrict, setSelectedDistrict] = useState('all');
+
+const loc = useMemo<LocationFilter>(
+  () => ({ city: selectedCity, district: selectedDistrict }),
+  [selectedCity, selectedDistrict],
+);
+const locationActive = isLocationActive(loc);
+
+// kota -> kumpulan kecamatan
+const locationIndex = useMemo(() => {
+  const m = new Map<string, Set<string>>();
+  data.forEach(wd => wd.details?.forEach(d => d.locations?.forEach(l => {
+    if (!l.city) return;
+    if (!m.has(l.city)) m.set(l.city, new Set());
+    if (l.district) m.get(l.city)!.add(l.district);
+  })));
+  return m;
+}, [data]);
+
+const availableCities = useMemo(() => Array.from(locationIndex.keys()).sort(), [locationIndex]);
+
+// kecamatan mengikuti kota yang dipilih (cascading)
+const availableDistricts = useMemo(() => {
+  if (selectedCity !== 'all') return Array.from(locationIndex.get(selectedCity) ?? []).sort();
+  const s = new Set<string>();
+  locationIndex.forEach(ds => ds.forEach(x => s.add(x)));
+  return Array.from(s).sort();
+}, [locationIndex, selectedCity]);
+
+useEffect(() => {
+  if (selectedCity !== 'all' && !availableCities.includes(selectedCity)) setSelectedCity('all');
+}, [availableCities, selectedCity]);
+
+useEffect(() => {
+  if (selectedDistrict !== 'all' && !availableDistricts.includes(selectedDistrict)) setSelectedDistrict('all');
+}, [availableDistricts, selectedDistrict]);
 
   useEffect(() => { setSelectedWeek(null); }, [data.length]);
 
@@ -1023,7 +1087,7 @@ export default function WeekComparisonComponent({
         });
         const acc = m.get(d.product)!;
         (['units_dos', 'units_bal', 'units_slop', 'units_bks', 'omzet'] as UnitKey[]).forEach(k => {
-          const v = resolveUnitValues(d, k);
+          const v = resolveUnitValues(d, k, loc);
           acc[k].previous += v.previous; acc[k].current += v.current;
         });
       });
@@ -1037,8 +1101,10 @@ export default function WeekComparisonComponent({
         product, previousYear: prev, currentYear: curr, variance: vari,
         variancePercentage: prev > 0 ? Math.round(((curr - prev) / prev) * 1000) / 10 : 0,
       };
-    }).sort((a, b) => b.currentYear - a.currentYear);
-  }, [data, selectedUnit]);
+    })
+    .filter(r => !locationActive || r.previousYear !== 0 || r.currentYear !== 0)
+    .sort((a, b) => b.currentYear - a.currentYear);
+  }, [data, selectedUnit, loc, locationActive]);
 
   const availableCategories = useMemo(() => {
     const s = new Set<string>();
@@ -1067,15 +1133,16 @@ export default function WeekComparisonComponent({
     const wd = data.find(d => d.week === selectedWeek);
     if (!wd?.details) return [];
     return wd.details.map(d => {
-      const { previous: p, current: c } = resolveUnitValues(d, selectedUnit);
+      const { previous: p, current: c } = resolveUnitValues(d, selectedUnit, loc);
       const prev = Math.round(p * 100) / 100, curr = Math.round(c * 100) / 100;
       const vari = Math.round((curr - prev) * 100) / 100;
       return {
         product: d.product, previousYear: prev, currentYear: curr, variance: vari,
         variancePercentage: prev > 0 ? Math.round(((curr - prev) / prev) * 1000) / 10 : 0,
       };
-    });
-  }, [data, selectedWeek, selectedUnit, allProductsInData]);
+    })
+    .filter(r => !locationActive || r.previousYear !== 0 || r.currentYear !== 0);
+  }, [data, selectedWeek, selectedUnit, allProductsInData, loc, locationActive]);
 
   const handleTableSort = useCallback((key: typeof sortConfig extends { key: infer K } | null ? K : never) => {
     setSortConfig(p => p?.key === key
@@ -1108,7 +1175,8 @@ export default function WeekComparisonComponent({
       wd.details?.forEach(d => {
         if (selectedCategory !== 'all' && getProductCategory(d.product) !== selectedCategory) return;
         if (selectedProduct  !== 'all' && d.product !== selectedProduct) return;
-        const { previous, current } = resolveUnitValues(d, selectedUnit);
+        const { previous, current } = resolveUnitValues(d, selectedUnit, loc);
+        // if (locationActive && previous === 0 && current === 0) return; 
         if (!m.has(d.product)) m.set(d.product, new Map());
         const wm  = m.get(d.product)!;
         const cur = wm.get(wd.week) ?? { previous: 0, current: 0 };
@@ -1132,22 +1200,27 @@ export default function WeekComparisonComponent({
     const grandCurr = rows.reduce((s, r) => s + r.totalCurr, 0);
 
     return { rows, weekTotals, grandPrev, grandCurr };
-  }, [data, selectedWeek, selectedUnit, selectedCategory, selectedProduct]);
+  }, [data, selectedWeek, selectedUnit, selectedCategory, selectedProduct, loc, locationActive]);
 
   const renderWeeklyValue = useCallback((prev: number, curr: number): React.ReactNode => {
-    const vari = curr - prev;
-    const pct  = prev > 0 ? (vari / prev) * 100 : 0;
-    switch (weeklyMetric) {
-      case 'previous': return fmtValExact(prev);
-      case 'current':  return fmtValExact(curr);
-      case 'variance': return (
-        <span style={{ color: vari >= 0 ? POS_COLOR : NEG_COLOR }}>
-          {vari >= 0 ? '+' : ''}{fmtValExact(vari)}
-        </span>
-      );
-      case 'pct': return <GrowthPill value={pct} />;
-    }
-  }, [weeklyMetric, fmtValExact]);
+  const vari = curr - prev;
+  const pct  = prev > 0 ? (vari / prev) * 100 : 0;
+
+  // dianggap nol kalau hasil pembulatan tampilan (2 desimal) = 0, supaya sisa float tidak lolos
+  const isZero = (n: number) => Math.abs(n) < 0.005;
+  const dash   = <span style={{ color: t.text }}>–</span>;
+
+  switch (weeklyMetric) {
+    case 'previous': return isZero(prev) ? dash : fmtValExact(prev);
+    case 'current':  return isZero(curr) ? dash : fmtValExact(curr);
+    case 'variance': return isZero(vari) ? dash : (
+      <span style={{ color: vari >= 0 ? POS_COLOR : NEG_COLOR }}>
+        {vari >= 0 ? '+' : ''}{fmtValExact(vari)}
+      </span>
+    );
+    case 'pct': return isZero(pct) ? dash : <GrowthPill value={pct} />;
+  }
+}, [weeklyMetric, fmtValExact, t]);
 
   const chartData = useMemo(() => {
     const rows = selectedWeek !== null
@@ -1159,9 +1232,13 @@ export default function WeekComparisonComponent({
         item.details.forEach(d => {
           if (selectedCategory !== 'all' && getProductCategory(d.product) !== selectedCategory) return;
           if (selectedProduct  !== 'all' && d.product !== selectedProduct) return;
-          const { previous, current } = resolveUnitValues(d, selectedUnit);
+          const { previous, current } = resolveUnitValues(d, selectedUnit, loc);
           prevVal += previous; currVal += current;
         });
+      } else if (!locationActive) {
+        // fallback total hanya valid kalau tidak ada filter lokasi
+        prevVal = (item as unknown as { previousYear: number }).previousYear ?? 0;
+        currVal = (item as unknown as { currentYear:  number }).currentYear  ?? 0;
       } else {
         prevVal = (item as unknown as { previousYear: number }).previousYear ?? 0;
         currVal = (item as unknown as { currentYear:  number }).currentYear  ?? 0;
@@ -1172,7 +1249,7 @@ export default function WeekComparisonComponent({
         variance, variancePercentage: prevVal > 0 ? (variance / prevVal) * 100 : 0,
       };
     });
-  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedWeek, weekLabel]);
+  }, [data, selectedUnit, selectedCategory, selectedProduct, selectedWeek, weekLabel, loc, locationActive]);
 
   // Heights
   const inlineChartH = isMobile ? 180 : isTablet ? 220 : 250;
@@ -1350,7 +1427,7 @@ export default function WeekComparisonComponent({
         <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textTransform: 'uppercase', letterSpacing: '.08em', display: 'block', marginBottom: isMobile ? 8 : 10 }}>
           Filter Data
         </span>
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(4, auto)', gap: 8, alignItems: 'center', justifyContent: isMobile ? 'stretch' : 'flex-start' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(6, auto)', gap: 8, alignItems: 'center', justifyContent: isMobile ? 'stretch' : 'flex-start' }}>
           
           <FilterSelect label="Unit" accentColor="#10b981" value={selectedUnit} onChange={e => setSelectedUnit(e.target.value)} theme={theme} fullWidth={isMobile}>
             {UNIT_OPTIONS.map(o => <option key={o.value} value={o.value} style={{ background: t.selectBg }}>{o.fullLabel}</option>)}
@@ -1377,6 +1454,20 @@ export default function WeekComparisonComponent({
             <option value="all" style={{ background: t.selectBg }}>Semua Brand</option>
             {availableProducts.map(p => <option key={p} value={p} style={{ background: t.selectBg }}>{p}</option>)}
           </FilterSelect>
+          
+          <FilterSelect label="Kota/Kab" accentColor="#f59e0b" value={selectedCity}
+            onChange={e => { setSelectedCity(e.target.value); setSelectedDistrict('all'); }}
+            theme={theme} fullWidth={isMobile}>
+            <option value="all" style={{ background: t.selectBg }}>Semua Kota/Kab</option>
+            {availableCities.map(c => <option key={c} value={c} style={{ background: t.selectBg }}>{c}</option>)}
+          </FilterSelect>
+
+          <FilterSelect label="Kecamatan" accentColor="#06b6d4" value={selectedDistrict}
+            onChange={e => setSelectedDistrict(e.target.value)} theme={theme} fullWidth={isMobile}>
+            <option value="all" style={{ background: t.selectBg }}>Semua Kecamatan</option>
+            {availableDistricts.map(d => <option key={d} value={d} style={{ background: t.selectBg }}>{d}</option>)}
+          </FilterSelect>
+
         </div>
       </div>
 

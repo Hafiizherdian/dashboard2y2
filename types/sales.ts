@@ -112,6 +112,16 @@ export interface QuarterlyData {
   monthlyBreakdown?: MonthlyBreakdown[];
 }
 
+export interface WeekComparisonLocationDetail {
+  city: string;
+  district: string;
+  units_bks?:  { previous: number; current: number };
+  units_slop?: { previous: number; current: number };
+  units_bal?:  { previous: number; current: number };
+  units_dos?:  { previous: number; current: number };
+  omzet?:      { previous: number; current: number };
+}
+
 /**
  * Data perbandingan mingguan antar tahun
  */
@@ -126,6 +136,7 @@ export interface WeekComparisonProductDetail {
   units_bal?: { previous: number; current: number };
   units_dos?: { previous: number; current: number };
   omzet?: { previous: number; current: number };
+  locations?: WeekComparisonLocationDetail[]; 
 }
 
 export interface WeekComparison {

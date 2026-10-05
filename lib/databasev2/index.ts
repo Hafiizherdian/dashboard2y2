@@ -29,7 +29,7 @@
 import {
   SalesData, WeeklySales, WeekComparison,
   YearOnYearGrowth, ComparisonWeeks,
-  WeekComparisonProductDetail, OutletSalesData,
+  WeekComparisonProductDetail, WeekComparisonLocationDetail, OutletSalesData,
 } from '@/types/sales';
 
 import { parseDateLocal, resolveWeekYear } from './dateUtils';
@@ -54,6 +54,9 @@ export type { FetchFilters };
 
 const OMZET_SCALE = 1;
 
+// Label default kalau kota/kecamatan kosong di database
+const UNKNOWN_LABEL = 'Tidak diketahui';
+
 type Period = 1 | 2;
 
 // Key agregasi per periode: "<periode>|<week>|<produk>"
@@ -69,6 +72,12 @@ const addUnitAgg = (
   } else {
     map.set(key, { bks, slop, bal, dos });
   }
+};
+
+// Agregat per lokasi (kota + kecamatan) untuk filter di Week Comparison
+type LocAgg = {
+  city: string; district: string;
+  bks: number; slop: number; bal: number; dos: number; omzet: number;
 };
 
 export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData> {
@@ -140,6 +149,9 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const periodOmzet          = new Map<string, number>();
   const periodWeeks: Record<Period, Set<number>> = { 1: new Set(), 2: new Set() };
   const periodUnitTotal: Record<Period, number>  = { 1: 0, 2: 0 };
+
+  // Breakdown lokasi per periode: key "<periode>|<week>|<produk>" -> map "<kota>|<kecamatan>" -> agregat
+  const periodLocMap = new Map<string, Map<string, LocAgg>>();
 
   const allProductsSet = new Set<string>();
   const outletAggMap   = new Map<string, OutletAgg>();
@@ -252,16 +264,17 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         const category    = getProductCategory(product);
         const customer    = record.customer    || 'Unknown';
         const customer_no = record.customer_no || '';
-        let city     = (record.city     || '').trim() || 'Tidak diketahui';
-        let district = (record.district || '').trim() || 'Tidak diketahui';
+        let city     = (record.city     || '').trim() || UNKNOWN_LABEL;
+        let district = (record.district || '').trim() || UNKNOWN_LABEL;
         const area   = (record.area     || '').trim();
 
-        if ((city === 'Unknown' || district === 'Unknown') && area.length > 0) {
+        // Fallback dari kolom area ("kecamatan, kota") kalau kota/kecamatan kosong
+        if ((city === UNKNOWN_LABEL || district === UNKNOWN_LABEL) && area.length > 0) {
           if (area.includes(',')) {
             const parts = area.split(',').map((p: string) => p.trim());
-            if (district === 'Unknown' && parts[0]) district = parts[0];
-            if (city     === 'Unknown' && parts[1]) city     = parts[1];
-          } else if (city === 'Unknown') {
+            if (district === UNKNOWN_LABEL && parts[0]) district = parts[0];
+            if (city     === UNKNOWN_LABEL && parts[1]) city     = parts[1];
+          } else if (city === UNKNOWN_LABEL) {
             city = area;
           }
         }
@@ -282,6 +295,17 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
           periodOmzet.set(key, (periodOmzet.get(key) || 0) + omz);
           periodWeeks[p].add(isoWeek);
           periodUnitTotal[p] += unitVal;
+
+          // Breakdown lokasi untuk filter kota/kecamatan di Week Comparison
+          let locBucket = periodLocMap.get(key);
+          if (!locBucket) { locBucket = new Map(); periodLocMap.set(key, locBucket); }
+          const locKey = `${city}|${district}`;
+          const locAgg = locBucket.get(locKey);
+          if (locAgg) {
+            locAgg.bks += bks; locAgg.slop += slop; locAgg.bal += bal; locAgg.dos += dos; locAgg.omzet += omz;
+          } else {
+            locBucket.set(locKey, { city, district, bks, slop, bal, dos, omzet: omz });
+          }
 
           const outletKey      = `${p}|${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
           const existingOutlet = outletAggMap.get(outletKey);
@@ -324,6 +348,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`   outletAggMap size: ${outletAggMap.size}`);
   console.log(`   weekProductMap size: ${weekProductMap.size}`);
   console.log(`   periodWeekProductMap size: ${periodWeekProductMap.size}`);
+  console.log(`   periodLocMap size: ${periodLocMap.size}`);
   console.log(`   allProductsSet size: ${allProductsSet.size}`);
   console.log(`   Fetched ${totalRecordCount} records dari DB`);
 
@@ -438,6 +463,37 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     });
   });
 
+  // Gabungkan breakdown lokasi P1 (minggu prevWeek) dan P2 (minggu week) untuk satu produk.
+  // Hanya kombinasi kota×kecamatan yang punya transaksi yang ikut dikirim.
+  type LocDetail = Required<WeekComparisonLocationDetail>;
+  const buildLocations = (product: string, prevWeek: number, week: number): LocDetail[] => {
+    const out = new Map<string, LocDetail>();
+    const add = (p: Period, w: number, side: 'previous' | 'current') => {
+      periodLocMap.get(pk(p, w, product))?.forEach((l, lk) => {
+        let e = out.get(lk);
+        if (!e) {
+          e = {
+            city: l.city, district: l.district,
+            units_bks:  { previous: 0, current: 0 },
+            units_slop: { previous: 0, current: 0 },
+            units_bal:  { previous: 0, current: 0 },
+            units_dos:  { previous: 0, current: 0 },
+            omzet:      { previous: 0, current: 0 },
+          };
+          out.set(lk, e);
+        }
+        e.units_bks[side]  += l.bks;
+        e.units_slop[side] += l.slop;
+        e.units_bal[side]  += l.bal;
+        e.units_dos[side]  += l.dos;
+        e.omzet[side]      += l.omzet;
+      });
+    };
+    if (periodWeeks[1].has(prevWeek)) add(1, prevWeek, 'previous');
+    if (periodWeeks[2].has(week))     add(2, week,     'current');
+    return Array.from(out.values());
+  };
+
   const weeklySeen = new Set<string>(); // hindari entry weeklyData ganda (tahun+minggu sama)
 
   for (const week of sortedWeeks) {
@@ -500,6 +556,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         units_bal:  { previous: totals.units_bal.previous,  current: totals.units_bal.current  },
         units_dos:  { previous: totals.units_dos.previous,  current: totals.units_dos.current  },
         omzet:      { previous: totals.omzet.previous,      current: totals.omzet.current      },
+        locations:  buildLocations(product, prevWeek, week),   // BARU: breakdown kota/kecamatan
       });
     });
     details.sort((a, b) => b.currentYear - a.currentYear);
