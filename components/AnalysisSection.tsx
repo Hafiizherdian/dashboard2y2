@@ -7,6 +7,7 @@ import {
   XAxis, YAxis,
   PieChart as RechartsPieChart, Pie,
 } from 'recharts';
+import { tk as dashTk, UNIT_OPTIONS } from '@/lib/dashboard-theme';
 
 type Theme = 'dark' | 'light';
 
@@ -59,22 +60,43 @@ const tk = {
   },
 } as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Filter Select 
+function FilterSelect({ label, accentColor = '#3b82f6', value, onChange, children, theme }: {
+  label: string; accentColor?: string; value: string | number;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode; theme: Theme;
+}) {
+  const t = dashTk[theme];
+  return (
+    <div style={{ display: 'flex', alignItems: 'stretch', border: `1px solid ${t.inputBorder}`, borderRadius: 8, overflow: 'hidden', minWidth: 0 }}>
+      <span style={{ padding: '6px 10px', fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, color: accentColor, background: `${accentColor}18`, borderRight: `1px solid ${t.inputBorder}`, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}>{label}</span>
+      <select value={value} onChange={onChange} style={{ background: t.inputBg, border: 'none', outline: 'none', padding: '6px 10px', fontSize: 12, fontFamily: 'IBM Plex Mono,monospace', color: t.text, cursor: 'pointer', flex: 1, minWidth: 0, appearance: 'none' }}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
+// Helpers
 const fmtFull = (v: number) => v.toLocaleString('id-ID', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const fmtU    = (v: number) => v.toLocaleString('id-ID', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtPct  = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 const achClr  = (p: number) => p >= 100 ? '#10b981' : p >= 80 ? '#f59e0b' : '#ef4444';
 const COLORS  = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#0d9488','#f97316','#ec4899','#06b6d4','#84cc16','#a78bfa','#fb923c'];
 
-function getDetailActual(d: any, unit: string): number {
-  const ud = d[unit] as { target?: number; actual?: number } | undefined;
+function getDetailActual(d: any, unitKey: string): number {
+  const ud = d[unitKey] as { target?: number; actual?: number } | undefined;
   if (ud?.actual !== undefined && ud.actual !== null) return ud.actual;
   return 0;
 }
-function getDetailTarget(d: any, unit: string): number {
-  const ud = d[unit] as { target?: number; actual?: number } | undefined;
+function getDetailTarget(d: any, unitKey: string): number {
+  const ud = d[unitKey] as { target?: number; actual?: number } | undefined;
   if (ud?.target !== undefined && ud.target !== null) return ud.target;
   return 0;
+}
+// Nilai mingguan per unit (previous / current) — selalu dari field units_* / omzet
+function getWeekVal(d: any, unitKey: string, kind: 'previous' | 'current'): number {
+  return d[unitKey]?.[kind] ?? 0;
 }
 
 interface ProductRow {
@@ -86,7 +108,7 @@ interface ProductRow {
   l4wAvg: number; c1wVal: number; l4wGrowth: number;
 }
 
-// ─── Sparkline ────────────────────────────────────────────────────────────────
+// Sparkline
 function Sparkline({ data, color, theme }: { data: { w: number; v: number; p: number }[]; color: string; theme: Theme }) {
   const t = tk[theme];
   if (!data.length) return (
@@ -129,7 +151,7 @@ function Sparkline({ data, color, theme }: { data: { w: number; v: number; p: nu
   );
 }
 
-// ─── Donut Achievement ────────────────────────────────────────────────────────
+// Donut Achievement
 function AchDonut({ pct, actual, target, theme, size = 99 }: { pct: number; actual: number; target: number; theme: Theme; size?: number }) {
   const t   = tk[theme];
   const clr = achClr(pct);
@@ -160,12 +182,12 @@ function AchDonut({ pct, actual, target, theme, size = 99 }: { pct: number; actu
           }} />
         </RechartsPieChart>
       </ResponsiveContainer>
-      
+
     </div>
   );
 }
 
-// ─── Kuartal Grouped Bar ──────────────────────────────────────────────────────
+// Kuartal Grouped Bar
 function QBarGroup({ qData, color, pL, cL, theme }: { qData: { q: string; prev: number; curr: number }[]; color: string; pL: string | number; cL: string | number; theme: Theme }) {
   const t = tk[theme];
   if (!qData.length) return <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>—</span>;
@@ -232,7 +254,7 @@ function QBarGroup({ qData, color, pL, cL, theme }: { qData: { q: string; prev: 
   );
 }
 
-// ─── L4W vs C1W Cell ─────────────────────────────────────────────────────────
+// L4W vs C1W Cell
 function L4WCell({ l4w, c1w, color, theme }: { l4w: number; c1w: number; color: string; theme: Theme }) {
   const t      = tk[theme];
   const growth = l4w > 0 ? ((c1w - l4w) / l4w) * 100 : 0;
@@ -268,7 +290,7 @@ function L4WCell({ l4w, c1w, color, theme }: { l4w: number; c1w: number; color: 
   );
 }
 
-// ─── Vol Badge ────────────────────────────────────────────────────────────────
+// Vol Badge
 function VolBadge({ label, val, color, theme }: { label: string; val: number; color: string; theme: Theme }) {
   const t = tk[theme];
   return (
@@ -280,13 +302,16 @@ function VolBadge({ label, val, color, theme }: { label: string; val: number; co
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// Main
 interface AnalysisSectionProps { data?: any; theme?: Theme }
 
 export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectionProps) {
   const t = tk[theme];
   const [sortBy, setSortBy] = useState<'vol' | 'growth' | 'ach'>('vol');
   const [search,  setSearch]  = useState('');
+  const [unitKey, setUnitKey] = useState<string>('units_dos');
+
+  const unitLabel = UNIT_OPTIONS.find(o => o.value === unitKey)?.fullLabel ?? unitKey;
 
   const rows: ProductRow[] = useMemo(() => {
     const wc: any[]         = data?.weekComparisons            ?? [];
@@ -296,7 +321,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
     const l4wMap = new Map<string, { l4w: number; c1w: number }>();
     l4wDetails.forEach((pd: any) => {
       if (!pd.product) return;
-      l4wMap.set(pd.product, { l4w: pd.units_dos?.l4w ?? 0, c1w: pd.units_dos?.c1w ?? 0 });
+      l4wMap.set(pd.product, { l4w: pd[unitKey]?.l4w ?? 0, c1w: pd[unitKey]?.c1w ?? 0 });
     });
 
     if (!wc.length) return [];
@@ -311,8 +336,8 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
         const wm = weekMap.get(prod)!;
         const ex = wm.get(week) ?? { prev: 0, curr: 0 };
         wm.set(week, {
-          prev: ex.prev + (d.units_dos?.previous ?? d.previousYear ?? 0),
-          curr: ex.curr + (d.units_dos?.current  ?? d.currentYear  ?? 0),
+          prev: ex.prev + getWeekVal(d, unitKey, 'previous'),
+          curr: ex.curr + getWeekVal(d, unitKey, 'current'),
         });
       });
     });
@@ -322,16 +347,16 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
     const qActualMap = new Map<string, Map<string, number>>();
 
     qd.forEach((q: any) => {
-      const qName      = q.quarter as string;
-      const qHasTarget = (q.target ?? 0) > 0;
+      const qName = q.quarter as string;
       (q.details ?? []).forEach((d: any) => {
         const prod = d.product as string | undefined;
         if (!prod) return;
         if (!productYTD.has(prod)) productYTD.set(prod, { target: 0, actual: 0 });
         const ytd = productYTD.get(prod)!;
-        const act = getDetailActual(d, 'units_dos');
+        const act = getDetailActual(d, unitKey);
         ytd.actual += act;
-        if (qHasTarget) ytd.target += getDetailTarget(d, 'units_dos');
+        // getDetailTarget return 0 kalau unit ini tidak punya target (mis. omzet)
+        ytd.target += getDetailTarget(d, unitKey);
         if (!qActualMap.has(prod)) qActualMap.set(prod, new Map());
         qActualMap.get(prod)!.set(qName, (qActualMap.get(prod)!.get(qName) ?? 0) + act);
       });
@@ -343,7 +368,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
       (w.details ?? []).forEach((d: any) => {
         const prod = d.product as string | undefined;
         if (!prod) return;
-        const prev = d.units_dos?.previous ?? d.previousYear ?? 0;
+        const prev = getWeekVal(d, unitKey, 'previous');
         if (!qPrevMap.has(prod)) qPrevMap.set(prod, new Map());
         qPrevMap.get(prod)!.set(qName, (qPrevMap.get(prod)!.get(qName) ?? 0) + prev);
       });
@@ -383,7 +408,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
     });
 
     return result;
-  }, [data]);
+  }, [data, unitKey]);
 
   const displayed = useMemo(() => {
     let list = rows.filter(r => r.product.toLowerCase().includes(search.toLowerCase()));
@@ -455,12 +480,21 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Brand Performance</span>
           <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 700, background: t.pill1bg, color: t.pill1text }}>{displayed.length} produk</span>
-          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 700, background: t.pill2bg, color: t.pill2text }}>{pL} vs {cL}</span>
+          <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 10, fontFamily: 'IBM Plex Mono,monospace', fontWeight: 700, background: t.pill2bg, color: t.pill2text }}>{pL} vs {cL} · {unitLabel}</span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari produk…"
             style={{ height: 28, padding: '0 10px', borderRadius: 6, fontSize: 10, fontFamily: 'IBM Plex Mono,monospace', background: t.inputBg, border: `1px solid ${t.border}`, color: t.text, outline: 'none', width: 130 }}
           />
+
+          {/* Filter unit — sama dengan WeekComparison */}
+          <FilterSelect label="Unit" accentColor="#10b981" value={unitKey} onChange={e => setUnitKey(e.target.value)} theme={theme}>
+            {UNIT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value} style={{ background: dashTk[theme].selectBg }}>{o.fullLabel}</option>
+            ))}
+          </FilterSelect>
+
+          {/* Urutkan */}
           <div style={{ display: 'flex', gap: 2, background: t.tabBg, borderRadius: 8, padding: 2 }}>
             {(['vol', 'growth', 'ach'] as const).map(k => (
               <button key={k} onClick={() => setSortBy(k)} style={{ padding: '4px 10px', borderRadius: 6, fontSize: 9, fontWeight: 600, fontFamily: 'IBM Plex Mono,monospace', border: 'none', cursor: 'pointer', background: sortBy === k ? t.tabActive : 'transparent', color: sortBy === k ? t.tabActiveText : t.textMuted, transition: 'all 0.12s' }}>
@@ -471,7 +505,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
         </div>
       </div>
 
-      {/* ── Tabel ── */}
+      {/* Tabel */}
       {/*
         FIX: struktur scroll
         - outer div: border + borderRadius, overflow hidden
@@ -488,7 +522,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
               {colH('No')}
               {colH('Produk')}
               {colH('Sales Trend', `${pL}(putus) vs ${cL}(solid)`)}
-              {colH('Vol. P1 vs P2', `${pL} → ${cL} + growth`)}
+              {colH('Vol. P1 vs P2', `${pL} → ${cL}`)}
               {colH('Achievement', `Actual vs Target ${cL}`)}
               {colH('YoY Growth', `${pL} → ${cL}`)}
               {colH('Kuartal', `${pL} vs ${cL} per Q`)}
@@ -562,7 +596,7 @@ export default function AnalysisSection({ data, theme = 'dark' }: AnalysisSectio
             const avgAch   = achRows.length ? achRows.reduce((s, r) => s + r.achPct, 0) / achRows.length : 0;
             const posCount = rows.filter(r => r.volGrowth >= 0).length;
             const items = [
-              { label: `Total ${cL}`,     val: fmtFull(totCurr),           clr: t.text },
+              { label: `Total ${cL} (${unitLabel})`, val: fmtFull(totCurr),           clr: t.text },
               { label: 'Total Growth',    val: fmtPct(totGrow),             clr: totGrow >= 0 ? t.posText : t.negText },
               { label: 'Avg Achievement', val: `${avgAch.toFixed(1)}%`,     clr: achClr(avgAch) },
               { label: 'Produk Positif',  val: `${posCount}/${rows.length}`, clr: t.posText },
