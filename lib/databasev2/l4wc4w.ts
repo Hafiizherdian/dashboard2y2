@@ -13,7 +13,7 @@
  *     memicu TS error "missing property" pada object literal yang strict).
  */
 
-import { L4WC4WData, WeeklyTrendData, ProductL4WC1WData } from '@/types/sales';
+import { L4WC4WData, WeeklyTrendData, ProductL4WC1WData, ProductWeeklyPoint } from '@/types/sales';
 import { UnitAgg, FetchFilters } from './types';
 
 // ─── generateL4WC4WData ───────────────────────────────────────────────────────
@@ -191,11 +191,26 @@ function generateProductL4WC1WData(
     const variance           = c1wData.omzet - l4wAvg.omzet;
     const variancePercentage = l4wAvg.omzet > 0 ? (variance / l4wAvg.omzet) * 100 : 0;
 
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const weeklyData: ProductWeeklyPoint[] = [...l4wWeeks, c1wWeek].map(w => {
+      const d = weekMap.get(w) ?? fallbackEntry;
+      return {
+        week:       w,
+        period:     w === c1wWeek ? 'C1W' : 'L4W',
+        omzet:      r2(d.omzet),
+        units_bks:  r2(d.units_bks),
+        units_slop: r2(d.units_slop),
+        units_bal:  r2(d.units_bal),
+        units_dos:  r2(d.units_dos),
+      };
+    });
+
     productData.push({
       product,
       year,
       l4wValue:  Math.round(l4wAvg.omzet),
       c1wValue:  Math.round(c1wData.omzet),
+      weeklyData,
       variance:  Math.round(variance),
       variancePercentage: Math.round(variancePercentage * 10) / 10,
       units_bks:  { l4w: Math.round(l4wAvg.units_bks   * 100) / 100, c1w: Math.round(c1wData.units_bks   * 100) / 100, l4wTotal: Math.round(l4wTotal.units_bks  * 100) / 100 },

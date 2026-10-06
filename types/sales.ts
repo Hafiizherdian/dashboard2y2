@@ -148,6 +148,17 @@ export interface WeekComparison {
   variancePercentage: number;
   details?: WeekComparisonProductDetail[];
 }
+
+export interface ProductWeeklyPoint {
+  week: number;
+  period: 'L4W' | 'C1W';
+  omzet: number;
+  units_bks: number;
+  units_slop: number;
+  units_bal: number;
+  units_dos: number;
+}
+
 /**
  * Data L4W vs C4W
  */
@@ -158,6 +169,7 @@ export interface ProductL4WC1WData {
   c1wValue: number;
   variance: number;
   variancePercentage: number;
+  weeklyData?: ProductWeeklyPoint[]; 
   // Tambah l4wTotal ke tiap unit field
 units_bks:  { l4w: number; c1w: number; l4wTotal?: number };
 units_slop: { l4w: number; c1w: number; l4wTotal?: number };

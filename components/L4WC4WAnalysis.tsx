@@ -781,49 +781,33 @@ export default function L4WC4WAnalysisComponent({ data, theme: themeProp, select
     c1w:    chartData[1].value,
   }), [chartData]);
   
-  // trendData
-  const trendData = useMemo(() => {
-    if (!data.weeklyTrendData?.length) return [];
+  // trendData: agregat langsung dari weeklyData per produk (nilai asli, bukan alokasi rasio)
+const trendData = useMemo(() => {
+  const details = data.productDetails ?? [];
+  if (!details.some(p => p.weeklyData?.length)) return [];
 
-    // 1. Cari pola rasio (naik-turun) dari data asli API untuk periode L4W
-    const globalL4W = data.weeklyTrendData.filter(tw => tw.period !== 'C1W');
-    const totalGlobalL4W = globalL4W.reduce((sum, tw) => sum + tw.value, 0);
-    
-    const weekWeights = new Map<string, number>();
-    globalL4W.forEach(tw => {
-      // Hitung persentase bobot setiap minggunya (misal W19 menyumbang 27% dari total)
-      weekWeights.set(tw.week, totalGlobalL4W > 0 ? tw.value / totalGlobalL4W : 0.25);
+  const byWeek = new Map<number, { period: 'L4W' | 'C1W'; value: number }>();
+
+  details.forEach(p => {
+    if (selectedCat !== 'all' && getProductCategory(p.product) !== selectedCat) return;
+    if (selectedProduct !== 'all' && p.product !== selectedProduct) return;
+
+    p.weeklyData?.forEach(w => {
+      const v = w[selectedUnit] ?? 0;
+      const ex = byWeek.get(w.week);
+      if (ex) ex.value += v;
+      else byWeek.set(w.week, { period: w.period, value: v });
     });
+  });
 
-    // 2. Hitung total C1W dan L4W murni berdasarkan filter (Unit & Kategori) saat ini
-    let filteredC1W = 0;
-    let filteredL4WTotal = 0;
-
-    data.productDetails?.forEach(p => {
-      // Lewati produk yang tidak sesuai filter kategori/produk
-      if (selectedCat !== 'all' && getProductCategory(p.product) !== selectedCat) return;
-      if (selectedProduct !== 'all' && p.product !== selectedProduct) return;
-      
-      const ud = getUnitData(p, selectedUnit);
-      filteredC1W += ud.c1w;
-      filteredL4WTotal += ud.l4wTotal ?? (ud.l4w * 4);
-    });
-
-    // 3. Bangun ulang data grafik dengan mendistribusikan total filter ke pola rasio
-    return data.weeklyTrendData.map(tw => {
-      let finalValue = 0;
-      
-      if (tw.period === 'C1W') {
-        finalValue = filteredC1W;
-      } else {
-        // Alih-alih dibagi 4 (rata-rata), kita kalikan dengan rasio asli minggunya
-        const weight = weekWeights.get(tw.week) ?? 0.25;
-        finalValue = filteredL4WTotal * weight;
-      }
-      
-      return { ...tw, value: Math.round(finalValue * 100) / 100 };
-    });
-  }, [data, selectedUnit, selectedCat, selectedProduct]);
+  return Array.from(byWeek.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([week, { period, value }]) => ({
+      week:   `W${String(week).padStart(2, '0')}`,
+      period,
+      value:  Math.round(value * 100) / 100,
+    }));
+}, [data.productDetails, selectedUnit, selectedCat, selectedProduct]);
 
   // Card style
   const card = (extra: React.CSSProperties = {}): React.CSSProperties => ({
