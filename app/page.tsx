@@ -11,6 +11,7 @@ import AnalysisSection from '@/components/AnalysisSection';
 import OutletContributionSection from '@/components/OutletContributionSection';
 import DistributionSection from '@/components/DistributionSection';
 import PiutangComponent from '@/components/PiutangSections';
+import StockSection from '@/components/StockSection';
 import OverviewTab from '@/components/OverviewTab';
 import { SalesData } from '@/types/sales';
 import { AreaConfig } from '@/lib/areaConfig';
@@ -24,6 +25,7 @@ import {
   ChevronLeft, Filter, X, LogOut,
   ShieldAlert, ShieldCheck, Shield,
   Boxes, NotepadTextDashed, WalletCards,
+  Warehouse,
 } from 'lucide-react';
 
 const ThemeCtx = createContext<Theme>('dark');
@@ -127,7 +129,8 @@ const TABS=[
   {id:'outlet',        label:'Outlet',          shortLabel:'Outlet',     Icon:Store     },
   {id:'analysis',      label:'Brand Performance',shortLabel:'Brand',     Icon:FileText  },
   {id:'distribution',  label:'Distribusi',      shortLabel:'Distribusi', Icon:Boxes    },
-  {id:'piutang',       label:'Piutang',         shortLabel:'Piutang',    Icon:WalletCards}
+  {id:'piutang',       label:'Piutang',         shortLabel:'Piutang',    Icon:WalletCards},
+  {id:'stock',         label:'Stok Level',      shortLabel:'Stok',       Icon:Warehouse},
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
@@ -219,7 +222,7 @@ function MobileBottomNav({ activeTab, setActiveTab, theme }:{ activeTab:TabId; s
   const t=tk[theme];
   return (
     <nav style={{
-      position:'fixed', bottom:0, left:0, right:0,
+      position:'fixed', bottom:8, left:12, right:12, borderRadius:12,
       zIndex:9999,
       background:t.bottombarbg, backdropFilter:'blur(16px)', WebkitBackdropFilter:'blur(16px)',
       borderTop:`1px solid ${t.border}`, display:'flex',
@@ -230,7 +233,7 @@ function MobileBottomNav({ activeTab, setActiveTab, theme }:{ activeTab:TabId; s
         return (
           <button key={id} onClick={()=>setActiveTab(id)}
             style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'7px 2px',border:'none',background:'transparent',cursor:'pointer',minHeight:48,gap:2,color:active?t.navActiveText:t.textMuted,position:'relative'}}>
-            <Icon size={16} color={active?t.navActiveText:t.textMuted}/>
+            <Icon size={20} color={active?t.navActiveText:t.textMuted}/>
             <span style={{fontSize:8,fontWeight:active?700:400,fontFamily:'IBM Plex Sans,sans-serif'}}>{shortLabel}</span>
             {active&&<span style={{position:'absolute',top:0,width:16,height:2,background:t.navActiveText,borderRadius:'0 0 2px 2px'}}/>}
           </button>
@@ -996,6 +999,7 @@ function DashboardInner() {
       case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
                                     cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);
       case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
+      case 'stock': return <StockSection theme={theme} areas={areas} data={data.stockList ?? []}/>;
       default: return <OverviewTab data={data} theme={theme} y1={y1} y2={y2} availH={availH} selectedUnit={applied.unit} p1Label={p1Label} p2Label={p2Label}/>;
     }
   };

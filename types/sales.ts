@@ -238,6 +238,7 @@ export interface SalesData {
   comparisonWeeks: ComparisonWeeks;
   outletData?: OutletSalesData[];  // Data penjualan per outlet (opsional)
   piutangList?: PiutangRecord[];
+  stockList?: StockRecord[];
   distributionData?: any;
 }
 
@@ -325,4 +326,17 @@ export interface QuarterlyYoYData {
   details?: YoYProductDetail[];
   weeklyBreakdown?: YoYWeekBreakdown[];
   monthlyBreakdown?: YoYMonthBreakdown[];
+}
+
+export interface StockRecord {
+  area: string;
+  reportDate: string;      // 'YYYY-MM-DD'
+  category: string;
+  productId: string | null;
+  product: string;
+  unitsDos: number;
+  unitsBks: number;
+  konvDos: number;
+  dos4Weeks: number;
+  avgWeek: number;
 }

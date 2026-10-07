@@ -24,6 +24,7 @@ import PiutangComponent from '@/components/PiutangSections';
 import SettingsTab         from '@/components/admin/SettingsTab';
 import { tk, Theme, Tokens, FONT_SANS, FONT_MONO } from '@/components/admin/shared';
 import UploadPiutangTab from '@/components/admin/UploadPiutangTab';
+import UploadStockTab from '@/components/admin/UploadStockTab'
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -162,6 +163,7 @@ const NAV_SECTIONS = [
       { id: 'upload-penjualan',  label: 'Upload Penjualan',  icon: Upload,      accent: '#6366f1' },
       { id: 'upload-distribusi', label: 'Upload Distribusi', icon: Upload,      accent: '#10b981' },
       { id: 'upload-piutang',    label: 'Upload Piutang',    icon: Upload,      accent: '#940d2c' },
+      { id: 'upload-stok', label: 'Upload Stok', icon: Upload, accent: '#0ea5e9' },
       { id: 'areas',             label: 'Management Area',   icon: MapPin,      accent: '#0d9488' },
       { id: 'regions',           label: 'Management Regional', icon: Globe2,    accent: '#d97706' },
     ],
@@ -179,6 +181,7 @@ const PERM_MAP: Record<string, string> = {
   'upload-penjualan':  'view_files',
   'upload-distribusi': 'upload_file',
   'upload-piutang':    'upload_file',
+  'upload-stok':       'upload_file',
   areas:               'view_areas',
   regions:             'view_all_areas', // root-only, sama seperti izin lihat semua area
   users:               'manage_users',
@@ -189,6 +192,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string; icon: React.C
   'upload-penjualan':  { title: 'Upload Penjualan',  subtitle: 'File data penjualan (.xlsx)',   icon: Upload,     color: '#6366f1' },
   'upload-distribusi': { title: 'Upload Distribusi', subtitle: 'File data distribusi (.xlsx)',  icon: Upload,     color: '#10b981' },
   'upload-piutang':    { title: 'Upload Piutang',    subtitle: 'FIle data piutang (.xlsx',      icon: Upload,     color: '#940d2c' },
+  'upload-stok': { title: 'Upload Stok', subtitle: 'Laporan stock level (.xlsx)', icon: Upload, color: '#0ea5e9' },
   areas:               { title: 'Management Area',   subtitle: 'Target DOS per area',           icon: MapPin,     color: '#0d9488' },
   regions:             { title: 'Management Regional', subtitle: 'Grouping area untuk filter regional', icon: Globe2, color: '#d97706' },
   users:               { title: 'Manajemen User',    subtitle: 'Kelola akun pengguna',          icon: Users,      color: '#a855f7' },
@@ -473,6 +477,7 @@ function DashboardContent() {
           {activeTab === 'upload-penjualan'  && can('view_files')      && <UploadPenjualanTab  dbStats={dbStats} uploadedFiles={uploadedFiles} onRefresh={fetchData} theme={theme} addToast={addToast} />}
           {activeTab === 'upload-distribusi' && can('upload_file')     && <UploadDistribusiTab theme={theme} addToast={addToast} distFiles={distFiles} onRefresh={fetchData} dbStats={dbStats} />}
           {activeTab === 'upload-piutang'    && can('upload_file')     && <UploadPiutangTab    theme={theme} addToast={addToast}/>}
+          {activeTab === 'upload-stok' && can('upload_file') && <UploadStockTab theme={theme} addToast={addToast} />}
           {activeTab === 'areas'             && can('view_areas')      && <AreaManagement theme={theme} />}
           {activeTab === 'regions'           && can('view_all_areas')  && <RegionManagement theme={theme} />}
           {activeTab === 'users'             && can('manage_users')    && <UserManagement theme={theme} />}

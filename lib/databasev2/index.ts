@@ -36,6 +36,7 @@ import { parseDateLocal, resolveWeekYear } from './dateUtils';
 import { streamSalesRecords } from './streamSales';
 import { resolveTargetAreas, fetchTargetQueriesParallel } from './targetQueries';
 import { fetchPiutangData } from './piutangQueries';
+import { fetchStockData } from './stockQueries';
 import { generateQuarterlyData } from './quarterlyData';
 import { generateQuarterlyYoYData } from './quarterlyYoY';
 import { generateL4WC4WData } from './l4wc4w';
@@ -85,9 +86,10 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
     console.log('fetchSalesData - Filter diterima:', JSON.stringify(filters));
 
     // Jalankan parallel: sales records + piutang
-    const [salesResult, piutangList] = await Promise.all([
+    const [salesResult, piutangList, stockList] = await Promise.all([
       processSalesRecords(filters),
       fetchPiutangData(filters),
+      fetchStockData(filters),
     ]);
 
     console.log(`piutangList: ${piutangList.length} records`);
@@ -95,6 +97,7 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
     return {
       ...salesResult,
       piutangList,
+      stockList,
     };
   } catch (error) {
     console.error('Error fetching sales data:', error);
