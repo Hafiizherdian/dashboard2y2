@@ -2,10 +2,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { PiutangRecord, WeeklySales } from '@/types/sales';
+import { useBreakpoint } from '@/lib/dashboard-theme';
 import {
   Search, CalendarRange, ArrowUpDown, CreditCard,
   DollarSign, Calendar, BanknoteArrowDown, Percent,
-  BanknoteX,
+  BanknoteX, X,
 } from 'lucide-react';
 
 type Theme = 'light' | 'dark';
@@ -189,6 +190,7 @@ interface PiutangComponentProps {
 
 export default function PiutangComponent({ data, weeklyData = [], theme = 'light' }: PiutangComponentProps) {
   const t = tk[theme];
+  const { isMobile } = useBreakpoint();
 
   const [searchTerm,       setSearchTerm]       = useState('');
   const [selectedOutlet,   setSelectedOutlet]   = useState('all');
@@ -197,6 +199,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
   const [selectedAgeRange, setSelectedAgeRange] = useState('all');
   const [sortBy,           setSortBy]           = useState<keyof PiutangRecord>('hari');
   const [sortOrder,        setSortOrder]        = useState<'asc' | 'desc'>('desc');
+  const [selectedRow,      setSelectedRow]      = useState<PiutangRecord | null>(null); // detail (mobile)
 
   const outlet = useMemo(() => {
     const s = new Set<string>();
@@ -309,6 +312,137 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
 
   const hasFilters = searchTerm || selectedOutlet !== 'all' || selectedCity !== 'all' || selectedSalesman !== 'all' || selectedAgeRange !== 'all';
 
+  // ── Mobile: daftar kartu + detail (tap untuk buka) ───────────────────────
+  const mono = 'IBM Plex Mono, monospace';
+
+  const agingColorOf = (h: number | null) =>
+    h === null ? t.textFaint : h > 40 ? '#ef4444' : h >= 30 ? '#f59e0b' : t.text;
+
+  const infoCol = (label: string, value: React.ReactNode) => (
+    <div style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontSize: 10, color: t.text, fontFamily: mono, textTransform: 'uppercase' }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: t.textSub, fontFamily: mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    </div>
+  );
+
+  const valueBox = (label: string, value: React.ReactNode, color: string) => (
+    <div style={{ display: 'flex', flex: 1, minWidth: 0, flexDirection: 'column', gap: 1, padding: '4px 6px', borderRadius: 6, background: t.inputBg }}>
+      <span style={{ fontSize: 10, color: t.text, fontFamily: mono }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color, fontFamily: mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</span>
+    </div>
+  );
+
+  const renderMobileList = () => {
+    if (filteredData.length === 0) {
+      return (
+        <div style={{ padding: 48, textAlign: 'center', fontSize: 12, color: t.text, fontFamily: mono }}>
+          Tidak ada transaksi piutang yang cocok.
+        </div>
+      );
+    }
+    return (
+      <div>
+        {filteredData.map((row, idx) => (
+          <div
+            key={`${row.faktur}-${idx}`}
+            onClick={() => setSelectedRow(row)}
+            style={{ padding: '10px 14px', borderBottom: `1px solid ${t.border}`, background: idx % 2 === 1 ? t.tableAlt : 'transparent', cursor: 'pointer' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: mono }}>{row.faktur}</span>
+              <span style={{ fontSize: 11, color: t.textMuted, fontFamily: mono }}>{row.kode}</span>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {row.outlet}
+            </div>
+            <div style={{ fontSize: 10, color: t.textSub, fontFamily: mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
+              {[row.kecamatan, row.kota].filter(Boolean).join(' · ') || '—'}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              {infoCol('Jatuh Tempo', row.jatuhTempo || '—')}
+              {infoCol('Salesman', row.salesman || '—')}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {valueBox('HARI', row.hari !== null ? fIDR(row.hari) : '—', agingColorOf(row.hari))}
+              {valueBox('PIUTANG', fIDR(row.piutang), row.piutang > 10_000_000 ? t.yellow.text : t.text)}
+              {valueBox('GIRO', fIDR(row.giro), row.giro > 0 ? t.green.text : t.text)}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const detailRow = (label: string, value: React.ReactNode, color?: string) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '6px 0', borderBottom: `1px dashed ${t.border}` }}>
+      <span style={{ fontSize: 10, color: t.text, fontFamily: mono, flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: color ?? t.text, fontFamily: mono, textAlign: 'right' }}>{value}</span>
+    </div>
+  );
+
+  const DetailModal = (() => {
+    if (!isMobile || !selectedRow) return null;
+    const r = selectedRow;
+    return (
+      <div
+        onClick={() => setSelectedRow(null)}
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0, 0, 0, 0.3)',
+          backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+          zIndex: 10002, // di atas bottom nav & sheet filter dashboard
+        }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            background: t.cardbg, border: `1px solid ${t.borderCard}`, borderRadius: '16px 16px 0 0',
+            width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto',
+            padding: '14px 16px calc(env(safe-area-inset-bottom, 0px) + 60px)',
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: t.text, fontFamily: mono }}>{r.faktur}</div>
+              <div style={{ fontSize: 11, color: t.text, fontFamily: mono, marginTop: 2 }}>{r.outlet}</div>
+              <div style={{ fontSize: 10, color: t.textSub, fontFamily: mono, marginTop: 2 }}>{r.kode}</div>
+            </div>
+            <button
+              onClick={() => setSelectedRow(null)}
+              style={{ background: t.inputBg, border: `1px solid ${t.borderInput}`, borderRadius: 6, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: t.textMuted, flexShrink: 0 }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+
+          {/* Highlight */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, background: t.inputBg, textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: t.text, fontFamily: mono, marginBottom: 2 }}>HARI</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: agingColorOf(r.hari), fontFamily: mono }}>{r.hari !== null ? fIDR(r.hari) : '—'}</div>
+            </div>
+            <div style={{ flex: 1, padding: '8px 10px', borderRadius: 8, background: t.inputBg, textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: t.text, fontFamily: mono, marginBottom: 2 }}>TOTAL (PIUTANG + GIRO)</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: t.text, fontFamily: mono }}>{fIDR(r.piutang + r.giro)}</div>
+            </div>
+          </div>
+
+          {/* Detail lengkap, sama seperti kolom tabel desktop */}
+          {detailRow('Outlet', r.outlet)}
+          {detailRow('Kota', r.kota || '—')}
+          {detailRow('Kecamatan', r.kecamatan || '—')}
+          {detailRow('Kel/Desa', r.kelDesa || '—')}
+          {detailRow('Salesman', r.salesman || '—')}
+          {detailRow('Tanggal', r.tanggal || '—')}
+          {detailRow('Jatuh Tempo', r.jatuhTempo || '—')}
+          {detailRow('Piutang', fIDR(r.piutang), r.piutang > 10_000_000 ? t.yellow.text : t.text)}
+          {detailRow('Giro', fIDR(r.giro), r.giro > 0 ? t.green.text : t.text)}
+        </div>
+      </div>
+    );
+  })();
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
@@ -398,6 +532,26 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
             <option value="short">Baru (&lt; 30 Hari)</option>
             <option value="giro">Giro (Null)</option>
           </FilterSelect>
+
+          {/* Mobile: pengganti klik header kolom untuk mengurutkan */}
+          {isMobile && (
+            <FilterSelect
+              label="Urut" accentColor="#ec4899"
+              value={`${sortBy}:${sortOrder}`}
+              onChange={e => {
+                const [k, o] = e.target.value.split(':');
+                setSortBy(k as keyof PiutangRecord);
+                setSortOrder(o as 'asc' | 'desc');
+              }}
+              t={t}
+            >
+              <option value="hari:desc">Hari Terlama</option>
+              <option value="hari:asc">Hari Terbaru</option>
+              <option value="piutang:desc">Piutang Terbesar</option>
+              <option value="giro:desc">Giro Terbesar</option>
+              <option value="outlet:asc">Outlet A–Z</option>
+            </FilterSelect>
+          )}
         </div>
       </div>
 
@@ -408,6 +562,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
         <div style={{
           padding: '10px 16px', borderBottom: `1px solid ${t.border}`,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          flexWrap: 'wrap', gap: 6,
           background: t.tableHead,
         }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: t.tableHeadText, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -422,6 +577,7 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
           </span>
         </div>
 
+        {isMobile ? renderMobileList() : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
             <thead>
@@ -527,7 +683,10 @@ export default function PiutangComponent({ data, weeklyData = [], theme = 'light
             </tbody>
           </table>
         </div>
+        )}
       </div>
+
+      {DetailModal}
 
     </div>
   );
