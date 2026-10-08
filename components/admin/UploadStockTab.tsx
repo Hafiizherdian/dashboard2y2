@@ -281,7 +281,7 @@ export default function UploadStockTab({ theme, addToast }: Props) {
             )}
           </FormGroup>
 
-          <FormGroup label="Week Laporan" hint="Upload ulang area + week yang sama akan mengganti data lama" theme={theme}>
+          <FormGroup label="Week" hint="Upload ulang area + week yang sama akan mengganti data lama" theme={theme}>
             <div style={{ display: 'flex', gap: 8 }}>
               <select value={week} onChange={e => setWeek(Number(e.target.value))} aria-label="Week laporan"
                 style={{ ...selectStyle, flex: 1 }}>
