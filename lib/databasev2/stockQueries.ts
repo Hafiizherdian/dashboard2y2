@@ -1,6 +1,7 @@
 /**
- * Query data stock level, diambil dari snapshot TERBARU per area
- * (stock_files.report_date DESC, lalu created_at DESC).
+ * Query data stock level.
+ * Snapshot diambil per (area, tahun, week): untuk setiap kombinasi tersebut dipakai
+ * file terbaru (report_date DESC, lalu created_at DESC).
  * Pola sama dengan piutangQueries.ts.
  */
 
@@ -28,6 +29,8 @@ export async function fetchStockData(filters?: FetchFilters): Promise<StockRecor
     SELECT
       r.area,
       r.report_date::text          AS "reportDate",
+      latest.report_year           AS "reportYear",
+      latest.report_week           AS "reportWeek",
       COALESCE(r.category, '')     AS category,
       r.product_id                 AS "productId",
       r.product,
@@ -38,11 +41,12 @@ export async function fetchStockData(filters?: FetchFilters): Promise<StockRecor
       r.avg_week::float8           AS "avgWeek"
     FROM stock_records r
     JOIN (
-      -- snapshot paling baru untuk masing-masing area
-      SELECT DISTINCT ON (area) id
+      -- snapshot paling baru untuk setiap area + tahun + week
+      SELECT DISTINCT ON (area, report_year, report_week)
+             id, report_year, report_week
       FROM stock_files
       WHERE status = 'completed'
-      ORDER BY area, report_date DESC, created_at DESC
+      ORDER BY area, report_year, report_week, report_date DESC, created_at DESC
     ) latest ON r.file_id = latest.id
     ${where}
     ORDER BY r.category, r.product, r.area
@@ -54,6 +58,8 @@ export async function fetchStockData(filters?: FetchFilters): Promise<StockRecor
     return result.rows.map((r: any): StockRecord => ({
       area:       r.area,
       reportDate: r.reportDate,
+      reportYear: Number(r.reportYear) || 0,
+      reportWeek: Number(r.reportWeek) || 0,
       category:   r.category ?? '',
       productId:  r.productId ?? null,
       product:    r.product,

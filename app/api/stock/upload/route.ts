@@ -1,7 +1,7 @@
 /**
  * POST /api/stock/upload
- * Multipart: file (.xlsx/.xls) + area
- * Snapshot stok: upload ulang untuk area + tanggal laporan yang sama akan MENGGANTI data lama.
+ * Multipart: file (.xlsx/.xls) + area + week + year
+ * Snapshot stok: upload ulang untuk area + tahun + week yang sama akan MENGGANTI data lama.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
@@ -37,6 +37,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Area belum dipilih' }, { status: 400 });
       }
 
+      // Week & tahun laporan (dipilih user saat upload)
+      const week = Number(formData.get('week'));
+      const year = Number(formData.get('year'));
+      if (!Number.isInteger(week) || week < 1 || week > 53) {
+        return NextResponse.json({ success: false, error: 'Week tidak valid (1-53)' }, { status: 400 });
+      }
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+        return NextResponse.json({ success: false, error: 'Tahun tidak valid' }, { status: 400 });
+      }
+
       // Parse
       const buffer = Buffer.from(await file.arrayBuffer());
       const wb = XLSX.read(buffer, { type: 'buffer', cellDates: false });
@@ -58,7 +68,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Tidak ada baris produk yang terbaca' }, { status: 400 });
       }
 
-      // tanggal laporan dari footer "Dicetak: ..."; fallback hari ini
+      // tanggal laporan dari footer "Dicetak: ..."; fallback hari ini (hanya informasi)
       const reportDate = parsed.reportDate ?? new Date().toISOString().slice(0, 10);
 
       // Simpan
@@ -66,16 +76,17 @@ export async function POST(request: NextRequest) {
       try {
         await client.query('BEGIN');
 
-        // ganti snapshot lama untuk area + tanggal yang sama (stock_records ikut terhapus via CASCADE)
+        // ganti snapshot lama untuk area + tahun + week yang sama (stock_records ikut terhapus via CASCADE)
         const replaced = await client.query(
-          'DELETE FROM stock_files WHERE area = $1 AND report_date = $2',
-          [area, reportDate]
+          'DELETE FROM stock_files WHERE area = $1 AND report_year = $2 AND report_week = $3',
+          [area, year, week]
         );
 
         const fileRes = await client.query(
-          `INSERT INTO stock_files (filename, original_name, file_size, record_count, area, report_date, status, uploaded_by)
-           VALUES ($1,$2,$3,$4,$5,$6,'processing',$7) RETURNING id`,
-          [`stock_${Date.now()}.xlsx`, file.name, file.size, parsed.rows.length, area, reportDate, session.username ?? 'admin']
+          `INSERT INTO stock_files
+             (filename, original_name, file_size, record_count, area, report_date, report_year, report_week, status, uploaded_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'processing',$9) RETURNING id`,
+          [`stock_${Date.now()}.xlsx`, file.name, file.size, parsed.rows.length, area, reportDate, year, week, session.username ?? 'admin']
         );
         const fileId = fileRes.rows[0].id;
 
@@ -99,6 +110,8 @@ export async function POST(request: NextRequest) {
             file_id: fileId,
             record_count: parsed.rows.length,
             report_date: reportDate,
+            report_week: week,
+            report_year: year,
             area_in_file: parsed.areaName,   // untuk cek kalau salah pilih area
             replaced_files: replaced.rowCount ?? 0,
           },

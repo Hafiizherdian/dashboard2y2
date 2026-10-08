@@ -331,6 +331,8 @@ export interface QuarterlyYoYData {
 export interface StockRecord {
   area: string;
   reportDate: string;      // 'YYYY-MM-DD'
+  reportYear: number;      // BARU
+  reportWeek: number;      // BARU
   category: string;
   productId: string | null;
   product: string;

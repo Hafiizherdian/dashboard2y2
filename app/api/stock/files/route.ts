@@ -17,9 +17,10 @@ export async function GET(request: NextRequest) {
       }
       const result = await pool.query(
         `SELECT id, original_name, file_size, record_count, area, report_date,
+                report_year, report_week,
                 status, uploaded_by, created_at
          FROM stock_files ${where}
-         ORDER BY report_date DESC, created_at DESC
+         ORDER BY report_year DESC, report_week DESC, report_date DESC, created_at DESC
          LIMIT 1000`,
         params
       );

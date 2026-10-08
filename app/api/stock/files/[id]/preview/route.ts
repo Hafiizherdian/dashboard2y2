@@ -17,7 +17,8 @@ export async function GET(
       }
 
       const fileRes = await pool.query(
-        'SELECT id, original_name, record_count, status, area, report_date FROM stock_files WHERE id = $1',
+        `SELECT id, original_name, record_count, status, area, report_date, report_year, report_week
+         FROM stock_files WHERE id = $1`,
         [fileId]
       );
       if (!fileRes.rows.length) {

@@ -108,6 +108,9 @@ const num = (v: number | null | undefined, d = 2) =>
 const fmtDate = (s: string) =>
   new Date(s + 'T00:00:00').toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 
+// Kunci week: tahun-week (snapshot stok bersifat per week, jangan dijumlahkan antar week)
+const weekKey = (r: StockRecord) => `${r.reportYear}-${r.reportWeek}`;
+
 // Stok level dihitung dari total konv_dos / total avg_week (bukan rata-rata level antar baris)
 const levelOf = (konv: number, avg: number): number | null => (avg > 0 ? konv / avg : null);
 
@@ -187,6 +190,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={onChange}
+        aria-label={label}
         style={{
           background: t.pagebg, border: 'none', outline: 'none',
           padding: '6px 10px', fontSize: 12,
@@ -246,6 +250,7 @@ export default function StockSection({ theme = 'light', areas, data }: {
   const { isMobile } = useBreakpoint();
 
   const [search,      setSearch]      = useState('');
+  const [selWeek,     setSelWeek]     = useState('');   // '' = week terbaru
   const [selArea,     setSelArea]     = useState('all');
   const [selCategory, setSelCategory] = useState('all');
   const [selStatus,   setSelStatus]   = useState<'all' | Status>('all');
@@ -255,24 +260,38 @@ export default function StockSection({ theme = 'light', areas, data }: {
 
   const areaName = (id: string) => areas.find(a => a.id === id)?.name ?? id;
 
-  // opsi filter
-  const areaOptions = useMemo(() => [...new Set(data.map(r => r.area))].sort((a, b) => areaName(a).localeCompare(areaName(b))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, areas]);
-  const categoryOptions = useMemo(() => [...new Set(data.map(r => r.category).filter(Boolean))].sort(), [data]);
+  // opsi week (terbaru dulu); default = week terbaru yang ada di data
+  const weekOptions = useMemo(() => {
+    const m = new Map<string, { year: number; week: number }>();
+    data.forEach(r => m.set(weekKey(r), { year: r.reportYear, week: r.reportWeek }));
+    return [...m.entries()]
+      .sort((a, b) => b[1].year - a[1].year || b[1].week - a[1].week)
+      .map(([key, v]) => ({ key, label: `W${v.week}` }));
+  }, [data]);
 
-  // tanggal snapshot terbaru di antara semua area; area yang lebih lama ditandai ⚠
-  const latestDate = useMemo(() => data.reduce((m, r) => (r.reportDate > m ? r.reportDate : m), ''), [data]);
+  const effectiveWeek = weekOptions.some(w => w.key === selWeek) ? selWeek : (weekOptions[0]?.key ?? '');
+
+  // semua baris untuk week terpilih (stok = snapshot, tidak dijumlahkan antar week)
+  const weekRows = useMemo(() => data.filter(r => weekKey(r) === effectiveWeek), [data, effectiveWeek]);
+
+  // opsi filter (berdasarkan week terpilih)
+  const areaOptions = useMemo(() => [...new Set(weekRows.map(r => r.area))].sort((a, b) => areaName(a).localeCompare(areaName(b))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [weekRows, areas]);
+  const categoryOptions = useMemo(() => [...new Set(weekRows.map(r => r.category).filter(Boolean))].sort(), [weekRows]);
+
+  // tanggal snapshot terbaru di antara semua area pada week ini; area yang lebih lama ditandai ⚠
+  const latestDate = useMemo(() => weekRows.reduce((m, r) => (r.reportDate > m ? r.reportDate : m), ''), [weekRows]);
 
   // baris setelah filter area / kategori / pencarian
   const scopedRows = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return data.filter(r =>
+    return weekRows.filter(r =>
       (selArea === 'all' || r.area === selArea) &&
       (selCategory === 'all' || r.category === selCategory) &&
       (!term || r.product.toLowerCase().includes(term))
     );
-  }, [data, search, selArea, selCategory]);
+  }, [weekRows, search, selArea, selCategory]);
 
   const products = useMemo(() => aggregate(scopedRows, r => r.productId || r.product, r => r.product), [scopedRows]);
 
@@ -297,7 +316,7 @@ export default function StockSection({ theme = 'light', areas, data }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopedRows, areas]);
 
-  // KPI mengikuti filter area/kategori/pencarian (filter status hanya untuk tabel)
+  // KPI mengikuti filter week/area/kategori/pencarian (filter status hanya untuk tabel)
   const kpi = useMemo(() => {
     const konv = products.reduce((s, p) => s + p.konv, 0);
     const avg  = products.reduce((s, p) => s + p.avg, 0);
@@ -331,10 +350,18 @@ export default function StockSection({ theme = 'light', areas, data }: {
     });
   }, [products, selStatus, sortKey, sortOrder]);
 
-  const hasFilters = !!search || selArea !== 'all' || selCategory !== 'all' || selStatus !== 'all' || sortKey !== null;
+  const weekChanged = selWeek !== '' && selWeek !== weekOptions[0]?.key;
+  const hasFilters = !!search || selArea !== 'all' || selCategory !== 'all' || selStatus !== 'all' || sortKey !== null || weekChanged;
   const clearFilters = () => {
     setSearch(''); setSelArea('all'); setSelCategory('all'); setSelStatus('all');
-    setSortKey(null); setSortOrder('desc');
+    setSortKey(null); setSortOrder('desc'); setSelWeek('');
+  };
+
+  // ganti week: reset filter area/kategori karena opsinya bisa berbeda antar week
+  const handleWeekChange = (v: string) => {
+    setSelWeek(v);
+    setSelArea('all');
+    setSelCategory('all');
   };
 
   const statusColors = (s: Status) =>
@@ -646,7 +673,12 @@ export default function StockSection({ theme = 'light', areas, data }: {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+
           <SearchBar value={search} onChange={setSearch} t={t} />
+
+          <FilterSelect label="Week" accentColor="#ef4444" value={effectiveWeek} onChange={e => handleWeekChange(e.target.value)} t={t}>
+            {weekOptions.map(w => <option key={w.key} value={w.key}>{w.label}</option>)}
+          </FilterSelect>
 
           {areaOptions.length > 1 && (
             <FilterSelect label="Area" accentColor="#0d9488" value={selArea} onChange={e => setSelArea(e.target.value)} t={t}>
@@ -738,21 +770,6 @@ export default function StockSection({ theme = 'light', areas, data }: {
 
       {/* Tabel produk */}
       <div style={{ ...panel, overflow: 'hidden' }}>
-        {/* <div style={{
-          padding: '10px 16px', borderBottom: `1px solid ${t.border}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: t.tableHead,
-        }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: t.tableHeadText, fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Daftar Stok
-          </span>
-          <span style={{
-            fontSize: 10, fontFamily: mono, background: t.inputBg, color: t.tableHeadText,
-            padding: '2px 9px', borderRadius: 12, border: `1px solid ${t.border}`,
-          }}>
-            Data stok {fmtDate(latestDate)} · {visible.length} produk
-          </span>
-        </div> */}
-
         {isMobile ? renderMobileList() : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
