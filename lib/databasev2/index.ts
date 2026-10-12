@@ -112,6 +112,7 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
       comparisonWeeks:  generateEmptyComparisonWeeks(),
       outletData:       [],
       piutangList:      [],
+      stockList:        [],
     };
   }
 }
