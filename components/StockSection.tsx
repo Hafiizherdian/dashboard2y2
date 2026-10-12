@@ -736,7 +736,7 @@ export default function StockSection({ theme = 'light', areas, data }: {
               <thead>
                 <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.border}` }}>
                   <th style={{ ...thBase, textAlign: 'left' }}>Area</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>Snapshot</th>
+                  {/* <th style={{ ...thBase, textAlign: 'right' }}>Snapshot</th> */}
                   <th style={{ ...thBase, textAlign: 'right' }}>Konv. DOS</th>
                   <th style={{ ...thBase, textAlign: 'right' }}>Avg/Week</th>
                   <th style={{ ...thBase, textAlign: 'right' }}>Kritis</th>
@@ -753,7 +753,7 @@ export default function StockSection({ theme = 'light', areas, data }: {
                       onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
                       onMouseLeave={e => (e.currentTarget.style.background = rowBg)}>
                       <td style={{ ...tdBase, textAlign: 'left', fontWeight: 600 }}>{a.product}</td>
-                      <td style={{ ...tdBase, fontSize: 11, color: stale ? t.yellow.text : t.text }}>{a.reportDate ? fmtDate(a.reportDate) : '—'}{stale ? ' ⚠' : ''}</td>
+                      {/* <td style={{ ...tdBase, fontSize: 11, color: stale ? t.yellow.text : t.text }}>{a.reportDate ? fmtDate(a.reportDate) : '—'}{stale ? ' ⚠' : ''}</td> */}
                       <td style={tdBase}>{num(a.konv)}</td>
                       <td style={tdBase}>{num(a.avg)}</td>
                       <td style={{ ...tdBase, color: a.kritis > 0 ? t.red.text : t.text, fontWeight: a.kritis > 0 ? 700 : 400 }}>{a.kritis}</td>
