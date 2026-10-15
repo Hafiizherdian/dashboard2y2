@@ -137,6 +137,21 @@ function aggregate(rows: StockRecord[], keyFn: (r: StockRecord) => string, nameF
   return [...map.values()].map(({ _areas, ...a }) => ({ ...a, areas: _areas.size, level: levelOf(a.konv, a.avg) }));
 }
 
+// Urutkan hasil agregasi; sortKey null = biarkan urutan asli (dikelompokkan per kategori)
+function sortAggs(list: Agg[], sortKey: SortKey | null, sortOrder: 'asc' | 'desc'): Agg[] {
+  if (!sortKey) return list;
+  const dir = sortOrder === 'asc' ? 1 : -1;
+  return [...list].sort((a, b) => {
+    if (sortKey === 'product') return dir * a.product.localeCompare(b.product);
+    if (sortKey === 'level') {
+      const va = a.level ?? (sortOrder === 'asc' ? Infinity : -Infinity);
+      const vb = b.level ?? (sortOrder === 'asc' ? Infinity : -Infinity);
+      return va === vb ? 0 : dir * (va - vb);
+    }
+    return dir * ((a[sortKey] as number) - (b[sortKey] as number));
+  });
+}
+
 // Komponen UI
 function KpiCard({
   label, labelColor, value, sub, icon, iconBg, iconColor, t, cardbg,
@@ -335,20 +350,30 @@ export default function StockSection({ theme = 'light', areas, data }: {
     else { setSortKey(key); setSortOrder(key === 'product' ? 'asc' : 'desc'); }
   };
 
+  // daftar produk gabungan semua area (dipakai untuk 1 area & tampilan mobile)
   const visible = useMemo(() => {
     const list = selStatus === 'all' ? [...products] : products.filter(p => statusOf(p.konv, p.level) === selStatus);
-    if (!sortKey) return list;
-    const dir = sortOrder === 'asc' ? 1 : -1;
-    return list.sort((a, b) => {
-      if (sortKey === 'product') return dir * a.product.localeCompare(b.product);
-      if (sortKey === 'level') {
-        const va = a.level ?? (sortOrder === 'asc' ? Infinity : -Infinity);
-        const vb = b.level ?? (sortOrder === 'asc' ? Infinity : -Infinity);
-        return va === vb ? 0 : dir * (va - vb);
-      }
-      return dir * ((a[sortKey] as number) - (b[sortKey] as number));
-    });
+    return sortAggs(list, sortKey, sortOrder);
   }, [products, selStatus, sortKey, sortOrder]);
+
+  // tampilan desktop multi-area: per area -> daftar produk + baris total
+  const groups = useMemo(() => {
+    const ids = [...new Set(scopedRows.map(r => r.area))]
+      .sort((a, b) => areaName(a).localeCompare(areaName(b)));
+    return ids.map(id => {
+      const prods = aggregate(scopedRows.filter(r => r.area === id), r => r.productId || r.product, r => r.product);
+      const filtered = selStatus === 'all' ? prods : prods.filter(p => statusOf(p.konv, p.level) === selStatus);
+      const list = sortAggs(filtered, sortKey, sortOrder);
+      const sum = list.reduce(
+        (s, p) => ({ dos: s.dos + p.dos, bks: s.bks + p.bks, konv: s.konv + p.konv, w4: s.w4 + p.w4, avg: s.avg + p.avg }),
+        { dos: 0, bks: 0, konv: 0, w4: 0, avg: 0 },
+      );
+      return { id, name: areaName(id), list, total: { ...sum, level: levelOf(sum.konv, sum.avg) } };
+    }).filter(g => g.list.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopedRows, areas, selStatus, sortKey, sortOrder]);
+
+  const multiArea = groups.length > 1;
 
   const weekChanged = selWeek !== '' && selWeek !== weekOptions[0]?.key;
   const hasFilters = !!search || selArea !== 'all' || selCategory !== 'all' || selStatus !== 'all' || sortKey !== null || weekChanged;
@@ -372,7 +397,7 @@ export default function StockSection({ theme = 'light', areas, data }: {
 
   const mono = 'IBM Plex Mono, monospace';
 
-  // Angka stok level ditampilkan dalam pill berwarna sesuai status
+  // Angka stok level ditampilkan berwarna sesuai status
   // (merah = kritis, hijau = aman, biru = overstock, abu = tanpa penjualan / kosong)
   const LevelBadge = ({ level, konv }: { level: number | null; konv: number }) => {
     const st = statusOf(konv, level);
@@ -381,19 +406,6 @@ export default function StockSection({ theme = 'light', areas, data }: {
       <span title={STATUS_LABEL[st]} style={{ padding: '2px 8px', borderRadius: 7, fontSize: 12, fontWeight: 700, fontFamily: mono, color: c.text, whiteSpace: 'nowrap' }}>
         {num(level)}
       </span>
-    );
-  };
-
-  const LevelCell = ({ level, konv }: { level: number | null; konv: number }) => {
-    const c = statusColors(statusOf(konv, level));
-    const pct = level === null ? 0 : Math.min(level / (HIGH * 1.5), 1) * 100;
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
-        <div style={{ width: 54, height: 4, borderRadius: 2, background: t.border, overflow: 'hidden' }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: c.text }} />
-        </div>
-        <span style={{ fontWeight: 700, minWidth: 34 }}>{num(level)}</span>
-      </div>
     );
   };
 
@@ -611,6 +623,168 @@ export default function StockSection({ theme = 'light', areas, data }: {
   const showAreaTable = areaSummary.length > 1;
   let lastCat = '';
 
+  const renderHeaderCells = () => columns.map(col => (
+    <th
+      key={col.key}
+      onClick={() => handleSort(col.key)}
+      style={{ ...thBase, cursor: 'pointer', textAlign: col.numeric ? 'right' : col.center ? 'center' : 'left' }}
+    >
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: col.numeric ? 'flex-end' : col.center ? 'center' : 'flex-start', width: '100%' }}>
+        {col.label}
+        <SortIcon field={col.key} />
+      </div>
+    </th>
+  ));
+
+  // desktop multi-area: kolom Area di kiri (rowSpan), produk di kanan, baris Total di bawah tiap area
+  const renderGroupedTable = () => {
+    const rows: React.ReactNode[] = [];
+
+    groups.forEach(g => {
+      const rowCount = g.list.length + 1 + (!sortKey ? new Set(g.list.map(p => p.category)).size : 0);
+      let first = true;
+      let cat = '';
+
+      const areaCell = () => {
+        if (!first) return null;
+        first = false;
+        return (
+          <td
+            rowSpan={rowCount}
+            style={{
+              ...tdBase, textAlign: 'left', fontWeight: 800, verticalAlign: 'top',
+              background: t.cardbg, borderRight: `1px solid ${t.border}`,
+              borderBottom: `2px solid ${t.borderCard}`, minWidth: 10,
+            }}
+          >
+            {g.name}
+          </td>
+        );
+      };
+
+      g.list.forEach((p, idx) => {
+        if (!sortKey && p.category !== cat) {
+          cat = p.category;
+          rows.push(
+            <tr key={`${g.id}-cat-${cat}`}>
+              {areaCell()}
+              <td colSpan={7} style={{ padding: '7px 14px', fontSize: 12, fontWeight: 700, fontFamily: mono, color: t.green.text, background: t.pagebg, borderBottom: `1px solid ${t.border}` }}>
+                {cat}
+              </td>
+            </tr>,
+          );
+        }
+        const rowBg = idx % 2 === 1 ? t.tableAlt : 'transparent';
+        rows.push(
+          <tr
+            key={`${g.id}-${p.key}`}
+            style={{ background: rowBg, borderBottom: `1px solid ${t.border}`, transition: 'background 0.1s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+            onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
+          >
+            {areaCell()}
+            <td style={{ ...tdBase, textAlign: 'left', fontWeight: 600 }}>{p.product}</td>
+            <td style={tdBase}>{num(p.dos, 0)}</td>
+            <td style={tdBase}>{num(p.bks, 0)}</td>
+            <td style={tdBase}>{num(p.konv)}</td>
+            <td style={tdBase}>{num(p.w4)}</td>
+            <td style={tdBase}>{num(p.avg)}</td>
+            <td style={{ ...tdBase, textAlign: 'center' }}><LevelBadge level={p.level} konv={p.konv} /></td>
+          </tr>,
+        );
+      });
+
+      // baris total per area
+      const totalCell: React.CSSProperties = {
+        ...tdBase, fontWeight: 800, background: t.tableHead,
+        borderTop: `1px solid ${t.borderCard}`, borderBottom: `2px solid ${t.borderCard}`, color: t.tableHeadText
+      };
+      rows.push(
+        <tr key={`${g.id}-total`}>
+          <td style={{ ...totalCell, textAlign: 'left' }}>Total {g.name}</td>
+          <td style={totalCell}>{num(g.total.dos, 0)}</td>
+          <td style={totalCell}>{num(g.total.bks, 0)}</td>
+          <td style={totalCell}>{num(g.total.konv)}</td>
+          <td style={totalCell}>{num(g.total.w4)}</td>
+          <td style={totalCell}>{num(g.total.avg)}</td>
+          <td style={{ ...totalCell, textAlign: 'center' }}><LevelBadge level={g.total.level} konv={g.total.konv} /></td>
+        </tr>,
+      );
+    });
+
+    return (
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: t.tableHead, color: t.tableHeadText, borderBottom: `1px solid ${t.border}` }}>
+              <th style={{ ...thBase, textAlign: 'left' }}>Area</th>
+              {renderHeaderCells()}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={8} style={{ padding: '48px 10px', textAlign: 'center', fontSize: 12, color: t.text, fontFamily: mono }}>
+                  Tidak ada produk yang cocok.
+                </td>
+              </tr>
+            ) : rows}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  // desktop 1 area: tabel produk biasa
+  const renderSingleTable = () => (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
+        <thead>
+          <tr style={{ background: t.tableHead, color: t.tableHeadText, borderBottom: `1px solid ${t.border}` }}>
+            {renderHeaderCells()}
+          </tr>
+        </thead>
+        <tbody>
+          {visible.length === 0 ? (
+            <tr>
+              <td colSpan={7} style={{ padding: '48px 10px', textAlign: 'center', fontSize: 12, color: t.text, fontFamily: mono }}>
+                Tidak ada produk yang cocok.
+              </td>
+            </tr>
+          ) : visible.map((p, idx) => {
+            const header = !sortKey && p.category !== lastCat;
+            if (!sortKey) lastCat = p.category;
+            const rowBg = idx % 2 === 1 ? t.tableAlt : 'transparent';
+            return (
+              <React.Fragment key={p.key}>
+                {header && (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '7px 14px', fontSize: 12, fontWeight: 700, fontFamily: mono, color: t.green.text, background: t.pagebg, borderBottom: `1px solid ${t.border}` }}>
+                      {p.category}
+                    </td>
+                  </tr>
+                )}
+                <tr
+                  style={{ background: rowBg, borderBottom: `1px solid ${t.border}`, transition: 'background 0.1s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
+                  onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
+                >
+                  <td style={{ ...tdBase, textAlign: 'left', fontWeight: 600 }}>{p.product}</td>
+                  <td style={tdBase}>{num(p.dos, 0)}</td>
+                  <td style={tdBase}>{num(p.bks, 0)}</td>
+                  <td style={tdBase}>{num(p.konv)}</td>
+                  <td style={tdBase}>{num(p.w4)}</td>
+                  <td style={tdBase}>{num(p.avg)}</td>
+                  <td style={{ ...tdBase, textAlign: 'center' }}><LevelBadge level={p.level} konv={p.konv} /></td>
+                </tr>
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans, sans-serif' }}>
 
@@ -722,113 +896,23 @@ export default function StockSection({ theme = 'light', areas, data }: {
         </div>
       </div>
 
-      {/* Ringkasan per area */}
-      {showAreaTable && (
+      {/* Ringkasan per area (mobile saja; di desktop sudah digabung ke tabel produk) */}
+      {showAreaTable && isMobile && (
         <div style={{ ...panel, overflow: 'hidden' }}>
           <div style={{ padding: '10px 16px', borderBottom: `1px solid ${t.border}`, background: t.tableHead, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: t.tableHeadText, fontFamily: mono, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
               Stok per Area
             </span>
           </div>
-          {isMobile ? renderMobileAreas() : (
-          <div style={{ overflow: 'auto', maxHeight: 300 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: t.tableHead, borderBottom: `1px solid ${t.border}` }}>
-                  <th style={{ ...thBase, textAlign: 'left' }}>Area</th>
-                  {/* <th style={{ ...thBase, textAlign: 'right' }}>Snapshot</th> */}
-                  <th style={{ ...thBase, textAlign: 'right' }}>Konv. DOS</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>Avg/Week</th>
-                  <th style={{ ...thBase, textAlign: 'right' }}>Kritis</th>
-                  <th style={{ ...thBase, textAlign: 'center' }}>Stok Level</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...areaSummary].sort((a, b) => (a.level ?? Infinity) - (b.level ?? Infinity)).map((a, idx) => {
-                  const stale = a.reportDate !== latestDate;
-                  const rowBg = idx % 2 === 1 ? t.tableAlt : 'transparent';
-                  return (
-                    <tr key={a.key}
-                      style={{ background: rowBg, borderBottom: `1px solid ${t.border}`, transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
-                      onMouseLeave={e => (e.currentTarget.style.background = rowBg)}>
-                      <td style={{ ...tdBase, textAlign: 'left', fontWeight: 600 }}>{a.product}</td>
-                      {/* <td style={{ ...tdBase, fontSize: 11, color: stale ? t.yellow.text : t.text }}>{a.reportDate ? fmtDate(a.reportDate) : '—'}{stale ? ' ⚠' : ''}</td> */}
-                      <td style={tdBase}>{num(a.konv)}</td>
-                      <td style={tdBase}>{num(a.avg)}</td>
-                      <td style={{ ...tdBase, color: a.kritis > 0 ? t.red.text : t.text, fontWeight: a.kritis > 0 ? 700 : 400 }}>{a.kritis}</td>
-                      <td style={{ ...tdBase, textAlign: 'center' }}><LevelCell level={a.level} konv={a.konv} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          )}
+          {renderMobileAreas()}
         </div>
       )}
 
       {/* Tabel produk */}
       <div style={{ ...panel, overflow: 'hidden' }}>
-        {isMobile ? renderMobileList() : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 760, borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: t.tableHead, color: t.tableHeadText, borderBottom: `1px solid ${t.border}` }}>
-                {columns.map(col => (
-                  <th
-                    key={col.key}
-                    onClick={() => handleSort(col.key)}
-                    style={{ ...thBase, cursor: 'pointer', textAlign: col.numeric ? 'right' : col.center ? 'center' : 'left' }}
-                  >
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: col.numeric ? 'flex-end' : col.center ? 'center' : 'flex-start', width: '100%' }}>
-                      {col.label}
-                      <SortIcon field={col.key} />
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {visible.length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ padding: '48px 10px', textAlign: 'center', fontSize: 12, color: t.text, fontFamily: mono }}>
-                    Tidak ada produk yang cocok.
-                  </td>
-                </tr>
-              ) : visible.map((p, idx) => {
-                const header = !sortKey && p.category !== lastCat;
-                if (!sortKey) lastCat = p.category;
-                const rowBg = idx % 2 === 1 ? t.tableAlt : 'transparent';
-                return (
-                  <React.Fragment key={p.key}>
-                    {header && (
-                      <tr>
-                        <td colSpan={7} style={{ padding: '7px 14px', fontSize: 12, fontWeight: 700, fontFamily: mono, color: t.green.text, background: t.pagebg, borderBottom: `1px solid ${t.border}` }}>
-                          {p.category}
-                        </td>
-                      </tr>
-                    )}
-                    <tr
-                      style={{ background: rowBg, borderBottom: `1px solid ${t.border}`, transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
-                      onMouseLeave={e => (e.currentTarget.style.background = rowBg)}
-                    >
-                      <td style={{ ...tdBase, textAlign: 'left', fontWeight: 600 }}>{p.product}</td>
-                      <td style={tdBase}>{num(p.dos, 0)}</td>
-                      <td style={tdBase}>{num(p.bks, 0)}</td>
-                      <td style={tdBase}>{num(p.konv)}</td>
-                      <td style={tdBase}>{num(p.w4)}</td>
-                      <td style={tdBase}>{num(p.avg)}</td>
-                      <td style={{ ...tdBase, textAlign: 'center' }}><LevelBadge level={p.level} konv={p.konv} /></td>
-                    </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        )}
+        {isMobile ? renderMobileList()
+          : multiArea ? renderGroupedTable()
+          : renderSingleTable()}
       </div>
 
       {DetailModal}
