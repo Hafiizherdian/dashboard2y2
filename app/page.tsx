@@ -14,6 +14,7 @@ import PiutangComponent from '@/components/PiutangSections';
 import StockSection from '@/components/StockSection';
 import OverviewTab from '@/components/OverviewTab';
 import { SalesData } from '@/types/sales';
+import { OutletResponse, OutletOptions, OutletFilterValues, EMPTY_OUTLET_FILTERS } from '@/types/outlet';
 import { AreaConfig } from '@/lib/areaConfig';
 import { RegionConfig, getAccessibleRegions } from '@/lib/regionConfig';
 import { useAuth, AuthProvider } from '@/lib/auth/AuthContext';
@@ -28,7 +29,7 @@ import {
   Warehouse,
 } from 'lucide-react';
 
-const ThemeCtx = createContext<Theme>('dark');
+const ThemeCtx = createContext<Theme>('light');
 
 function RoleIcon({ role, size=12 }:{ role:UserRole; size?:number }) {
   const c:Record<UserRole,string>={root:'#a78bfa',admin:'#60a5fa',user:'#34d399'};
@@ -803,7 +804,7 @@ const EMPTY_DATA: SalesData = {
 };
 
 function DashboardInner() {
-  const [theme,setTheme]   = useState<Theme>('dark');
+  const [theme,setTheme]   = useState<Theme>('light');
   const [tab,setTab]       = useState<TabId>('overview');
   const [collapsed,setCol] = useState(false);
   const [sheetOpen,setSheet] = useState(false);
@@ -852,6 +853,17 @@ function DashboardInner() {
   const [distLoading,   setDistLoading]  = useState(false);
 
   const [data,setData]=useState<SalesData>(EMPTY_DATA);
+
+  // ── Tab Outlet ────────────────────────────────────────────────────────────
+  // Hasil awal ikut di response sales-analysis (data.outlet). Opsi dropdown disimpan
+  // terpisah karena response "outletOnly" tidak membawa opsi.
+  const [outletResult, setOutletResult] = useState<OutletResponse | null>(null);
+  const [outletOptions, setOutletOptions] = useState<OutletOptions | null>(null);
+  const [outletLoading, setOutletLoading] = useState(false);
+  const [outletApplied, setOutletApplied] = useState<{ f: OutletFilterValues; unit: string }>({ f: EMPTY_OUTLET_FILTERS, unit: 'units_dos' });
+  const [outletKey, setOutletKey]         = useState(0); // remount komponen Outlet tiap Terapkan/Reset atas
+  const outletReq = useRef(0); // mencegah response lama menimpa response baru
+
   const t=tk[theme];
 
   // Regional yang boleh dilihat user ini (root lihat semua)
@@ -921,7 +933,7 @@ function DashboardInner() {
     if (wStart2 > 0) p.append('weekStart2', String(wStart2));
     if (w2 > 0)      p.append('weekEnd2',   String(w2));
 
-    // Area & regional mutually exclusive regional diprioritaskan kalau semisal e keduanya terisi
+    // Area & regional mutually exclusive, regional diprioritaskan kalau keduanya terisi
     if (rf.trim())       p.append('regional', rf.trim());
     else if (af.trim())  p.append('area', af.trim());
 
@@ -932,9 +944,16 @@ function DashboardInner() {
     const j = await r.json();
     if (j.success) {
       setData(j.data);
-      // Snapshot disimpan HANYA setelah fetch sukses, 
-      // iki sumber untuk chip mobile, KPI/chart (selectedUnit di OverviewTab), dan "unapplied".
+      // Snapshot disimpan HANYA setelah fetch sukses,
+      // ini sumber untuk chip mobile, KPI/chart (selectedUnit di OverviewTab), dan "unapplied".
       setApplied({ y1, wStart1, w1, y2, wStart2, w2, af, regional: rf, unit: selectedUnit });
+      // Outlet sudah ikut terhitung di response ini (tanpa filter outlet)
+      outletReq.current++;
+      setOutletResult(j.data.outlet ?? null);
+      setOutletOptions(j.data.outlet?.options ?? null);
+      setOutletApplied({ f: EMPTY_OUTLET_FILTERS, unit: selectedUnit });
+      setOutletKey(k => k + 1);
+      setOutletLoading(false);
     }
     else console.error('API error:', j.error);
   } catch (e) {
@@ -951,6 +970,53 @@ function DashboardInner() {
     setSelectedUnit('units_dos');
     setApplied({ y1, wStart1:0, w1:0, y2, wStart2:0, w2:0, af:'', regional:'', unit:'units_dos' });
     setData(EMPTY_DATA);
+    outletReq.current++;
+    setOutletResult(null);
+    setOutletOptions(null);
+    setOutletApplied({ f: EMPTY_OUTLET_FILTERS, unit: 'units_dos' });
+    setOutletKey(k => k + 1);
+    setOutletLoading(false);
+  };
+
+  // Tombol "Terapkan" di tab Outlet → /api/sales-analysis?outletOnly=1 (hanya hitung outlet).
+  // Memakai snapshot `applied` supaya cocok dengan periode yang sedang tampil.
+  const fetchOutlet = async (f: OutletFilterValues, unit: string) => {
+    const id = ++outletReq.current;
+    setOutletLoading(true);
+    try {
+      const p = new URLSearchParams();
+      p.append('year1', String(applied.y1));
+      p.append('year2', String(applied.y2));
+      if (applied.wStart1 > 0) p.append('weekStart1', String(applied.wStart1));
+      if (applied.w1 > 0)      p.append('weekEnd1',   String(applied.w1));
+      if (applied.wStart2 > 0) p.append('weekStart2', String(applied.wStart2));
+      if (applied.w2 > 0)      p.append('weekEnd2',   String(applied.w2));
+      if (applied.regional)    p.append('regional', applied.regional);
+      else if (applied.af)     p.append('area', applied.af);
+      p.append('selectedUnit', unit);
+      p.append('outletOnly', '1');
+
+      const pairs: [string, string][] = [
+        ['oType', f.outletType], ['oCategory', f.category], ['oProduct', f.product],
+        ['oCity', f.city], ['oDistrict', f.district], ['oSalesman', f.salesman],
+        ['oCustomerNo', f.customerNo], ['oCustomerName', f.customerName], ['oQ', f.q],
+      ];
+      pairs.forEach(([k, v]) => { if (v) p.append(k, v); });
+
+      const r = await fetch(`/api/sales-analysis?${p}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      if (id !== outletReq.current) return;           // ada request yang lebih baru
+      if (j.success && j.data.outlet) {
+        // hanya `outlet` yang diganti, tab lain tidak disentuh
+        setOutletResult(j.data.outlet);
+        setOutletApplied({ f, unit });
+      } else console.error('API error:', j.error);
+    } catch (e) {
+      console.error('fetchOutlet failed:', e);
+    } finally {
+      if (id === outletReq.current) setOutletLoading(false);
+    }
   };
 
   const sideW=isMobile?0:(collapsed?52:200);
@@ -971,11 +1037,11 @@ function DashboardInner() {
   // Sama dengan backend: shift hanya jika kedua range eksplisit
   const weekShift = r1 && r2 ? r2.start - r1.start : 0;
   // Gabungkan range jika P1 dan P2 ada di tahun yang sama
-  let combinedRange = r2; 
+  let combinedRange = r2;
   if (sameYearP) {
     if (!r1 || !r2) {
       // Jika salah satu diset "Semua Minggu", maka tampilkan semua tanpa dipotong
-      combinedRange = null; 
+      combinedRange = null;
     } else {
       // Ambil nilai terkecil dari start, dan nilai terbesar dari end
       combinedRange = {
@@ -994,7 +1060,26 @@ function DashboardInner() {
         return <QuarterlyAnalysisYearly data={data.QuarterlyYoYData ?? []} theme={theme} selectedUnit={selectedUnit} onUnitChange={setSelectedUnit} previousYearLabel={p1Label} currentYearLabel={p2Label} year={applied.y2} weekShift={weekShift}/>;
       case 'l4wc4w':   return <L4WC4WAnalysis data={data.l4wc4wData} theme={theme}/>;
       case 'yoy':       return <YearOnYearGrowth data={data.yearOnYearGrowth} comparisonYears={data.comparisonYears} theme={theme}/>;
-      case 'outlet':    return <OutletContributionSection data={data} theme={theme}/>;
+      case 'outlet':
+        if (!outletResult) {
+          return (
+            <div style={{ padding: '60px 24px', textAlign: 'center', fontSize: 13, color: t.textMuted, fontFamily: 'IBM Plex Sans, sans-serif' }}>
+              Klik "Terapkan" di filter atas untuk menampilkan data outlet
+            </div>
+          );
+        }
+        return (
+          <OutletContributionSection
+            key={outletKey}
+            result={outletResult}
+            options={outletOptions}
+            loading={outletLoading}
+            initialFilters={outletApplied.f}
+            initialUnit={outletApplied.unit}
+            onApply={(f, unit) => fetchOutlet(f, unit)}
+            theme={theme}
+          />
+        );
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
       case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
                                     cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);

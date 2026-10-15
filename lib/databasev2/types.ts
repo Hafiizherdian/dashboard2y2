@@ -4,6 +4,19 @@
  * struktur data internal untuk agregasi & query target.
  */
 
+// Filter khusus tab Outlet (hanya memengaruhi hasil `outlet`, bukan tab lain)
+export interface OutletFilterParams {
+  outletType?:   string;
+  category?:     string;
+  product?:      string;
+  city?:         string;
+  district?:     string;
+  salesman?:     string;
+  customerNo?:   string;
+  customerName?: string;
+  q?:            string;
+}
+
 export interface FetchFilters {
   year1?: number;
   year2?: number;
@@ -16,6 +29,11 @@ export interface FetchFilters {
   weekEnd2?: number;
   selectedUnit?: string;
   allowedAreas?: string[];
+
+  // true → hanya hitung `outlet` (lewati target, piutang, stok, kuartal, L4W, dst.)
+  outletOnly?: boolean;
+  // Filter tab Outlet (draft yang sudah di-"Terapkan")
+  outlet?: OutletFilterParams;
 }
 
 // Tipe internal untuk agregasi streaming
@@ -24,32 +42,6 @@ export interface UnitAgg {
   slop: number;
   bal:  number;
   dos:  number;
-}
-
-export interface OutletAgg {
-  dozNet:          number;
-  unitsBks:        number;
-  unitsSlop:       number;
-  unitsBal:        number;
-  omzet:           number;
-  weeklyDozNet:    Record<number, number>;
-  weeklyUnitsBks:  Record<number, number>;   // NEW
-  weeklyUnitsSlop: Record<number, number>;   // NEW
-  weeklyUnitsBal:  Record<number, number>;   // NEW
-  weeklyOmzet:     Record<number, number>;   // NEW
-  city:            string;
-  district:        string;
-  village:         string;
-  salesman:        string;
-  customer_no:     string;
-  year:            number;
-  period:          1 | 2;   
-  outletType:      string;
-  category:        string;
-  product:         string;
-  customer:        string;
-  weekMin:         number;
-  weekMax:         number;
 }
 
 // Tipe untuk hasil query target (dipakai antara targetQueries.ts & quarterlyData.ts / index.ts)
@@ -79,7 +71,7 @@ export interface ProductQuarterRawRow {
   units_dos: string; units_bks: string; units_slop: string; units_bal: string;
 }
 export interface ProductWeekRawRow {
-  product: string; week: string; 
+  product: string; week: string;
   units_dos: string; units_bks: string; units_slop: string; units_bal: string;
 }
 

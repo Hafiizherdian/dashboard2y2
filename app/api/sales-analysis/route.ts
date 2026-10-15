@@ -37,8 +37,25 @@ export async function GET(request: NextRequest) {
       if (limit)        filters.limit        = parseInt(limit);
       if (selectedUnit) filters.selectedUnit = selectedUnit;
 
-      // ── Resolve regional → daftar area_ids (dipakai lewat filters.allowedAreas,
-      //    jalur yang sama dengan RBAC multi-area di bawah) ────────────────────
+      // Tab Outlet
+      // outletOnly=1 -> hanya hitung `outlet` (dipakai tombol "Terapkan" di tab Outlet)
+      if (searchParams.get('outletOnly') === '1') filters.outletOnly = true;
+
+      // Filter outlet (o*). Hanya memengaruhi hasil `outlet`.
+      const outletFilter = {
+        outletType:   searchParams.get('oType')         || undefined,
+        category:     searchParams.get('oCategory')     || undefined,
+        product:      searchParams.get('oProduct')      || undefined,
+        city:         searchParams.get('oCity')         || undefined,
+        district:     searchParams.get('oDistrict')     || undefined,
+        salesman:     searchParams.get('oSalesman')     || undefined,
+        customerNo:   searchParams.get('oCustomerNo')   || undefined,
+        customerName: searchParams.get('oCustomerName') || undefined,
+        q:            searchParams.get('oQ')            || undefined,
+      };
+      if (Object.values(outletFilter).some(Boolean)) filters.outlet = outletFilter;
+
+      // Resolve regional -> daftar area_ids (dipakai lewat filters.allowedAreas, jalur yang sama dengan RBAC multi-area di bawah)
       let regionalAreaIds: string[] | null = null;
       if (regional) {
         const r = await pool.query('SELECT area_ids FROM regions WHERE id = $1', [regional]);
@@ -51,18 +68,16 @@ export async function GET(request: NextRequest) {
         regionalAreaIds = r.rows[0].area_ids ?? [];
       }
 
-      // ── Area-based filtering & target resolution per role ─────────────────
+      // Area-based filtering & target resolution per role
       if (user.role === 'root') {
         if (regionalAreaIds) {
           // Root pilih regional → filter ke area-area anggotanya
           filters.allowedAreas = regionalAreaIds;
         }
-        // Root tanpa area/regional filter → resolveTargetAreas() di databasev2
-        //                                    fetch semua area dari DB otomatis
+        // Root tanpa area/regional filter → resolveTargetAreas() di databasev2 fetch semua area dari DB otomatis
       } else if (user.allowed_areas && user.allowed_areas.length > 0) {
         if (regionalAreaIds) {
-          // Non-root pilih regional → irisan dengan allowed_areas dia (defense
-          // in depth, frontend juga sudah filter regional yang bisa dipilih)
+          // Non-root pilih regional → irisan dengan allowed_areas dia (defense in depth, frontend juga sudah filter regional yang bisa dipilih)
           const intersect = regionalAreaIds.filter(id => user.allowed_areas.includes(id));
           if (intersect.length === 0) {
             return NextResponse.json(
@@ -86,8 +101,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Cek cache dulu sebelum sentuh DB.
-      // allowedAreas ikut masuk cache key karena kena RBAC per user —
-      // supaya user dengan allowed_areas beda nggak saling "berbagi" hasil cache.
+      // allowedAreas, outletOnly, dan filter outlet ikut masuk cache key supaya hasil outlet terfilter tidak tertukar dengan hasil lain.
       const cacheParams = { ...filters };
       const cached = getCached(cacheParams);
       if (cached) {

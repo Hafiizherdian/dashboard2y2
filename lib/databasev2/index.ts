@@ -15,6 +15,7 @@
  *   - l4wc4w.ts           → generateL4WC4WData + generateProductL4WC1WData
  *   - aggregationUtils.ts → buildByWeekMap, getOmzetValue, getUnitValue
  *   - emptyData.ts        → fallback data kosong
+ *   - outletAnalysis.ts   → agregasi tab Outlet (collector + mode outletOnly)
  *   - types.ts            → tipe internal (FetchFilters, UnitAgg, dst)
  *
  * CATATAN PERIODE:
@@ -23,13 +24,18 @@
  * vs 2026 W8-9) tidak saling menimpa. Map lama yang berbasis tahun
  * (weekProductMap, omzetByProductWeek) tetap ada untuk generator L4W
  * yang belum period-aware.
- * SUMPAH COK AKU YO MUMET NGERJAKNO IKI WKWKWKW
+ *
+ * CATATAN OUTLET:
+ * outletData mentah (60rb+ baris) TIDAK lagi dikirim. Tab Outlet dihitung di
+ * server oleh createOutletCollector() (outletAnalysis.ts) di dalam stream yang
+ * SAMA dengan tab lain, hasilnya `outlet` (ringkas). Tombol Terapkan di tab
+ * Outlet memakai filters.outletOnly → fetchOutletOnly() (hanya outlet).
  */
 
 import {
   SalesData, WeeklySales, WeekComparison,
   YearOnYearGrowth, ComparisonWeeks,
-  WeekComparisonProductDetail, WeekComparisonLocationDetail, OutletSalesData,
+  WeekComparisonProductDetail, WeekComparisonLocationDetail,
 } from '@/types/sales';
 
 import { parseDateLocal, resolveWeekYear } from './dateUtils';
@@ -48,8 +54,8 @@ import {
   generateEmptyYearOnYearGrowth,
   generateEmptyComparisonWeeks,
 } from './emptyData';
-import { getProductCategory } from '../productCategories';
-import { FetchFilters, UnitAgg, OutletAgg, TargetQueriesResult } from './types';
+import { createOutletCollector, fetchOutletOnly } from './outletAnalysis';
+import { FetchFilters, UnitAgg, TargetQueriesResult } from './types';
 
 export type { FetchFilters };
 
@@ -85,7 +91,23 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
   try {
     console.log('fetchSalesData - Filter diterima:', JSON.stringify(filters));
 
-    // Jalankan parallel: sales records + piutang
+    // Tombol "Terapkan" di tab Outlet: hanya hitung outlet, lewati yang lain
+    if (filters?.outletOnly) {
+      const outlet = await fetchOutletOnly(filters);
+      return {
+        weeklyData:       [],
+        quarterlyData:    generateEmptyQuarterlyData(),
+        QuarterlyYoYData: generateEmptyQuarterlyYoYData(),
+        weekComparisons:  [],
+        l4wc4wData:       generateEmptyL4WC4WData(),
+        yearOnYearGrowth: generateEmptyYearOnYearGrowth(),
+        comparisonYears:  { previousYear: null, currentYear: null },
+        comparisonWeeks:  generateEmptyComparisonWeeks(),
+        outlet,
+      };
+    }
+
+    // Jalankan parallel: sales records + piutang + stok
     const [salesResult, piutangList, stockList] = await Promise.all([
       processSalesRecords(filters),
       fetchPiutangData(filters),
@@ -110,7 +132,6 @@ export async function fetchSalesData(filters?: FetchFilters): Promise<SalesData>
       yearOnYearGrowth: generateEmptyYearOnYearGrowth(),
       comparisonYears:  { previousYear: null, currentYear: null },
       comparisonWeeks:  generateEmptyComparisonWeeks(),
-      outletData:       [],
       piutangList:      [],
       stockList:        [],
     };
@@ -158,7 +179,9 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const periodLocMap = new Map<string, Map<string, LocAgg>>();
 
   const allProductsSet = new Set<string>();
-  const outletAggMap   = new Map<string, OutletAgg>();
+
+  // Outlet dihitung di stream yang sama (tanpa filter outlet = kondisi awal, plus opsi dropdown)
+  const outletCollector = createOutletCollector(filters, true);
 
   let crossYearCount    = 0;
   let totalRecordCount  = 0;
@@ -263,11 +286,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
                       : selectedUnit === 'units_bal'  ? bal
                       : dos;
 
-        // Info outlet (dihitung sekali per record)
-        const outletType  = record.customer_type || 'Tipe Customer tidak diketahui';
-        const category    = getProductCategory(product);
-        const customer    = record.customer    || 'Unknown';
-        const customer_no = record.customer_no || '';
+        // Info lokasi (dipakai breakdown kota/kecamatan di Week Comparison)
         let city     = (record.city     || '').trim() || UNKNOWN_LABEL;
         let district = (record.district || '').trim() || UNKNOWN_LABEL;
         const area   = (record.area     || '').trim();
@@ -283,10 +302,8 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
           }
         }
 
-        const village  = record.village  || 'Unknown';
-        const salesman = record.salesman || 'Unknown';
-
-        const customerKey = customer_no ? `${customer_no}||${customer}` : `||${customer}`;
+        // Tab Outlet (agregat ringkas, bukan baris mentah)
+        outletCollector.add(record, { isoWeek, inP1, inP2, city, district });
 
         // Agregasi per periode
         const periods: Period[] = [];
@@ -310,35 +327,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
           } else {
             locBucket.set(locKey, { city, district, bks, slop, bal, dos, omzet: omz });
           }
-
-          const outletKey      = `${p}|${isoYear}|${outletType}|${category}|${product}|${customerKey}`;
-          const existingOutlet = outletAggMap.get(outletKey);
-          if (existingOutlet) {
-            existingOutlet.dozNet    += dos;
-            existingOutlet.unitsBks  += bks;
-            existingOutlet.unitsSlop += slop;
-            existingOutlet.unitsBal  += bal;
-            existingOutlet.omzet     += omz;
-            existingOutlet.weeklyDozNet[isoWeek]    = (existingOutlet.weeklyDozNet[isoWeek]    ?? 0) + dos;
-            existingOutlet.weeklyUnitsBks[isoWeek]  = (existingOutlet.weeklyUnitsBks[isoWeek]  ?? 0) + bks;
-            existingOutlet.weeklyUnitsSlop[isoWeek] = (existingOutlet.weeklyUnitsSlop[isoWeek] ?? 0) + slop;
-            existingOutlet.weeklyUnitsBal[isoWeek]  = (existingOutlet.weeklyUnitsBal[isoWeek]  ?? 0) + bal;
-            existingOutlet.weeklyOmzet[isoWeek]     = (existingOutlet.weeklyOmzet[isoWeek]     ?? 0) + omz;
-            if (isoWeek < existingOutlet.weekMin) existingOutlet.weekMin = isoWeek;
-            if (isoWeek > existingOutlet.weekMax) existingOutlet.weekMax = isoWeek;
-          } else {
-            outletAggMap.set(outletKey, {
-              dozNet: dos, unitsBks: bks, unitsSlop: slop, unitsBal: bal, omzet: omz,
-              weeklyDozNet:    { [isoWeek]: dos },
-              weeklyUnitsBks:  { [isoWeek]: bks },
-              weeklyUnitsSlop: { [isoWeek]: slop },
-              weeklyUnitsBal:  { [isoWeek]: bal },
-              weeklyOmzet:     { [isoWeek]: omz },
-              city, district, village, salesman, customer_no,
-              year: isoYear, period: p, outletType, category, product, customer,
-              weekMin: isoWeek, weekMax: isoWeek,
-            });
-          }
         }
       }
     }),
@@ -349,7 +337,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   console.log(`   ISO cross-year remap: ${crossYearCount} records`);
   console.log(`   Filtered out by week range: ${filteredOutByWeek} records`);
   console.log(`   Records masuk agregasi: ${totalRecordCount - filteredOutByWeek} records`);
-  console.log(`   outletAggMap size: ${outletAggMap.size}`);
   console.log(`   weekProductMap size: ${weekProductMap.size}`);
   console.log(`   periodWeekProductMap size: ${periodWeekProductMap.size}`);
   console.log(`   periodLocMap size: ${periodLocMap.size}`);
@@ -366,7 +353,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       yearOnYearGrowth: generateEmptyYearOnYearGrowth(),
       comparisonYears:  { previousYear: null, currentYear: null },
       comparisonWeeks:  generateEmptyComparisonWeeks(),
-      outletData:       [],
     };
   }
 
@@ -417,9 +403,9 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     currentYear:  currentYearWeekRange,
   };
 
-  // Pergeseran minggu: kalau kedua range eksplisit dan start-nya beda (mis. P1 W5-7 vs P2 W8-9 → shift 3), 
-  // minggu dipasangkan berdasarkan urutan: W5↔W8, W6↔W9, W7↔W10. 
-  // lah lek semisal start sama / gaonok filter dadi shift 0 (dipasangkan berdasarkan nomor minggu, sama seperti sebelumnya).
+  // Pergeseran minggu: kalau kedua range eksplisit dan start-nya beda (mis. P1 W5-7 vs P2 W8-9 → shift 3),
+  // minggu dipasangkan berdasarkan urutan: W5↔W8, W6↔W9, W7↔W10.
+  // Kalau start sama / tidak ada filter → shift 0 (dipasangkan berdasarkan nomor minggu).
   const weekShift = (preRangeYear1 && preRangeYear2) ? preRangeYear2.start - preRangeYear1.start : 0;
   console.log(`   Week shift P1→P2: ${weekShift}`);
 
@@ -560,7 +546,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
         units_bal:  { previous: totals.units_bal.previous,  current: totals.units_bal.current  },
         units_dos:  { previous: totals.units_dos.previous,  current: totals.units_dos.current  },
         omzet:      { previous: totals.omzet.previous,      current: totals.omzet.current      },
-        locations:  buildLocations(product, prevWeek, week),   // BARU: breakdown kota/kecamatan
+        locations:  buildLocations(product, prevWeek, week),   // breakdown kota/kecamatan
       });
     });
     details.sort((a, b) => b.currentYear - a.currentYear);
@@ -585,7 +571,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
       (s, p) => s + (periodOmzet.get(pk(1, prevWeek, p)) ?? 0), 0,
     );
 
-    // weeklyData memakai nomor minggu ASELI tiap periode
+    // weeklyData memakai nomor minggu ASLI tiap periode
     if (currYearSales > 0 && currentYear !== undefined) {
       const k = `${currentYear}-${week}`;
       if (!weeklySeen.has(k)) {
@@ -602,41 +588,8 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     }
   }
 
-  // Tahun sama dadi ne entry P1 dan P2 bercampur urutannya, urutkan per minggu
+  // Tahun sama jadi entry P1 dan P2 bercampur urutannya, urutkan per minggu
   if (previousYear === currentYear) weeklyData.sort((a, b) => a.week - b.week);
-
-  console.log(`\n [STEP-4] outletAggMap size=${outletAggMap.size}`);
-
-  const outletData: OutletSalesData[] = [];
-  outletAggMap.forEach(agg => {
-    outletData.push({
-      week:         agg.weekMin,
-      year:         agg.year,
-      period:       agg.period,      // 1 = P1, 2 = P2 (penting saat tahun P1 = P2)
-      outletType:   agg.outletType,
-      category:     agg.category,
-      product:      agg.product,
-      dozNet:       agg.dozNet,
-      unitsBks:     agg.unitsBks,
-      unitsSlop:    agg.unitsSlop,
-      unitsBal:     agg.unitsBal,
-      omzet:        agg.omzet,
-      weeklyDozNet: agg.weeklyDozNet,
-      weeklyUnitsBks:  agg.weeklyUnitsBks,
-      weeklyUnitsSlop: agg.weeklyUnitsSlop,
-      weeklyUnitsBal:  agg.weeklyUnitsBal,
-      weeklyOmzet:     agg.weeklyOmzet,
-      city:         agg.city,
-      district:     agg.district,
-      village:      agg.village,
-      customer:     agg.customer,
-      customer_no:  agg.customer_no,
-      salesman:     agg.salesman,
-    });
-  });
-  outletData.sort((a, b) => b.dozNet - a.dozNet);
-
-  console.log(`   outletData entries dikirim ke client: ${outletData.length}`);
 
   const effectiveYear     = currentYear  ?? sortedYears[sortedYears.length - 1];
   const effectivePrevYear = previousYear ?? (currentYear ?? sortedYears[0]);
@@ -667,8 +620,7 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
   const quarterlyOmzetMap = p2OmzetByProductWeek;
 
   // Kuartal Aktual (P1 vs P2)
-  // Bangun map khusus: data P1 dipindah dan nomor minggunya digeser (+weekShift) agar sejajar dengan penomoran P2.
-  // Contoh: P1 W1-10 vs P2 W11-20 → P1 W1 disimpan sebagai W11.
+  // Bangun map khusus: data P1 dipindah supaya sejajar dengan penomoran P2.
   // Kalau tahun sama, P1 disimpan di (tahun - 1) supaya key tidak bentrok dengan P2 di generateQuarterlyYoYData.
   const yoyPrevYear = sameYear ? effectiveYear - 1 : effectivePrevYear;
   const yoyAggMap   = new Map<string, UnitAgg>();
@@ -724,6 +676,6 @@ async function processSalesRecords(filters?: FetchFilters): Promise<SalesData> {
     yearOnYearGrowth,
     comparisonYears,
     comparisonWeeks,
-    outletData,
+    outlet: outletCollector.result(),
   };
 }

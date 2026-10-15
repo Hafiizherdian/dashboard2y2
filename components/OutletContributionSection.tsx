@@ -1,16 +1,19 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend, ReferenceLine,
 } from 'recharts';
 import {
-  Store, TrendingUp, TrendingDown, Filter, Maximize2, X, ArrowUp, ArrowDown,
-  Calendar, ChevronDown, ChevronUp, SlidersHorizontal, BarChart2,
+  Store, TrendingUp, TrendingDown, Maximize2, X, ArrowUp, ArrowDown,
+  Calendar, ChevronDown, ChevronUp, SlidersHorizontal,
   RefreshCw, ArrowUpRight, ArrowDownRight, Minus, Search,
 } from 'lucide-react';
-import { OutletSalesData } from '@/types/sales';
+import {
+  OutletPanel, OutletOptions, OutletResponse, OutletFilterValues,
+  EMPTY_OUTLET_FILTERS, EMPTY_OUTLET_OPTIONS,
+} from '@/types/outlet';
 
 // Theme tokens
 type Theme = 'dark' | 'light';
@@ -47,6 +50,7 @@ const TK = {
     neuGrowth: { bg: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.4)', border: 'rgba(255,255,255,0.1)' },
     divider: 'rgba(255,255,255,0.04)', chartAreaBg: 'rgba(255,255,255,0.03)',
     chartAreaBorder: 'rgba(255,255,255,0.06)',
+    skBase: 'rgba(255,255,255,0.06)', skHi: 'rgba(255,255,255,0.13)',
   },
   light: {
     cardBg: '#ffffff', contentBg: '#f8fafc', inputBg: 'rgba(0,0,0,0.03)',
@@ -78,6 +82,7 @@ const TK = {
     neuGrowth: { bg: 'rgba(0,0,0,0.04)',      text: '#94a3b8', border: 'rgba(0,0,0,0.08)'     },
     divider: 'rgba(0,0,0,0.04)', chartAreaBg: 'rgba(0,0,0,0.02)',
     chartAreaBorder: 'rgba(0,0,0,0.06)',
+    skBase: 'rgba(0,0,0,0.06)', skHi: 'rgba(0,0,0,0.12)',
   },
 } as const;
 
@@ -107,8 +112,6 @@ const fmtRp = (v: number) => {
 };
 
 const fmtRpExact = (v: number) => `Rp ${v.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`;
-
-const fmtPct = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 
 const getUnitShortLabel = (u: string) => {
   if (u === 'units_dos') return 'DOZ';
@@ -141,6 +144,51 @@ function useBreakpoint() {
   return { isMobile: width < 640, isTablet: width >= 640 && width < 1024, isDesktop: width >= 1024 };
 }
 
+// Skeleton: blok shimmer generik untuk loading state
+function Skeleton({ w = '100%', h = 14, r = 6, theme, style }: {
+  w?: number | string; h?: number | string; r?: number; theme: Theme; style?: React.CSSProperties;
+}) {
+  const t = TK[theme];
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: r, flexShrink: 0,
+      background: `linear-gradient(90deg, ${t.skBase} 25%, ${t.skHi} 50%, ${t.skBase} 75%)`,
+      backgroundSize: '200% 100%', animation: 'skShimmer 1.3s ease-in-out infinite',
+      ...style,
+    }} />
+  );
+}
+
+const SK_BAR_H = [45, 70, 55, 85, 60, 40, 75, 50, 65, 35, 80, 55];
+
+// ChartSkeleton: kerangka chart (bar / pie) selama data dimuat
+function ChartSkeleton({ kind, theme }: { kind: 'bar' | 'pie'; theme: Theme }) {
+  const t = TK[theme];
+  if (kind === 'pie') {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+        <div style={{
+          width: 'min(120px, 60%)', aspectRatio: '1', borderRadius: '50%',
+          background: `linear-gradient(90deg, ${t.skBase} 25%, ${t.skHi} 50%, ${t.skBase} 75%)`,
+          backgroundSize: '200% 100%', animation: 'skShimmer 1.3s ease-in-out infinite',
+          WebkitMask: 'radial-gradient(circle, transparent 38%, #000 39%)',
+          mask: 'radial-gradient(circle, transparent 38%, #000 39%)',
+        }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[56, 44, 50, 36].map((w, i) => <Skeleton key={i} w={w} h={8} theme={theme} />)}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ height: '100%', display: 'flex', alignItems: 'flex-end', gap: 6, padding: '12px 14px 28px' }}>
+      {SK_BAR_H.map((h, i) => (
+        <Skeleton key={i} w="100%" h={`${h}%`} r={4} theme={theme} style={{ animationDelay: `${i * 0.08}s` }} />
+      ))}
+    </div>
+  );
+}
+
 // FilterSelect
 function FilterSelect({ label, value, onChange, options, accentKey, theme, isUnitFilter }: {
   label: string; value: string; onChange: (v: string) => void;
@@ -155,7 +203,7 @@ function FilterSelect({ label, value, onChange, options, accentKey, theme, isUni
       <span style={{ padding: '6px 9px', fontSize: 9, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700, color: accent.text, background: active ? accent.bg : t.inputBg, borderRight: `1px solid ${active ? accent.border : t.borderInput}`, display: 'flex', alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.2s' }}>
         {label}
       </span>
-      <select value={value} onChange={e => onChange(e.target.value)} style={{ background: t.inputBg, border: 'none', outline: 'none', padding: '6px 24px 6px 8px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: active ? t.text : t.text, cursor: 'pointer', flex: 1, minWidth: 0, appearance: 'none', width: '100%', fontWeight: active ? 600 : 400 }}>
+      <select value={value} onChange={e => onChange(e.target.value)} style={{ background: t.inputBg, border: 'none', outline: 'none', padding: '6px 24px 6px 8px', fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: t.text, cursor: 'pointer', flex: 1, minWidth: 0, appearance: 'none', width: '100%', fontWeight: active ? 600 : 400 }}>
         {!isUnitFilter && <option value="all" style={{ background: t.selectBg }}>Semua</option>}
         {options.map(o => {
           const val = typeof o === 'string' ? o : o.value;
@@ -196,7 +244,7 @@ function SearchableSelect({ label, value, onChange, options, accentKey, theme, p
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    if (!q) return options.slice(0, 150); // Limit dinaikkan karena di dalam modal
+    if (!q) return options.slice(0, 150);
     return options.filter(o =>
       o.name.toLowerCase().includes(q) || o.no.toLowerCase().includes(q)
     ).slice(0, 150);
@@ -227,7 +275,7 @@ function SearchableSelect({ label, value, onChange, options, accentKey, theme, p
         <span style={{
           flex: 1, padding: '6px 10px', fontSize: 11,
           fontFamily: 'IBM Plex Mono, monospace',
-          color: active ? t.text : t.text,
+          color: t.text,
           background: t.inputBg, display: 'flex', alignItems: 'center',
           justifyContent: 'space-between', gap: 4, fontWeight: active ? 600 : 400,
           minWidth: 0,
@@ -250,7 +298,7 @@ function SearchableSelect({ label, value, onChange, options, accentKey, theme, p
           }}
         >
           <div
-            onClick={e => e.stopPropagation()} // Mencegah tutup jika klik area dalam modal
+            onClick={e => e.stopPropagation()}
             style={{
               background: t.modalBg, border: `1px solid ${t.modalBorder}`,
               borderRadius: 12, width: '100%', maxWidth: 480, maxHeight: '80vh',
@@ -388,10 +436,11 @@ function SearchBox({ value, onChange, theme, placeholder }: {
 }
 
 // MetricCard
-function MetricCard({ label, value, sub, cardKey, icon: Icon, theme, compact, trend }: {
+function MetricCard({ label, value, sub, cardKey, icon: Icon, theme, compact, trend, loading }: {
   label: string; value: string; sub: string; cardKey: CardKey;
   icon: React.ComponentType<{ size?: number; color?: string }>;
   theme: Theme; compact?: boolean; trend?: { value: number; label: string };
+  loading?: boolean;
 }) {
   const c = TK[theme][cardKey];
   const t = TK[theme];
@@ -407,28 +456,37 @@ function MetricCard({ label, value, sub, cardKey, icon: Icon, theme, compact, tr
           <span style={{ fontSize: compact ? 8 : 10, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em', color: c.text }}>{label}</span>
         </div>
         {trend && (
-          <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', padding: '1px 6px', borderRadius: 10, background: gs.bg, color: gs.text, border: `1px solid ${gs.border}`, display: 'flex', alignItems: 'center', gap: 2 }}>
-            {pos ? <ArrowUpRight size={8} /> : neg ? <ArrowDownRight size={8} /> : <Minus size={8} />}
-            {Math.abs(trend.value).toFixed(1)}%
-          </span>
+          loading
+            ? <Skeleton w={38} h={14} r={10} theme={theme} />
+            : (
+              <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', padding: '1px 6px', borderRadius: 10, background: gs.bg, color: gs.text, border: `1px solid ${gs.border}`, display: 'flex', alignItems: 'center', gap: 2 }}>
+                {pos ? <ArrowUpRight size={8} /> : neg ? <ArrowDownRight size={8} /> : <Minus size={8} />}
+                {Math.abs(trend.value).toFixed(1)}%
+              </span>
+            )
         )}
       </div>
-      <div style={{ fontSize: compact ? 16 : 21, fontWeight: 800, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', color: c.val, wordBreak: 'break-all' }}>{value}</div>
-      <div style={{ fontSize: compact ? 9 : 11, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>{sub}</div>
+      {loading ? (
+        <Skeleton w="65%" h={compact ? 20 : 26} theme={theme} style={{ margin: '2px 0' }} />
+      ) : (
+        <div style={{ fontSize: compact ? 16 : 21, fontWeight: 800, fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '-0.02em', color: c.val, wordBreak: 'break-all' }}>{value}</div>
+      )}
+      {loading ? (
+        <Skeleton w="85%" h={compact ? 9 : 11} theme={theme} />
+      ) : (
+        <div style={{ fontSize: compact ? 9 : 11, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>{sub}</div>
+      )}
     </div>
   );
 }
 
-// YoYSummaryBar
-function YoYSummaryBar({ dataA, dataB, selectedUnit, yearA, yearB, theme, getUnitValue, fmtValExact }: {
-  dataA: OutletSalesData[]; dataB: OutletSalesData[]; selectedUnit: string;
+// YoYSummaryBar (total sudah dihitung di server)
+function YoYSummaryBar({ totalA, totalB, selectedUnit, yearA, yearB, theme, fmtValExact }: {
+  totalA: number; totalB: number; selectedUnit: string;
   yearA: number; yearB: number; theme: Theme;
-  getUnitValue: (r: OutletSalesData) => number;
   fmtValExact: (v: number) => string;
 }) {
   const t = TK[theme];
-  const totalA  = useMemo(() => dataA.reduce((s, r) => s + getUnitValue(r), 0), [dataA, getUnitValue]);
-  const totalB  = useMemo(() => dataB.reduce((s, r) => s + getUnitValue(r), 0), [dataB, getUnitValue]);
   const growth  = totalA > 0 ? ((totalB - totalA) / totalA) * 100 : 0;
   const isPos   = growth > 0;
   const isNeg   = growth < 0;
@@ -448,10 +506,10 @@ function YoYSummaryBar({ dataA, dataB, selectedUnit, yearA, yearB, theme, getUni
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {[
-          { yr: yearA, val: totalA, palette: TK[theme].yearA },
-          { yr: yearB, val: totalB, palette: TK[theme].yearB },
-        ].map(({ yr, val, palette }) => (
-          <div key={yr} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          { key: 'P1', yr: yearA, val: totalA, palette: TK[theme].yearA },
+          { key: 'P2', yr: yearB, val: totalB, palette: TK[theme].yearB },
+        ].map(({ key, yr, val, palette }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 44, fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: palette.label, flexShrink: 0, textAlign: 'right' }}>{yr}</span>
             <div style={{ flex: 1, height: 20, background: t.inputBg, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${maxVal > 0 ? (val / maxVal) * 100 : 0}%`, background: palette.accent, borderRadius: 4, transition: 'width 0.6s ease' }} />
@@ -501,8 +559,7 @@ function ChartTooltip({ active, payload, label, theme, prefix = '', customerMap 
   );
 }
 
-// TableBtn
-// Toggle Chart <-> Tabel, dipakai di semua ChartBox (weekly, pie, distribusi, customer).
+// TableBtn: toggle Chart <-> Tabel
 function TableBtn({ onClick, theme, active }: { onClick: () => void; theme: Theme; active?: boolean }) {
   const t = TK[theme];
   return (
@@ -516,9 +573,7 @@ function TableBtn({ onClick, theme, active }: { onClick: () => void; theme: Them
   );
 }
 
-// DataTable
-// Tabel generic sortable (klik header). Dipakai untuk semua chart di YearPanel —
-// bentuk kolom & baris beda-beda per chart, jadi cukup lempar `columns`+`rows`.
+// DataTable: tabel generic sortable
 type TableCol = { key: string; label: string; right?: boolean; format?: (v: any) => string; bold?: boolean };
 
 function DataTable({ columns, rows, theme, defaultSortKey, defaultSortDir = 'asc' }: {
@@ -582,11 +637,12 @@ function DataTable({ columns, rows, theme, defaultSortKey, defaultSortDir = 'asc
   );
 }
 
-function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compact, children, badge, tableActive, onToggleTable }: {
+function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compact, children, badge, tableActive, onToggleTable, loading, skeleton = 'bar' }: {
   title: string; chartKey: string; height?: number;
   onExpand: (chartKey: string, year: number) => void;
   year: number; theme: Theme; compact?: boolean; children: React.ReactNode; badge?: string;
   tableActive?: boolean; onToggleTable?: () => void;
+  loading?: boolean; skeleton?: 'bar' | 'pie';
 }) {
   const t = TK[theme];
   const { isMobile } = useBreakpoint();
@@ -595,17 +651,18 @@ function ChartBox({ title, chartKey, height = 260, onExpand, year, theme, compac
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 6, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: compact || isMobile ? 11 : 12, fontWeight: 600, fontFamily: 'IBM Plex Sans, sans-serif', color: t.text }}>{title}</span>
-          {badge && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: t.inputBg, color: t.textMuted, border: `1px solid ${t.border}`, fontFamily: 'IBM Plex Mono, monospace' }}>{badge}</span>}
+          {badge && !loading && <span style={{ fontSize: 9, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: t.inputBg, color: t.textMuted, border: `1px solid ${t.border}`, fontFamily: 'IBM Plex Mono, monospace' }}>{badge}</span>}
+          {badge && loading && <Skeleton w={52} h={16} r={8} theme={theme} />}
         </div>
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, opacity: loading ? 0.4 : 1, pointerEvents: loading ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
           {onToggleTable && <TableBtn onClick={onToggleTable} theme={theme} active={!!tableActive} />}
           <button onClick={() => onExpand(chartKey, year)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 6, fontSize: 10, fontWeight: 500, fontFamily: 'IBM Plex Mono, monospace', background: t.inputBg, color: t.text, border: `1px solid ${t.borderInput}`, cursor: 'pointer', flexShrink: 0 }}>
             <Maximize2 size={9} /> Perbesar
           </button>
         </div>
       </div>
-      <div style={{ height, background: t.chartAreaBg, border: `1px solid ${t.chartAreaBorder}`, borderRadius: 8, padding: '8px 4px 4px', overflow: tableActive ? 'auto' : 'visible' }}>
-        {children}
+      <div style={{ height, background: t.chartAreaBg, border: `1px solid ${t.chartAreaBorder}`, borderRadius: 8, padding: '8px 4px 4px', overflow: tableActive && !loading ? 'auto' : 'visible' }}>
+        {loading ? <ChartSkeleton kind={skeleton} theme={theme} /> : children}
       </div>
     </div>
   );
@@ -640,7 +697,7 @@ function SortTh({ label, sortKey, sortState, onSort, theme, align = 'left' }: { 
   const t = TK[theme];
   const active = sortState.key === sortKey;
   return (
-    <th onClick={() => onSort(sortKey)} style={{ padding: '8px 14px', textAlign: align, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: active ? t.tableHeadText : t.tableHeadText, background: active ? t.divider : t.tableHeadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', transition: 'background 0.15s', fontFamily: 'IBM Plex Mono, monospace' }}>
+    <th onClick={() => onSort(sortKey)} style={{ padding: '8px 14px', textAlign: align, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: t.tableHeadText, background: active ? t.divider : t.tableHeadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', transition: 'background 0.15s', fontFamily: 'IBM Plex Mono, monospace' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         {label}
         <span style={{ opacity: active ? 1 : 0.3, fontSize: 8 }}>
@@ -651,16 +708,15 @@ function SortTh({ label, sortKey, sortState, onSort, theme, align = 'left' }: { 
   );
 }
 
-// YearPanel
-function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compact, otherTotal, weekRange, getUnitValue, getWeeklyUnitData, fmtVal, fmtValExact }: {
-  year: number; isA: boolean; data: OutletSalesData[]; selectedUnit: string;
+// YearPanel: menerima ringkasan (OutletPanel) dari server, tidak ada baris mentah
+function YearPanel({ year, isA, panel, selectedUnit, theme, onExpand, compact, otherTotal, weekRange, fmtVal, fmtValExact, loading }: {
+  year: number; isA: boolean; panel: OutletPanel; selectedUnit: string;
   theme: Theme; onExpand: (chartKey: string, year: number) => void;
   compact?: boolean; otherTotal?: number;
   weekRange: { min: number; max: number };
-  getUnitValue: (r: OutletSalesData) => number;
-  getWeeklyUnitData: (r: OutletSalesData) => Record<string, number>;
   fmtVal: (v: number) => string;
   fmtValExact: (v: number) => string;
+  loading?: boolean;
 }) {
   const t = TK[theme];
   const { isMobile } = useBreakpoint();
@@ -670,7 +726,6 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
 
   const [sortState,     setSortState]     = useState<{ key: string; dir: SortDir }>({ key: 'week', dir: 'asc' });
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
-  // Toggle Chart <-> Tabel per chart (weekly/category/outlet/product/city/district/customer)
   const [tableModes, setTableModes] = useState<Record<string, boolean>>({});
   const toggleTableMode = (key: string) => setTableModes(p => ({ ...p, [key]: !p[key] }));
 
@@ -682,114 +737,44 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
     );
   };
 
-  const outletTypes = useMemo(() => {
-    const s = new Set<string>();
-    rows.forEach(r => { if (r.outletType) s.add(r.outletType); });
-    return Array.from(s).sort();
-  }, [rows]);
+  // Data dari server
+  const outletTypes = panel.outletTypes;
+  const totalDoz    = panel.total;
 
   const weeklyData = useMemo(() => {
-    const m = new Map<number, number>();
-
-    rows.forEach(r => {
-      const weeklyMap = getWeeklyUnitData(r);
-      if (weeklyMap && Object.keys(weeklyMap).length > 0) {
-        Object.entries(weeklyMap).forEach(([wkStr, val]) => {
-          const wk = Number(wkStr);
-          m.set(wk, (m.get(wk) ?? 0) + val);
-        });
-      } else {
-        if (r.week != null) m.set(r.week, (m.get(r.week) ?? 0) + getUnitValue(r));
-      }
-    });
-
     const result: { week: string; wkNum: number; dozNet: number }[] = [];
     for (let wk = weekRange.min; wk <= weekRange.max; wk++) {
-      result.push({ week: `W${wk}`, wkNum: wk, dozNet: m.get(wk) ?? 0 });
+      result.push({ week: `W${wk}`, wkNum: wk, dozNet: panel.weekly[wk] ?? 0 });
     }
     return result;
-  }, [rows, weekRange, getUnitValue, getWeeklyUnitData]);
+  }, [panel, weekRange]);
 
-  const totalDoz   = useMemo(() => rows.reduce((s, r) => s + getUnitValue(r), 0), [rows, getUnitValue]);
-  const weeklyChart = useMemo(() => weeklyData.map(w => ({ ...w, pct: totalDoz > 0 ? (w.dozNet / totalDoz) * 100 : 0 })), [weeklyData, totalDoz]);
+  const weeklyChart = useMemo(
+    () => weeklyData.map(w => ({ ...w, pct: totalDoz > 0 ? (w.dozNet / totalDoz) * 100 : 0 })),
+    [weeklyData, totalDoz],
+  );
 
-  const pieOutlet = useMemo(() => {
-    const m = new Map<string, number>();
-    rows.forEach(r => { const k = r.outletType || 'Unknown'; m.set(k, (m.get(k) || 0) + getUnitValue(r)); });
-    return Array.from(m.entries()).map(([name, value]) => ({ name, value, pct: totalDoz > 0 ? (value / totalDoz) * 100 : 0 }));
-  }, [rows, totalDoz, getUnitValue]);
+  const pieOutlet = useMemo(
+    () => panel.pieOutlet.map(d => ({ ...d, pct: totalDoz > 0 ? (d.value / totalDoz) * 100 : 0 })),
+    [panel, totalDoz],
+  );
+  const pieCategory = useMemo(
+    () => panel.pieCategory.map(d => ({ ...d, pct: totalDoz > 0 ? (d.value / totalDoz) * 100 : 0 })),
+    [panel, totalDoz],
+  );
 
-  const pieCategory = useMemo(() => {
-    const m = new Map<string, number>();
-    rows.forEach(r => { const k = r.category || 'Unknown'; m.set(k, (m.get(k) || 0) + getUnitValue(r)); });
-    return Array.from(m.entries()).map(([name, value]) => ({ name, value, pct: totalDoz > 0 ? (value / totalDoz) * 100 : 0 }));
-  }, [rows, totalDoz, getUnitValue]);
-
-  const makeBarDist = useCallback((keyFn: (r: OutletSalesData) => string, xKey: string) => {
-    const outer = new Map<string, Map<string, number>>();
-    rows.forEach(r => {
-      const k  = keyFn(r) || 'Unknown';
-      const ot = r.outletType || 'Unknown';
-      if (!outer.has(k)) outer.set(k, new Map());
-      const inner = outer.get(k)!;
-      inner.set(ot, (inner.get(ot) || 0) + getUnitValue(r));
-    });
-    return Array.from(outer.entries())
-      .map(([key, inner]) => {
-        const row: Record<string, string | number> = { [xKey]: key };
-        let total = 0;
-        inner.forEach((v, ot) => { row[ot] = v; total += v; });
-        row._total = total;
-        return row;
-      })
-      .sort((a, b) => (b._total as number) - (a._total as number))
-      .slice(0, 10);
-  }, [rows, getUnitValue]);
-
-  const barCustomer = useMemo(() => {
-    const outer = new Map<string, { otMap: Map<string, number>; customerId: string }>();
-
-    rows.forEach(r => {
-      const id   = r.customer_no ?? '';
-      const name = r.customer?.trim() || 'Unknown';
-      const uniqueKey = id ? `${id}||${name}` : `||${name}`;
-      const ot = r.outletType || 'Unknown';
-
-      if (!outer.has(uniqueKey)) outer.set(uniqueKey, { otMap: new Map(), customerId: id });
-      const entry = outer.get(uniqueKey)!;
-      entry.otMap.set(ot, (entry.otMap.get(ot) || 0) + getUnitValue(r));
-    });
-
-    return Array.from(outer.entries())
-      .map(([key, { otMap, customerId }]) => {
-        const separatorIdx = key.indexOf('||');
-        const name = key.slice(separatorIdx + 2);
-        const row: Record<string, string | number> = {
-          customer:    name,
-          _customerId: customerId,
-        };
-        let total = 0;
-        otMap.forEach((v, ot) => { row[ot] = v; total += v; });
-        row._total = total;
-        return row;
-      })
-      .sort((a, b) => (b._total as number) - (a._total as number))
-      .slice(0, 10);
-  }, [rows, getUnitValue]);
+  const barProduct  = panel.barProduct;
+  const barCity     = panel.barCity;
+  const barDistrict = panel.barDistrict;
+  const barCustomer = panel.barCustomer;
 
   const customerIdMap = useMemo(() => {
     const m = new Map<string, string>();
-    barCustomer.forEach(d => {
-      m.set(String(d.customer), String(d._customerId ?? ''));
-    });
+    barCustomer.forEach(d => m.set(String(d.customer), String(d._customerId ?? '')));
     return m;
   }, [barCustomer]);
 
-  const barProduct  = useMemo(() => makeBarDist(r => r.product  || 'Unknown', 'product'),  [makeBarDist]);
-  const barCity     = useMemo(() => makeBarDist(r => r.city     || 'Unknown', 'city'),     [makeBarDist]);
-  const barDistrict = useMemo(() => makeBarDist(r => r.district || 'Unknown', 'district'), [makeBarDist]);
-
-  // Kolom tabel per chart (generated dari outletTypes yang tersedia)
+  // Kolom tabel per chart
   const weeklyColumns: TableCol[] = useMemo(() => [
     { key: 'week', label: 'Minggu' },
     { key: 'dozNet', label: `${getUnitShortLabel(selectedUnit)} Net`, right: true, bold: true, format: v => fmtValExact(v) },
@@ -1026,22 +1011,22 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       {/* Metric cards */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isMobile ? 8 : 10 }}>
         <MetricCard label={`Total ${getUnitShortLabel(selectedUnit)} Net`} value={fmtValExact(totalDoz)} sub={`${metrics.weeks} minggu (W${weekRange.min}–W${weekRange.max})`}
-          cardKey={isA ? 'card1' : 'card2'} icon={Store} theme={theme} compact={isMobile || compact}
+          cardKey={isA ? 'card1' : 'card2'} icon={Store} theme={theme} compact={isMobile || compact} loading={loading}
           trend={metrics.yoyTrend !== undefined ? { value: metrics.yoyTrend, label: 'YoY' } : undefined} />
         <MetricCard label="Rata-rata/Minggu" value={fmtValExact(metrics.avg)} sub={`${getUnitShortLabel(selectedUnit)} ÷ ${metrics.weeks} minggu`}
-          cardKey={isA ? 'card1' : 'card2'} icon={TrendingUp} theme={theme} compact={isMobile || compact} />
+          cardKey={isA ? 'card1' : 'card2'} icon={TrendingUp} theme={theme} compact={isMobile || compact} loading={loading} />
         <MetricCard label="Minggu Terbaik" value={metrics.best.week} sub={`${fmtValExact(metrics.best.dozNet)} ${getUnitShortLabel(selectedUnit)}`}
-          cardKey="card3" icon={ArrowUp} theme={theme} compact={isMobile || compact} />
+          cardKey="card3" icon={ArrowUp} theme={theme} compact={isMobile || compact} loading={loading} />
         <MetricCard label="Minggu Terendah" value={metrics.worst.week}
           sub={metrics.worst.dozNet === 0 && metrics.worst.week === '—' ? 'N/A' : `${fmtValExact(metrics.worst.dozNet)} ${getUnitShortLabel(selectedUnit)}`}
-          cardKey="card4" icon={ArrowDown} theme={theme} compact={isMobile || compact} />
+          cardKey="card4" icon={ArrowDown} theme={theme} compact={isMobile || compact} loading={loading} />
       </div>
 
       {/* Weekly bar */}
       <ChartBox
         title="Kontribusi Per Minggu" chartKey="weekly" height={chartH}
         onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
-        badge={`avg ${fmtVal(avgLine)}`}
+        badge={`avg ${fmtVal(avgLine)}`} loading={loading}
         tableActive={!!tableModes.weekly} onToggleTable={() => toggleTableMode('weekly')}
       >
         {tableModes.weekly ? (
@@ -1067,6 +1052,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
         <ChartBox
           title="per Kategori Produk" chartKey="category" height={pieH}
           onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+          loading={loading} skeleton="pie"
           tableActive={!!tableModes.category} onToggleTable={() => toggleTableMode('category')}
         >
           {tableModes.category
@@ -1076,6 +1062,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
         <ChartBox
           title="per Tipe Outlet" chartKey="outlet" height={pieH}
           onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+          loading={loading} skeleton="pie"
           tableActive={!!tableModes.outlet} onToggleTable={() => toggleTableMode('outlet')}
         >
           {tableModes.outlet
@@ -1088,6 +1075,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       <ChartBox
         title="per Produk (Top 10)" chartKey="product" height={barDistH}
         onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+        loading={loading}
         tableActive={!!tableModes.product} onToggleTable={() => toggleTableMode('product')}
       >
         {tableModes.product
@@ -1097,6 +1085,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       <ChartBox
         title="per Kota/Kab. (Top 10)" chartKey="city" height={barDistH}
         onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+        loading={loading}
         tableActive={!!tableModes.city} onToggleTable={() => toggleTableMode('city')}
       >
         {tableModes.city
@@ -1106,6 +1095,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       <ChartBox
         title="per Kecamatan (Top 10)" chartKey="district" height={barDistH}
         onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+        loading={loading}
         tableActive={!!tableModes.district} onToggleTable={() => toggleTableMode('district')}
       >
         {tableModes.district
@@ -1117,6 +1107,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       <ChartBox
         title="per Customer (Top 10)" chartKey="customer" height={barDistH + 30}
         onExpand={ch => setExpandedChart(ch)} year={year} theme={theme} compact={isMobile || compact}
+        loading={loading}
         tableActive={!!tableModes.customer} onToggleTable={() => toggleTableMode('customer')}
       >
         {tableModes.customer
@@ -1128,12 +1119,14 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
       <div style={{ background: t.cardBg, border: `1px solid ${t.borderCard}`, borderRadius: 10, overflow: 'hidden', boxShadow: t.shadow }}>
         <div style={{ padding: isMobile || compact ? '8px 12px' : '11px 16px', borderBottom: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
           <span style={{ fontSize: isMobile || compact ? 11 : 12, fontWeight: 700, fontFamily: 'IBM Plex Sans, sans-serif', color: t.text }}>Detail Mingguan</span>
-          <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>{weeklyChart.length} minggu · klik header untuk sort</span>
+          {loading
+            ? <Skeleton w={110} h={10} theme={theme} />
+            : <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace' }}>{weeklyChart.length} minggu · klik header untuk sort</span>}
         </div>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ minWidth: '100%', borderCollapse: 'collapse', fontSize: isMobile || compact ? 11 : 12, fontFamily: 'IBM Plex Mono, monospace' }}>
             <thead>
-              <tr style={{ color: t.tableHeadText, background: t.tableHeadBg, }}>
+              <tr style={{ color: t.tableHeadText, background: t.tableHeadBg }}>
                 <SortTh label="Minggu"  sortKey="week"   sortState={sortState} onSort={handleSort} theme={theme} />
                 <SortTh label={`${getUnitShortLabel(selectedUnit)} Net`} sortKey="dozNet" sortState={sortState} onSort={handleSort} theme={theme} align="right" />
                 <SortTh label="%"       sortKey="pct"    sortState={sortState} onSort={handleSort} theme={theme} align="right" />
@@ -1141,7 +1134,16 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
               </tr>
             </thead>
             <tbody>
-              {sortedTable.length === 0 ? (
+              {loading ? (
+                Array.from({ length: Math.min(Math.max(weeklyChart.length, 5), 8) }).map((_, i) => (
+                  <tr key={i} style={{ background: i % 2 === 1 ? t.tableAlt : t.cardBg }}>
+                    <td style={{ padding: '10px 14px' }}><Skeleton w={30} h={11} theme={theme} /></td>
+                    <td style={{ padding: '10px 14px' }}><Skeleton w={90} h={11} theme={theme} style={{ marginLeft: 'auto' }} /></td>
+                    <td style={{ padding: '10px 14px' }}><Skeleton w={40} h={11} theme={theme} style={{ marginLeft: 'auto' }} /></td>
+                    <td style={{ padding: '10px 14px' }}><Skeleton w={52} h={16} r={10} theme={theme} /></td>
+                  </tr>
+                ))
+              ) : sortedTable.length === 0 ? (
                 <tr><td colSpan={4} style={{ padding: '24px', textAlign: 'center', color: t.textMuted, background: t.cardBg }}>Tidak ada data</td></tr>
               ) : sortedTable.map((w, idx) => {
                 const aboveAvg = w.dozNet >= avgLine;
@@ -1152,7 +1154,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
                   : w.pct >= 2
                   ? { label: 'Sedang',  ...TK[theme].orange }
                   : { label: 'Rendah',  ...TK[theme].red    };
-                const maxDoz = Math.max(...weeklyChart.map(w => w.dozNet), 1);
+                const maxDoz = Math.max(...weeklyChart.map(x => x.dozNet), 1);
                 return (
                   <tr key={w.week} style={{ background: idx % 2 === 1 ? t.tableAlt : t.cardBg, transition: 'background 0.1s' }}
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = t.tableHover}
@@ -1174,7 +1176,7 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
                 );
               })}
             </tbody>
-            {sortedTable.length > 0 && (
+            {!loading && sortedTable.length > 0 && (
               <tfoot>
                 <tr style={{ background: t.tableHeadBg, borderTop: `1px solid ${t.border}` }}>
                   <td style={{ padding: '8px 14px', fontSize: 10, fontWeight: 700, color: t.tableHeadText }}>Total</td>
@@ -1211,172 +1213,89 @@ function YearPanel({ year, isA, data: rows, selectedUnit, theme, onExpand, compa
 
 // Props
 interface OutletContributionSectionProps {
-  data?: { outletData?: OutletSalesData[] };
+  result: OutletResponse;                 // hasil agregasi dari /api/outlet-analysis
+  options: OutletOptions | null;          // opsi dropdown (dikirim sekali)
+  loading: boolean;
+  initialFilters: OutletFilterValues;     // filter yang sedang diterapkan
+  initialUnit: string;
+  onApply: (f: OutletFilterValues, unit: string) => void;
   theme?: Theme;
-  selectedUnit?: string;
-  onUnitChange?: (unit: string) => void;
 }
 
+const sameFilters = (a: OutletFilterValues, b: OutletFilterValues) => JSON.stringify(a) === JSON.stringify(b);
+
 // Main Component
-export default function OutletContributionSection({ data, theme: themeProp, selectedUnit: selectedUnitProp, onUnitChange: onUnitChangeProp }: OutletContributionSectionProps) {
+export default function OutletContributionSection({
+  result, options, loading, initialFilters, initialUnit, onApply, theme: themeProp,
+}: OutletContributionSectionProps) {
   const theme: Theme = themeProp ?? 'light';
   const t = TK[theme];
   const { isMobile, isTablet } = useBreakpoint();
+  const opts = options ?? EMPTY_OUTLET_OPTIONS;
 
-  const [selOutlet,      setSelOutlet]      = useState('all');
-  const [selCat,         setSelCat]         = useState('all');
-  const [selProduct,     setSelProduct]     = useState('all');
-  const [selCity,        setSelCity]        = useState('all');
-  const [selDistrict,    setSelDistrict]    = useState('all');
-  const [selCustomerNo,  setSelCustomerNo]  = useState('');
-  const [selCustomerName, setSelCustomerName] = useState('');
-  const [selSalesman,    setSelSalesman]    = useState('all');
-  const [globalSearch,   setGlobalSearch]  = useState('');
-  const [filterOpen,     setFilterOpen]    = useState(true);
-  const [activeTab,      setActiveTab]     = useState<'A'|'B'>('A');
+  // Draft filter (belum dikirim ke server)
+  const [selOutlet,       setSelOutlet]       = useState(initialFilters.outletType || 'all');
+  const [selCat,          setSelCat]          = useState(initialFilters.category   || 'all');
+  const [selProduct,      setSelProduct]      = useState(initialFilters.product    || 'all');
+  const [selCity,         setSelCity]         = useState(initialFilters.city       || 'all');
+  const [selDistrict,     setSelDistrict]     = useState(initialFilters.district   || 'all');
+  const [selSalesman,     setSelSalesman]     = useState(initialFilters.salesman   || 'all');
+  const [selCustomerNo,   setSelCustomerNo]   = useState(initialFilters.customerNo);
+  const [selCustomerName, setSelCustomerName] = useState(initialFilters.customerName);
+  const [globalSearch,    setGlobalSearch]    = useState(initialFilters.q);
+  const [unit,            setUnit]            = useState(initialUnit);
+  const [ap,              setAp]              = useState<OutletFilterValues>(initialFilters); // yang sudah diterapkan
+  const [filterOpen,      setFilterOpen]      = useState(true);
+  const [activeTab,       setActiveTab]       = useState<'A' | 'B'>('A');
 
-  const [internalUnit,   setInternalUnit]   = useState('units_dos');
-
-  const selectedUnit = selectedUnitProp !== undefined ? selectedUnitProp : internalUnit;
-  const onUnitChange = onUnitChangeProp !== undefined ? onUnitChangeProp : setInternalUnit;
-
-  const isOmzetUnit  = selectedUnit === 'omzet';
-  const fmtVal       = isOmzetUnit ? fmtRp      : fmtK;
-  const fmtValExact  = isOmzetUnit ? fmtRpExact : fmtExact;
-
-  const getUnitValue = useCallback((r: OutletSalesData) => {
-  // Gunakan || jika ingin menangani 0 sebagai nilai "kosong"
-  if (selectedUnit === 'units_bal') return r.unitsBal || (r.dozNet * 5) || 0;
-  if (selectedUnit === 'units_slop') return r.unitsSlop || (r.dozNet * 50) || 0;
-  if (selectedUnit === 'units_bks') return r.unitsBks || (r.dozNet * 500) || 0;
-  if (selectedUnit === 'omzet') return r.omzet || r.dozNet || 0;
-  return r.dozNet || 0;
-}, [selectedUnit]);
-
-  const getWeeklyUnitData = useCallback((r: OutletSalesData) => {
-  if (selectedUnit === 'units_bal')  return (r.weeklyUnitsBal  ?? {}) as Record<string, number>;
-  if (selectedUnit === 'units_slop') return (r.weeklyUnitsSlop ?? {}) as Record<string, number>;
-  if (selectedUnit === 'units_bks')  return (r.weeklyUnitsBks  ?? {}) as Record<string, number>;
-  if (selectedUnit === 'omzet')      return (r.weeklyOmzet     ?? {}) as Record<string, number>;
-  return (r.weeklyDozNet ?? {}) as Record<string, number>;
-}, [selectedUnit]);
-
-  const raw = data?.outletData ?? [];
-
-  const availableYears = useMemo(() => {
-    const s = new Set<number>();
-    raw.forEach(r => { if (r.year) s.add(r.year); });
-    return Array.from(s).sort();
-  }, [raw]);
-
-  const yearA = availableYears[0] ?? null;
-  const yearB = availableYears[1] ?? null;
-
-  const optOutlet   = useMemo(() => { const s = new Set<string>(); raw.forEach(r => { if (r.outletType) s.add(r.outletType); }); return Array.from(s).sort(); }, [raw]);
-  const optCat      = useMemo(() => { const s = new Set<string>(); raw.forEach(r => { if (r.category) s.add(r.category); }); return Array.from(s).sort(); }, [raw]);
-  const optProduct  = useMemo(() => { const s = new Set<string>(); raw.filter(r => selCat === 'all' || r.category === selCat).forEach(r => { if (r.product) s.add(r.product); }); return Array.from(s).sort(); }, [raw, selCat]);
-  const optCity     = useMemo(() => { const s = new Set<string>(); raw.forEach(r => { if (r.city && r.city !== 'Unknown') s.add(r.city); }); return Array.from(s).sort(); }, [raw]);
-  const optDistrict = useMemo(() => { const s = new Set<string>(); raw.filter(r => selCity === 'all' || r.city === selCity).forEach(r => { if (r.district && r.district !== 'Unknown') s.add(r.district); }); return Array.from(s).sort(); }, [raw, selCity]);
-  const optSalesman = useMemo(() => { const s = new Set<string>(); raw.forEach(r => { if (r.salesman && r.salesman !== 'Unknown') s.add(r.salesman); }); return Array.from(s).sort(); }, [raw]);
-
-  const optCustomer = useMemo(() => {
-    const seen  = new Map<string, string>();
-    const noIds: string[] = [];
-    raw.filter(r => selCity === 'all' || r.city === selCity).forEach(r => {
-      const name = r.customer?.trim();
-      if (!name || name === 'Unknown') return;
-      const no = r.customer_no ?? '';
-      if (no) {
-        if (!seen.has(no)) seen.set(no, name);
-      } else {
-        if (!noIds.includes(name)) noIds.push(name);
-      }
-    });
-    const result: { no: string; name: string }[] = [];
-    seen.forEach((name, no) => result.push({ no, name }));
-    noIds.forEach(name => result.push({ no: '', name }));
-    return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [raw, selCity]);
-
-  const filterFn = useCallback(
-    (r: OutletSalesData) => {
-      if (selOutlet   !== 'all' && r.outletType !== selOutlet)   return false;
-      if (selCat      !== 'all' && r.category   !== selCat)      return false;
-      if (selProduct  !== 'all' && r.product    !== selProduct)  return false;
-      if (selCity     !== 'all' && r.city       !== selCity)     return false;
-      if (selDistrict !== 'all' && r.district   !== selDistrict) return false;
-      if (selSalesman !== 'all' && r.salesman   !== selSalesman) return false;
-
-      if (selCustomerNo) {
-        if (selCustomerNo === '__no-id__') {
-          if (r.customer !== selCustomerName) return false;
-        } else {
-          if ((r.customer_no ?? '') !== selCustomerNo) return false;
-        }
-      }
-
-      if (globalSearch) {
-        const q = globalSearch.toLowerCase();
-        const haystack = [
-          r.customer, r.customer_no, r.product, r.city, r.district, r.salesman
-        ].filter(Boolean).join(' ').toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-
-      return true;
-    },
-    [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman, selCustomerNo, selCustomerName, globalSearch],
-  );
-
-  const dataA  = useMemo(() => yearA != null ? raw.filter(r => r.year === yearA && filterFn(r)) : [], [raw, yearA, filterFn]);
-  const dataB  = useMemo(() => yearB != null ? raw.filter(r => r.year === yearB && filterFn(r)) : [], [raw, yearB, filterFn]);
-  const totalA = useMemo(() => dataA.reduce((s, r) => s + getUnitValue(r), 0), [dataA, getUnitValue]);
-  const totalB = useMemo(() => dataB.reduce((s, r) => s + getUnitValue(r), 0), [dataB, getUnitValue]);
-
-  const sharedWeekRange = useMemo(() => {
-  const allWeeks: number[] = [];
-
-  const collect = (rows: OutletSalesData[]) => {
-    rows.forEach(r => {
-      const wdn = r.weeklyDozNet;
-      const weekKeys = wdn ? Object.keys(wdn) : [];
-      if (weekKeys.length > 0) {
-        // Sumber kebenaran: breakdown mingguan asli (bisa mencakup banyak minggu
-        // walau baris ini sudah diagregasi jadi 1 row per customer+produk)
-        weekKeys.forEach(wkStr => {
-          const wk = Number(wkStr);
-          if (!Number.isNaN(wk)) allWeeks.push(wk);
-        });
-      } else if (r.week != null) {
-        // Fallback kalau baris tidak punya weeklyDozNet sama sekali
-        allWeeks.push(r.week);
-      }
-    });
+  const draft: OutletFilterValues = {
+    outletType:   selOutlet   === 'all' ? '' : selOutlet,
+    category:     selCat      === 'all' ? '' : selCat,
+    product:      selProduct  === 'all' ? '' : selProduct,
+    city:         selCity     === 'all' ? '' : selCity,
+    district:     selDistrict === 'all' ? '' : selDistrict,
+    salesman:     selSalesman === 'all' ? '' : selSalesman,
+    customerNo:   selCustomerNo,
+    customerName: selCustomerName,
+    q:            globalSearch.trim(),
   };
+  const unapplied = !sameFilters(draft, ap);
 
-  collect(dataA);
-  collect(dataB);
-
-  if (allWeeks.length === 0) return { min: 1, max: 52 };
-
-  return {
-    min: allWeeks.reduce((prev, curr) => (curr < prev ? curr : prev), allWeeks[0]),
-    max: allWeeks.reduce((prev, curr) => (curr > prev ? curr : prev), allWeeks[0]),
-  };
-}, [dataA, dataB]);
-
-  const hasDropdownFilter = [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman].some(v => v !== 'all') || !!selCustomerNo;
-  const hasFilter = hasDropdownFilter || !!globalSearch;
-  const activeFilterCount = [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman].filter(v => v !== 'all').length
-    + (selCustomerNo ? 1 : 0)
-    + (globalSearch ? 1 : 0);
+  const handleApply = () => { setAp(draft); onApply(draft, unit); };
+  // Ganti unit langsung fetch ulang (top 10 bergantung unit), memakai filter yang sudah diterapkan
+  const handleUnit  = (u: string) => { setUnit(u); onApply(ap, u); };
 
   const resetAll = () => {
     setSelOutlet('all'); setSelCat('all'); setSelProduct('all');
     setSelCity('all'); setSelDistrict('all'); setSelSalesman('all');
-    setSelCustomerNo(''); setSelCustomerName('');
-    setGlobalSearch('');
+    setSelCustomerNo(''); setSelCustomerName(''); setGlobalSearch('');
+    if (!sameFilters(ap, EMPTY_OUTLET_FILTERS)) {
+      setAp(EMPTY_OUTLET_FILTERS);
+      onApply(EMPTY_OUTLET_FILTERS, unit);
+    }
   };
+
+  const isOmzetUnit = unit === 'omzet';
+  const fmtVal      = isOmzetUnit ? fmtRp      : fmtK;
+  const fmtValExact = isOmzetUnit ? fmtRpExact : fmtExact;
+
+  const optProduct = useMemo(
+    () => Array.from(new Set(opts.products.filter(p => selCat === 'all' || p.category === selCat).map(p => p.product))).sort(),
+    [opts, selCat],
+  );
+  const optDistrict = useMemo(
+    () => Array.from(new Set(opts.districts.filter(d => selCity === 'all' || d.city === selCity).map(d => d.district))).sort(),
+    [opts, selCity],
+  );
+  const optCustomer = useMemo(
+    () => opts.customers.filter(c => selCity === 'all' || c.city === selCity).map(c => ({ no: c.no, name: c.name })),
+    [opts, selCity],
+  );
+
+  const hasDropdownFilter = [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman].some(v => v !== 'all') || !!selCustomerNo;
+  const hasFilter = hasDropdownFilter || !!globalSearch;
+  const activeFilterCount = [selOutlet, selCat, selProduct, selCity, selDistrict, selSalesman].filter(v => v !== 'all').length
+    + (selCustomerNo ? 1 : 0) + (globalSearch ? 1 : 0);
 
   const unitFilterOptions = useMemo(() => [
     { value: 'units_dos',  label: 'Jual (Dos Net)' },
@@ -1386,115 +1305,87 @@ export default function OutletContributionSection({ data, theme: themeProp, sele
     { value: 'omzet',      label: 'Omzet (Rp)' },
   ], []);
 
-  if (!raw.length) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 24px', textAlign: 'center', gap: 14 }}>
-        <div style={{ width: 56, height: 56, borderRadius: '50%', background: t.inputBg, border: `1px solid ${t.borderCard}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Store size={24} color={t.textMuted} />
-        </div>
-        <div style={{ fontSize: 14, color: t.textMuted, fontFamily: 'IBM Plex Sans, sans-serif' }}>Tidak ada data outlet tersedia</div>
-      </div>
-    );
-  }
+  const yearA = result.years.p1;
+  const yearB = result.years.p2;
+  const weekRange = result.weekRange;
+  const panels = [
+    { tab: 'A' as const, year: yearA, isA: true,  panel: result.p1, yc: TK[theme].yearA, other: result.p2.total, label: 'P1' },
+    { tab: 'B' as const, year: yearB, isA: false, panel: result.p2, yc: TK[theme].yearB, other: result.p1.total, label: 'P2' },
+  ];
+
+  const renderPanel = (p: typeof panels[number], compact?: boolean) => (
+    <YearPanel year={p.year} isA={p.isA} panel={p.panel} selectedUnit={unit} theme={theme}
+      onExpand={() => {}} compact={compact} otherTotal={p.other} weekRange={weekRange}
+      fmtVal={fmtVal} fmtValExact={fmtValExact} loading={loading} />
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 12 : 18, fontFamily: 'IBM Plex Sans, sans-serif' }}>
-      <style>{`::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${t.scrollbar};border-radius:2px}::-webkit-scrollbar-thumb:hover{background:${t.textMuted}}`}</style>
+      <style>{`
+        ::-webkit-scrollbar{width:4px;height:4px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:${t.scrollbar};border-radius:2px}
+        ::-webkit-scrollbar-thumb:hover{background:${t.textMuted}}
+        @keyframes skShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        @keyframes skSpin{to{transform:rotate(360deg)}}
+        @media (prefers-reduced-motion: reduce){*{animation-duration:0.01ms !important;animation-iteration-count:1 !important}}
+      `}</style>
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+      {/* <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <p style={{ margin: 0, fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-          {getUnitShortLabel(selectedUnit)} Net · {(dataA.length + dataB.length).toLocaleString()} records
-          {hasFilter && ` · ${activeFilterCount} filter aktif`}
-          {` · W${sharedWeekRange.min}–W${sharedWeekRange.max}`}
+          {getUnitShortLabel(unit)} Net · {(result.p1.records + result.p2.records).toLocaleString()} records
+          {!sameFilters(ap, EMPTY_OUTLET_FILTERS) && ' · filter diterapkan'}
+          {` · W${weekRange.min}–W${weekRange.max}`}
         </p>
         <div style={{ display: 'flex', gap: 6 }}>
-          {yearA != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: TK[theme].yearA.bg, border: `1px solid ${TK[theme].yearA.border}` }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: TK[theme].yearA.accent }} />
-              <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: TK[theme].yearA.label }}>{yearA}</span>
+          {panels.map(p => (
+            <div key={p.tab} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: p.yc.bg, border: `1px solid ${p.yc.border}` }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.yc.accent }} />
+              <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: p.yc.label }}>{p.label} · {p.year}</span>
             </div>
-          )}
-          {yearB != null && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', borderRadius: 20, background: TK[theme].yearB.bg, border: `1px solid ${TK[theme].yearB.border}` }}>
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: TK[theme].yearB.accent }} />
-              <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: TK[theme].yearB.label }}>{yearB}</span>
-            </div>
-          )}
+          ))}
         </div>
-      </div>
+      </div> */}
 
       {/* YoY Summary */}
-      {yearA != null && yearB != null && <YoYSummaryBar dataA={dataA} dataB={dataB} selectedUnit={selectedUnit} yearA={yearA} yearB={yearB} theme={theme} getUnitValue={getUnitValue} fmtValExact={fmtValExact} />}
+      {/* <YoYSummaryBar totalA={result.p1.total} totalB={result.p2.total} selectedUnit={unit} yearA={yearA} yearB={yearB} theme={theme} fmtValExact={fmtValExact} /> */}
 
       {/* Filter */}
-      <div style={{ background: t.cardBg, border: `1px solid ${hasFilter ? t.blue.border : t.borderCard}`, borderRadius: isMobile ? 10 : 12, padding: isMobile ? '10px 12px' : '14px 16px', boxShadow: t.shadow, transition: 'border-color 0.2s' }}>
-        {/* Header row: toggle + global search */}
+      <div style={{ background: t.cardBg, border: `1px solid ${unapplied ? t.orange.border : hasFilter ? t.blue.border : t.borderCard}`, borderRadius: isMobile ? 10 : 12, padding: isMobile ? '10px 12px' : '14px 16px', boxShadow: t.shadow, transition: 'border-color 0.2s' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: filterOpen ? 12 : 8 }}>
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}
-            onClick={() => setFilterOpen(p => !p)}
-          >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }} onClick={() => setFilterOpen(p => !p)}>
             <SlidersHorizontal size={12} color={hasFilter ? t.blue.text : t.textMuted} />
-            <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: hasFilter ? t.blue.text : t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-              Filter
-            </span>
+            <span style={{ fontSize: isMobile ? 10 : 11, fontWeight: 700, color: hasFilter ? t.blue.text : t.textMuted, fontFamily: 'IBM Plex Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Filter</span>
             {hasFilter && (
-              <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: t.blue.bg, color: t.blue.text, border: `1px solid ${t.blue.border}`, fontFamily: 'IBM Plex Mono, monospace' }}>
-                {activeFilterCount} aktif
-              </span>
-            )}
-            {hasFilter && !filterOpen && (
-              <button
-                onClick={e => { e.stopPropagation(); resetAll(); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: t.red.text, fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 600, padding: '1px 6px', display: 'flex', alignItems: 'center', gap: 3 }}
-              >
-                <RefreshCw size={9} /> Reset
-              </button>
+              <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: t.blue.bg, color: t.blue.text, border: `1px solid ${t.blue.border}`, fontFamily: 'IBM Plex Mono, monospace' }}>{activeFilterCount} dipilih</span>
             )}
             <span style={{ color: t.textMuted, marginLeft: 'auto' }}>{filterOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</span>
           </div>
         </div>
 
-        {/* Global search */}
-        <SearchBox
-          value={globalSearch}
-          onChange={setGlobalSearch}
-          theme={theme}
-          placeholder="Cari customer, produk, kota, salesman..."
-        />
+        <SearchBox value={globalSearch} onChange={setGlobalSearch} theme={theme} placeholder="Cari customer, produk, kota, salesman..." />
 
-        {/* Dropdown filters */}
         {filterOpen && (
           <>
             <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(auto-fill, minmax(148px, 1fr))', gap: isMobile ? 8 : 10 }}>
-              {/* Synchronized Unit Filter */}
-              <FilterSelect label="Unit" value={selectedUnit} onChange={onUnitChange} options={unitFilterOptions} accentKey="indigo" theme={theme} isUnitFilter />
-              
-              <FilterSelect label="Tipe Outlet" value={selOutlet}   onChange={setSelOutlet}   options={optOutlet}   accentKey="blue"   theme={theme} />
-              <FilterSelect label="Kategori"    value={selCat}      onChange={setSelCat}      options={optCat}      accentKey="green"  theme={theme} />
-              <FilterSelect label="Produk"      value={selProduct}  onChange={setSelProduct}  options={optProduct}  accentKey="purple" theme={theme} />
-              <FilterSelect label="Kota/Kab."   value={selCity}     onChange={setSelCity}     options={optCity}     accentKey="orange" theme={theme} />
-              <FilterSelect label="Kecamatan"   value={selDistrict} onChange={setSelDistrict} options={optDistrict} accentKey="pink"   theme={theme} />
-              <FilterSelect label="Salesman"    value={selSalesman} onChange={setSelSalesman} options={optSalesman} accentKey="orange" theme={theme} />
+              <FilterSelect label="Unit"        value={unit}        onChange={handleUnit}     options={unitFilterOptions} accentKey="indigo" theme={theme} isUnitFilter />
+              <FilterSelect label="Tipe Outlet" value={selOutlet}   onChange={setSelOutlet}   options={opts.outletTypes} accentKey="blue"   theme={theme} />
+              <FilterSelect label="Kategori"    value={selCat}      onChange={setSelCat}      options={opts.categories}  accentKey="green"  theme={theme} />
+              <FilterSelect label="Produk"      value={selProduct}  onChange={setSelProduct}  options={optProduct}       accentKey="purple" theme={theme} />
+              <FilterSelect label="Kota/Kab."   value={selCity}     onChange={setSelCity}     options={opts.cities}      accentKey="orange" theme={theme} />
+              <FilterSelect label="Kecamatan"   value={selDistrict} onChange={setSelDistrict} options={optDistrict}      accentKey="pink"   theme={theme} />
+              <FilterSelect label="Salesman"    value={selSalesman} onChange={setSelSalesman} options={opts.salesmen}    accentKey="orange" theme={theme} />
               <SearchableSelect
-                label="Customer"
-                value={selCustomerNo}
-                onChange={(no, name) => {
-                  setSelCustomerNo(no);
-                  setSelCustomerName(name);
-                }}
-                options={optCustomer}
-                accentKey="indigo"
-                theme={theme}
-                placeholder="Semua Customer"
+                label="Customer" value={selCustomerNo}
+                onChange={(no, name) => { setSelCustomerNo(no); setSelCustomerName(name); }}
+                options={optCustomer} accentKey="indigo" theme={theme} placeholder="Semua Customer"
               />
             </div>
 
-            {/* Active filter chips */}
             {hasDropdownFilter && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.border}`, display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
-                <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', marginRight: 3 }}>Aktif:</span>
+                <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono, monospace', marginRight: 3 }}>Dipilih:</span>
                 {selOutlet   !== 'all' && <FilterChip label={selOutlet}   accentKey="blue"   onRemove={() => setSelOutlet('all')}   theme={theme} />}
                 {selCat      !== 'all' && <FilterChip label={selCat}      accentKey="green"  onRemove={() => setSelCat('all')}      theme={theme} />}
                 {selProduct  !== 'all' && <FilterChip label={selProduct}  accentKey="purple" onRemove={() => setSelProduct('all')}  theme={theme} />}
@@ -1502,56 +1393,64 @@ export default function OutletContributionSection({ data, theme: themeProp, sele
                 {selDistrict !== 'all' && <FilterChip label={selDistrict} accentKey="pink"   onRemove={() => setSelDistrict('all')} theme={theme} />}
                 {selSalesman !== 'all' && <FilterChip label={selSalesman} accentKey="orange" onRemove={() => setSelSalesman('all')} theme={theme} />}
                 {selCustomerNo && (
-                  <FilterChip
-                    label={selCustomerName ? `${selCustomerName} · #${selCustomerNo}` : `#${selCustomerNo}`}
-                    accentKey="indigo"
-                    onRemove={() => { setSelCustomerNo(''); setSelCustomerName(''); }}
-                    theme={theme}
-                  />
+                  <FilterChip label={selCustomerName ? `${selCustomerName} · #${selCustomerNo}` : `#${selCustomerNo}`} accentKey="indigo"
+                    onRemove={() => { setSelCustomerNo(''); setSelCustomerName(''); }} theme={theme} />
                 )}
-                <button onClick={resetAll} style={{ marginLeft: 'auto', fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', background: 'none', border: 'none', cursor: 'pointer', color: t.red.text, fontWeight: 600, padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <RefreshCw size={9} /> Reset Semua
-                </button>
               </div>
             )}
+
+            {/* Tombol Terapkan */}
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+              {unapplied && !loading && (
+                <span style={{ fontSize: 10, fontFamily: 'IBM Plex Mono, monospace', fontWeight: 700, color: t.orange.text, background: t.orange.bg, border: `1px solid ${t.orange.border}`, borderRadius: 6, padding: '3px 8px' }}>
+                  Belum diterapkan
+                </span>
+              )}
+              {(hasFilter || !sameFilters(ap, EMPTY_OUTLET_FILTERS)) && (
+                <button onClick={resetAll} disabled={loading}
+                  style={{ height: 30, padding: '0 12px', borderRadius: 7, background: 'transparent', border: `1px solid ${t.text}`, color: t.text, fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <RefreshCw size={10} /> Reset
+                </button>
+              )}
+              <button onClick={handleApply} disabled={loading || !unapplied}
+                style={{ height: 30, padding: '0 16px', borderRadius: 7, border: 'none', background: '#1c9706', color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', cursor: loading || !unapplied ? 'not-allowed' : 'pointer', opacity: loading || !unapplied ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {loading && <RefreshCw size={10} style={{ animation: 'skSpin 0.8s linear infinite' }} />}
+                {loading ? 'Memuat…' : 'Terapkan'}
+              </button>
+            </div>
           </>
         )}
       </div>
 
-      {/* Year panels */}
-      {availableYears.length < 2 ? (
-        <YearPanel year={yearA!} isA={true} data={dataA} selectedUnit={selectedUnit} theme={theme} onExpand={() => {}} otherTotal={undefined} weekRange={sharedWeekRange} getUnitValue={getUnitValue} getWeeklyUnitData={getWeeklyUnitData} fmtVal={fmtVal} fmtValExact={fmtValExact} />
-      ) : isMobile ? (
-        <div>
-          <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${t.borderCard}`, marginBottom: 14, background: t.inputBg }}>
-            {([{ tab: 'A' as const, year: yearA!, yc: TK[theme].yearA, rowData: dataA }, { tab: 'B' as const, year: yearB!, yc: TK[theme].yearB, rowData: dataB }]).map(({ tab, year, yc, rowData }) => (
-              <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: activeTab === tab ? yc.bg : 'transparent', border: 'none', borderBottom: activeTab === tab ? `2px solid ${yc.accent}` : '2px solid transparent', cursor: 'pointer', transition: 'background 0.2s', fontFamily: 'IBM Plex Mono, monospace' }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: yc.accent }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color: activeTab === tab ? yc.label : t.textMuted }}>{year}</span>
-                <span style={{ fontSize: 10, color: activeTab === tab ? yc.label : t.textMuted, opacity: 0.6 }}>{rowData.length.toLocaleString()}r</span>
-              </button>
+      {/* Panel per periode */}
+      <div aria-busy={loading} style={{ pointerEvents: loading ? 'none' : 'auto' }}>
+        {isMobile ? (
+          <div>
+            <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', border: `1px solid ${t.borderCard}`, marginBottom: 14, background: t.inputBg }}>
+              {panels.map(p => (
+                <button key={p.tab} onClick={() => setActiveTab(p.tab)} style={{ flex: 1, padding: '10px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: activeTab === p.tab ? p.yc.bg : 'transparent', border: 'none', borderBottom: activeTab === p.tab ? `2px solid ${p.yc.accent}` : '2px solid transparent', cursor: 'pointer', fontFamily: 'IBM Plex Mono, monospace' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.yc.accent }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: activeTab === p.tab ? p.yc.label : t.textMuted }}>{p.label} · {p.year}</span>
+                </button>
+              ))}
+            </div>
+            {renderPanel(panels.find(p => p.tab === activeTab)!)}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isTablet ? 14 : 20, alignItems: 'start' }}>
+            {panels.map(p => (
+              <div key={p.tab}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 16px', borderRadius: 10, background: p.yc.bg, border: `1px solid ${p.yc.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
+                  <Calendar size={13} color={p.yc.label} />
+                  <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: p.yc.label }}>{p.label} · Tahun {p.year}</span>
+                  {/* <span style={{ fontSize: 10, color: p.yc.label, opacity: 0.55, fontFamily: 'IBM Plex Mono, monospace', marginLeft: 'auto' }}>{p.panel.records.toLocaleString()} records</span> */}
+                </div>
+                {renderPanel(p, isTablet)}
+              </div>
             ))}
           </div>
-          {activeTab === 'A' && yearA != null && <YearPanel year={yearA} isA={true}  data={dataA} selectedUnit={selectedUnit} theme={theme} onExpand={() => {}} otherTotal={totalB} weekRange={sharedWeekRange} getUnitValue={getUnitValue} getWeeklyUnitData={getWeeklyUnitData} fmtVal={fmtVal} fmtValExact={fmtValExact} />}
-          {activeTab === 'B' && yearB != null && <YearPanel year={yearB} isA={false} data={dataB} selectedUnit={selectedUnit} theme={theme} onExpand={() => {}} otherTotal={totalA} weekRange={sharedWeekRange} getUnitValue={getUnitValue} getWeeklyUnitData={getWeeklyUnitData} fmtVal={fmtVal} fmtValExact={fmtValExact} />}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: isTablet ? 14 : 20, alignItems: 'start' }}>
-          {([
-            { year: yearA!, isA: true,  rowData: dataA, yc: TK[theme].yearA, other: totalB },
-            { year: yearB!, isA: false, rowData: dataB, yc: TK[theme].yearB, other: totalA },
-          ] as const).map(({ year, isA, rowData, yc, other }) => (
-            <div key={year}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, padding: '10px 16px', borderRadius: 10, background: yc.bg, border: `1px solid ${yc.border}`, position: 'sticky', top: 0, zIndex: 10 }}>
-                <Calendar size={13} color={yc.label} />
-                <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'IBM Plex Mono, monospace', color: yc.label }}>Tahun {year}</span>
-                <span style={{ fontSize: 10, color: yc.label, opacity: 0.55, fontFamily: 'IBM Plex Mono, monospace', marginLeft: 'auto' }}>{rowData.length.toLocaleString()} records</span>
-              </div>
-              <YearPanel year={year} isA={isA} data={rowData} selectedUnit={selectedUnit} theme={theme} onExpand={() => {}} compact={isTablet} otherTotal={other} weekRange={sharedWeekRange} getUnitValue={getUnitValue} getWeeklyUnitData={getWeeklyUnitData} fmtVal={fmtVal} fmtValExact={fmtValExact} />
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

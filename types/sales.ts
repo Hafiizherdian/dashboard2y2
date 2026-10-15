@@ -7,6 +7,7 @@
 /**
  * Data penjualan mingguan untuk satu tahun
  */
+import type { OutletResponse } from '@/types/outlet';
 export interface WeeklySales {
   week: number;        // Nomor minggu (1-52)
   year: number;         // Tahun penjualan
@@ -237,6 +238,7 @@ export interface SalesData {
   comparisonYears: ComparisonYears;
   comparisonWeeks: ComparisonWeeks;
   outletData?: OutletSalesData[];  // Data penjualan per outlet (opsional)
+  outlet?: OutletResponse;
   piutangList?: PiutangRecord[];
   stockList?: StockRecord[];
   distributionData?: any;

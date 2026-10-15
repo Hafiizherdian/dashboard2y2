@@ -168,7 +168,7 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
     </div>
   );
 
-  const { yearOnYearGrowth:yoy, weekComparisons:wc, quarterlyData:qd, comparisonYears:cy, l4wc4wData:l4w, outletData=[] } = data as any;
+  const { yearOnYearGrowth:yoy, weekComparisons:wc, quarterlyData:qd, comparisonYears:cy, l4wc4wData:l4w } = data as any;
   const pL = p1Label ?? cy?.previousYear ?? y1;
   const cL = p2Label ?? cy?.currentYear ?? y2;
   const gPct=yoy.variancePercentage; const isPos=gPct>=0;
@@ -198,7 +198,7 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
     .slice(0, 7);
   const catTotal = catData.reduce((s, d) => s + d.v, 0);
 
-  const rows:any[] = Array.isArray(outletData) ? outletData : [];
+  // const rows:any[] = Array.isArray(outletData) ? outletData : [];
   const ts=mkTick(theme); const gs=t.gridStroke;
 
   const KPI_H=108; const GAP=8; const PADBOT=10;
@@ -225,23 +225,14 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
   const l4wAvg=l4w.l4wAverage; const c1w=l4w.c1wValue; const lPos=c1w>=l4wAvg; const lc=lPos?'#10b981':'#ef4444';
   const lData=l4w.weeklyTrendData?.map((item:any)=>({w:item.week,v:item.value,avg:l4wAvg}))||[];
 
-  const getOutletUnitValue = (r:any): number => {
-    if (selectedUnit === 'omzet')      return r.omzet      ?? 0;
-    if (selectedUnit === 'units_bks')  return r.unitsBks   ?? 0;
-    if (selectedUnit === 'units_slop') return r.unitsSlop  ?? 0;
-    if (selectedUnit === 'units_bal')  return r.unitsBal   ?? 0;
-    return r.dozNet ?? 0;
-  };
-  const fmtOutlet = (v:number) => selectedUnit==='omzet' ? fmtRp(v) : fmtK(v);
+    const fmtOutlet = (v:number) => selectedUnit==='omzet' ? fmtRp(v) : fmtK(v);
 
-  const curR = rows.filter((r: any) =>
-  r.period !== undefined ? r.period === 2 : r.year === (cy?.currentYear ?? y2));
-  const oTypes=Array.from(new Set(curR.map((r:any)=>r.outletType))).filter(Boolean) as string[];
-  const totDoz=curR.reduce((s:number,r:any)=>s+getOutletUnitValue(r),0);
-  const dData=oTypes.map((ot,i)=>({n:ot,v:curR.filter((r:any)=>r.outletType===ot).reduce((s:number,r:any)=>s+getOutletUnitValue(r),0),fill:CC[i%CC.length]}));
-  const pMap=new Map<string,number>();
-  curR.forEach((r:any)=>{if(r.product) pMap.set(r.product,(pMap.get(r.product)||0)+getOutletUnitValue(r));});
-  const topP=Array.from(pMap.entries()).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([n,v])=>({n,v}));
+  // Outlet sudah diagregasi di server (data.outlet). p2 = periode sekarang.
+  const outletP2 = data.outlet?.p2;
+  const totDoz   = outletP2?.total ?? 0;
+  const dData    = (outletP2?.pieOutlet ?? []).map((d, i) => ({ n: d.name, v: d.value, fill: CC[i % CC.length] }));
+  const oTypes   = dData.map(d => d.n);
+  const topP     = (outletP2?.barProduct ?? []).slice(0, 5).map(r => ({ n: String(r.product), v: Number(r._total) || 0 }));
 
   const unitLabel=UNIT_OPTIONS.find(o=>o.value===selectedUnit)?.label??UNIT_OPTIONS[0].label;
   const bodyGrid=isMobile?'1fr':isTablet?'1fr 1fr':'2fr 1.3fr 1.4fr';

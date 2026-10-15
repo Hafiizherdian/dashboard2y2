@@ -26,15 +26,27 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // LRU sederhana: kalau penuh, buang entry yang paling lama di-set.
 const MAX_ENTRIES = 300;
 
+function keyValue(v: unknown): string {
+  if (Array.isArray(v)) return v.slice().sort().join(',');
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return '{' + Object.keys(o)
+      .filter(k => o[k] !== '' && o[k] !== undefined && o[k] !== null)
+      .sort()
+      .map(k => `${k}:${keyValue(o[k])}`)
+      .join(',') + '}';
+  }
+  return String(v);
+}
+
 function cacheKey(params: Record<string, unknown>): string {
   return Object.entries(params)
     .filter(([, v]) => v !== '' && v !== undefined && v !== null &&
       !(Array.isArray(v) && v.length === 0))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${Array.isArray(v) ? v.slice().sort().join(',') : v}`)
+    .map(([k, v]) => `${k}=${keyValue(v)}`)
     .join('&');
 }
-
 export function getCached<T = unknown>(params: Record<string, unknown>): T | null {
   const key = cacheKey(params);
   const entry = cache.get(key);
