@@ -1162,9 +1162,9 @@ function YearPanel({ year, isA, panel, selectedUnit, theme, onExpand, compact, o
                     <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', color: t.text, fontWeight: 600 }}>{w.week}</td>
                     <td style={{ padding: isMobile || compact ? '7px 10px' : '8px 14px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                        <div style={{ width: 40, height: 4, background: t.border, borderRadius: 2, flexShrink: 0, overflow: 'hidden' }}>
+                        {/* <div style={{ width: 40, height: 4, background: t.border, borderRadius: 2, flexShrink: 0, overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${(w.dozNet / maxDoz) * 100}%`, background: aboveAvg ? yc.accent : `${yc.accent}60`, borderRadius: 2 }} />
-                        </div>
+                        </div> */}
                         <span style={{ color: w.dozNet === 0 ? t.textMuted : t.textSub }}>{fmtValExact(w.dozNet)}</span>
                       </div>
                     </td>
@@ -1192,7 +1192,7 @@ function YearPanel({ year, isA, panel, selectedUnit, theme, onExpand, compact, o
 
       {expandedChart && (
         <ExpandModal
-          title={`Tahun ${year} — ${
+          title={`Tahun ${year}  ${
             expandedChart === 'weekly'   ? 'Kontribusi Per Minggu'  :
             expandedChart === 'category' ? 'per Kategori Produk'    :
             expandedChart === 'outlet'   ? 'per Tipe Outlet'        :
@@ -1200,7 +1200,7 @@ function YearPanel({ year, isA, panel, selectedUnit, theme, onExpand, compact, o
             expandedChart === 'city'     ? 'per Kota/Kab. (Top 10)' :
             expandedChart === 'district' ? 'per Kecamatan (Top 10)' :
             expandedChart === 'customer' ? 'per Customer (Top 10)'  : ''
-          }${tableModes[expandedChart] ? ' — Tabel Data' : ''}`}
+          }${tableModes[expandedChart] ? '   Tabel Data' : ''}`}
           onClose={() => setExpandedChart(null)}
           theme={theme}
         >
