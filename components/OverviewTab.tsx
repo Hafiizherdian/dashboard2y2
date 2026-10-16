@@ -212,15 +212,26 @@ export default function OverviewTab({ data, theme, y1, y2, availH, selectedUnit 
   p: w.previousYear, c: w.currentYear, g: w.variancePercentage,
 }));
   const mnths=['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-  const mData = mnths.map((m, mi) => {
-    const s = mi * 4 + 1;
-    const inM = (n: number) => n >= s && n <= s + 3;
-    return {
-      m,
-      p: wc.filter((w: any) => inM(w.previousWeek ?? w.week)).reduce((a: number, w: any) => a + (w.previousYear || 0), 0),
-      c: wc.filter((w: any) => inM(w.week)).reduce((a: number, w: any) => a + (w.currentYear || 0), 0),
-    };
-  }).filter((d: any) => d.p > 0 || d.c > 0);
+  // Bulan dari nomor minggu ISO (pakai Kamis pada minggu tsb, sesuai aturan ISO)
+  const weekToMonth = (week: number, year: number): number => {
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const dow = jan4.getUTCDay() || 7;
+    const week1Mon = new Date(jan4);
+    week1Mon.setUTCDate(jan4.getUTCDate() - dow + 1);
+    const thursday = new Date(week1Mon);
+    thursday.setUTCDate(week1Mon.getUTCDate() + (week - 1) * 7 + 3);
+    return thursday.getUTCMonth(); // 0-11
+  };
+
+  const mData = mnths.map((m, mi) => ({
+    m,
+    p: wc
+      .filter((w: any) => weekToMonth(w.previousWeek ?? w.week, Number(y1)) === mi)
+      .reduce((a: number, w: any) => a + (w.previousYear || 0), 0),
+    c: wc
+      .filter((w: any) => weekToMonth(w.week, Number(y2)) === mi)
+      .reduce((a: number, w: any) => a + (w.currentYear || 0), 0),
+  })).filter((d: any) => d.p > 0 || d.c > 0);
 
   const l4wAvg=l4w.l4wAverage; const c1w=l4w.c1wValue; const lPos=c1w>=l4wAvg; const lc=lPos?'#10b981':'#ef4444';
   const lData=l4w.weeklyTrendData?.map((item:any)=>({w:item.week,v:item.value,avg:l4wAvg}))||[];
