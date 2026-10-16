@@ -260,7 +260,7 @@ function WeeklyDetailView({ data, selectedUnit, theme, card, tdBase, expandModal
     <ResponsiveContainer width="100%" height={height as number | `${number}%`}>
       <ComposedChart data={chartData} margin={{ top: 6, right: 16, bottom: 4, left: 8 }} barGap={2}>
         <CartesianGrid strokeDasharray="3 3" stroke={t.gridStroke} />
-        <XAxis dataKey="name" {...axisProps} interval={selectedQ === 'all' ? 3 : 0} />
+        <XAxis dataKey="name" {...axisProps} interval={0} />
         <YAxis
           yAxisId="left"
           tickFormatter={yFmt}
@@ -278,7 +278,7 @@ function WeeklyDetailView({ data, selectedUnit, theme, card, tdBase, expandModal
           ))}
         </Bar>
         {!isOmzet && <Line yAxisId="right" type="monotone" dataKey="achievement" fill="#f59e0b" connectNulls={false} stroke="#f87171" strokeWidth={2} dot={{ r: 4, fill: '#f87171', strokeWidth: 0 }} name="Achievement %" />}
-        {!isOmzet && <ReferenceLine yAxisId="right" y={100} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1.5} />}
+        {/* {!isOmzet && <ReferenceLine yAxisId="right" y={100} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1.5} />} */}
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -334,9 +334,9 @@ function WeeklyDetailView({ data, selectedUnit, theme, card, tdBase, expandModal
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#f87171', fontFamily: 'IBM Plex Sans, sans-serif' }}>
                   <span style={{ width: 18, height: 2, background: '#f87171', borderRadius: 2 }} />Achievement %
                 </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#10b981', fontFamily: 'IBM Plex Sans, sans-serif' }}>
+                {/* <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#10b981', fontFamily: 'IBM Plex Sans, sans-serif' }}>
                   <span style={{ width: 18, height: 2, background: '#10b981', borderRadius: 2 }} />100% Line
-                </span>
+                </span> */}
               </>
             )}
           </div>
