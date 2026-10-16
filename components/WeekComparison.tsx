@@ -1021,50 +1021,59 @@ export default function WeekComparisonComponent({
   const [expandTarget,     setExpandTarget]     = useState<ExpandTarget>(null);
   const [tableView,        setTableView]        = useState({ line: false, bar: false });
   const [detailView,       setDetailView]       = useState<'summary' | 'weekly'>('summary');
+  const [weekParity,       setWeekParity]       = useState<'all' | 'odd' | 'even'>('all');
   const [weeklyMetric,     setWeeklyMetric]     = useState<'current' | 'previous' | 'variance' | 'pct'>('current');
   const [sortConfig,       setSortConfig]       = useState<{
     key: 'product' | 'previousYear' | 'currentYear' | 'variance' | 'variancePercentage';
     direction: 'asc' | 'desc';
   } | null>(null);
   const [selectedCity,     setSelectedCity]     = useState('all');
-const [selectedDistrict, setSelectedDistrict] = useState('all');
+  const [selectedDistrict, setSelectedDistrict] = useState('all');
 
-const loc = useMemo<LocationFilter>(
-  () => ({ city: selectedCity, district: selectedDistrict }),
-  [selectedCity, selectedDistrict],
-);
-const locationActive = isLocationActive(loc);
+  const loc = useMemo<LocationFilter>(
+    () => ({ city: selectedCity, district: selectedDistrict }),
+    [selectedCity, selectedDistrict],
+  );
+  const locationActive = isLocationActive(loc);
 
-// kota -> kumpulan kecamatan
-const locationIndex = useMemo(() => {
-  const m = new Map<string, Set<string>>();
-  data.forEach(wd => wd.details?.forEach(d => d.locations?.forEach(l => {
-    if (!l.city) return;
-    if (!m.has(l.city)) m.set(l.city, new Set());
-    if (l.district) m.get(l.city)!.add(l.district);
-  })));
-  return m;
-}, [data]);
+  // kota -> kumpulan kecamatan
+  const locationIndex = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    data.forEach(wd => wd.details?.forEach(d => d.locations?.forEach(l => {
+      if (!l.city) return;
+      if (!m.has(l.city)) m.set(l.city, new Set());
+      if (l.district) m.get(l.city)!.add(l.district);
+    })));
+    return m;
+  }, [data]);
 
-const availableCities = useMemo(() => Array.from(locationIndex.keys()).sort(), [locationIndex]);
+  const availableCities = useMemo(() => Array.from(locationIndex.keys()).sort(), [locationIndex]);
 
-// kecamatan mengikuti kota yang dipilih (cascading)
-const availableDistricts = useMemo(() => {
-  if (selectedCity !== 'all') return Array.from(locationIndex.get(selectedCity) ?? []).sort();
-  const s = new Set<string>();
-  locationIndex.forEach(ds => ds.forEach(x => s.add(x)));
-  return Array.from(s).sort();
-}, [locationIndex, selectedCity]);
+  // kecamatan mengikuti kota yang dipilih (cascading)
+  const availableDistricts = useMemo(() => {
+    if (selectedCity !== 'all') return Array.from(locationIndex.get(selectedCity) ?? []).sort();
+    const s = new Set<string>();
+    locationIndex.forEach(ds => ds.forEach(x => s.add(x)));
+    return Array.from(s).sort();
+  }, [locationIndex, selectedCity]);
 
-useEffect(() => {
-  if (selectedCity !== 'all' && !availableCities.includes(selectedCity)) setSelectedCity('all');
-}, [availableCities, selectedCity]);
+  useEffect(() => {
+    if (selectedCity !== 'all' && !availableCities.includes(selectedCity)) setSelectedCity('all');
+  }, [availableCities, selectedCity]);
 
-useEffect(() => {
-  if (selectedDistrict !== 'all' && !availableDistricts.includes(selectedDistrict)) setSelectedDistrict('all');
-}, [availableDistricts, selectedDistrict]);
+  useEffect(() => {
+    if (selectedDistrict !== 'all' && !availableDistricts.includes(selectedDistrict)) setSelectedDistrict('all');
+  }, [availableDistricts, selectedDistrict]);
 
   useEffect(() => { setSelectedWeek(null); }, [data.length]);
+
+  // Filter minggu ganjil / genap untuk Perbandingan Detail (diabaikan kalau satu minggu dipilih)
+  const effectiveParity: 'all' | 'odd' | 'even' = selectedWeek !== null ? 'all' : weekParity;
+  const inParity = useCallback(
+    (w: number) => effectiveParity === 'all' || (effectiveParity === 'odd' ? w % 2 === 1 : w % 2 === 0),
+    [effectiveParity],
+  );
+  const parityLabel = effectiveParity === 'odd' ? 'minggu ganjil' : effectiveParity === 'even' ? 'minggu genap' : 'semua minggu';
 
   // Format-aware: saat unit = omzet, pakai format Rupiah selain itu format angka biasa
   const isOmzetUnit  = selectedUnit === 'omzet';
@@ -1079,6 +1088,7 @@ useEffect(() => {
   const allProductsInData = useMemo((): ResolvedProductRow[] => {
     const m = new Map<string, Record<UnitKey, { previous: number; current: number }>>();
     data.forEach(wd => {
+      if (!inParity(wd.week)) return;
       wd.details?.forEach(d => {
         if (!m.has(d.product)) m.set(d.product, {
           units_dos: { previous: 0, current: 0 }, units_bal: { previous: 0, current: 0 },
@@ -1104,7 +1114,7 @@ useEffect(() => {
     })
     .filter(r => !locationActive || r.previousYear !== 0 || r.currentYear !== 0)
     .sort((a, b) => b.currentYear - a.currentYear);
-  }, [data, selectedUnit, loc, locationActive]);
+  }, [data, selectedUnit, loc, locationActive, inParity]);
 
   const availableCategories = useMemo(() => {
     const s = new Set<string>();
@@ -1164,14 +1174,15 @@ useEffect(() => {
 
   // Matriks produk x minggu (untuk tampilan "Per Minggu")
   const weeklyWeeks = useMemo(
-    () => (selectedWeek !== null ? [selectedWeek] : weekOptions),
-    [selectedWeek, weekOptions],
+    () => (selectedWeek !== null ? [selectedWeek] : weekOptions.filter(inParity)),
+    [selectedWeek, weekOptions, inParity],
   );
 
   const weeklyMatrix = useMemo(() => {
     const m = new Map<string, Map<number, { previous: number; current: number }>>();
     data.forEach(wd => {
       if (selectedWeek !== null && wd.week !== selectedWeek) return;
+      if (selectedWeek === null && !inParity(wd.week)) return;
       wd.details?.forEach(d => {
         if (selectedCategory !== 'all' && getProductCategory(d.product) !== selectedCategory) return;
         if (selectedProduct  !== 'all' && d.product !== selectedProduct) return;
@@ -1200,27 +1211,27 @@ useEffect(() => {
     const grandCurr = rows.reduce((s, r) => s + r.totalCurr, 0);
 
     return { rows, weekTotals, grandPrev, grandCurr };
-  }, [data, selectedWeek, selectedUnit, selectedCategory, selectedProduct, loc, locationActive]);
+  }, [data, selectedWeek, selectedUnit, selectedCategory, selectedProduct, loc, locationActive, inParity]);
 
   const renderWeeklyValue = useCallback((prev: number, curr: number): React.ReactNode => {
-  const vari = curr - prev;
-  const pct  = prev > 0 ? (vari / prev) * 100 : 0;
+    const vari = curr - prev;
+    const pct  = prev > 0 ? (vari / prev) * 100 : 0;
 
-  // dianggap nol kalau hasil pembulatan tampilan (2 desimal) = 0, supaya sisa float tidak lolos
-  const isZero = (n: number) => Math.abs(n) < 0.005;
-  const dash   = <span style={{ color: t.text }}>–</span>;
+    // dianggap nol kalau hasil pembulatan tampilan (2 desimal) = 0, supaya sisa float tidak lolos
+    const isZero = (n: number) => Math.abs(n) < 0.005;
+    const dash   = <span style={{ color: t.text }}>–</span>;
 
-  switch (weeklyMetric) {
-    case 'previous': return isZero(prev) ? dash : fmtValExact(prev);
-    case 'current':  return isZero(curr) ? dash : fmtValExact(curr);
-    case 'variance': return isZero(vari) ? dash : (
-      <span style={{ color: vari >= 0 ? POS_COLOR : NEG_COLOR }}>
-        {vari >= 0 ? '+' : ''}{fmtValExact(vari)}
-      </span>
-    );
-    case 'pct': return isZero(pct) ? dash : <GrowthPill value={pct} />;
-  }
-}, [weeklyMetric, fmtValExact, t]);
+    switch (weeklyMetric) {
+      case 'previous': return isZero(prev) ? dash : fmtValExact(prev);
+      case 'current':  return isZero(curr) ? dash : fmtValExact(curr);
+      case 'variance': return isZero(vari) ? dash : (
+        <span style={{ color: vari >= 0 ? POS_COLOR : NEG_COLOR }}>
+          {vari >= 0 ? '+' : ''}{fmtValExact(vari)}
+        </span>
+      );
+      case 'pct': return isZero(pct) ? dash : <GrowthPill value={pct} />;
+    }
+  }, [weeklyMetric, fmtValExact, t]);
 
   const chartData = useMemo(() => {
     const rows = selectedWeek !== null
@@ -1245,7 +1256,8 @@ useEffect(() => {
       }
       const variance = currVal - prevVal;
       return {
-        week: weekLabel(item.week), previousYear: prevVal, currentYear: currVal,
+        week: weekLabel(item.week),
+        previousYear: prevVal, currentYear: currVal,
         variance, variancePercentage: prevVal > 0 ? (variance / prevVal) * 100 : 0,
       };
     });
@@ -1563,6 +1575,37 @@ useEffect(() => {
           </div>
         </div>
 
+        {/* Filter minggu ganjil / genap */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap', opacity: selectedWeek !== null ? 0.45 : 1 }}>
+          <span style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', textTransform: 'uppercase', letterSpacing: '.07em' }}>
+            Minggu
+          </span>
+          {([
+            { k: 'all',  label: 'Semua' },
+            { k: 'odd',  label: 'Ganjil' },
+            { k: 'even', label: 'Genap' },
+          ] as const).map(o => {
+            const active = effectiveParity === o.k;
+            return (
+              <button
+                key={o.k}
+                onClick={() => setWeekParity(o.k)}
+                disabled={selectedWeek !== null}
+                title={selectedWeek !== null ? 'Tidak berlaku saat hanya 1 (satu) minggu dipilih' : undefined}
+                style={{
+                  padding: '3px 9px', borderRadius: 6, cursor: selectedWeek !== null ? 'not-allowed' : 'pointer',
+                  fontSize: 10, fontWeight: 500, fontFamily: 'IBM Plex Mono,monospace',
+                  background: active ? `${t.btnText}42` : t.inputBg,
+                  border: `1px solid ${active ? t.text : t.textSub}`,
+                  color: active ? t.text : t.textSub, transition: 'all .15s',
+                }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+
         {detailView === 'weekly' && (
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             {([
@@ -1593,14 +1636,14 @@ useEffect(() => {
 
         {detailView === 'summary' ? (
           <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
+            <div style={{ overflowX: 'auto', maxHeight: isMobile ? 360 : 580, WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: isMobile ? 460 : 560 }}>
                 <thead>
                   <tr>
                     {tableCols.map(col => (
                       <th key={col.key}
                         onClick={() => handleTableSort(col.key as ColKey)}
-                        style={{ padding: isMobile ? '8px 10px' : '10px 16px', textAlign: col.right ? 'right' : 'left', fontSize: isMobile ? 9 : 10, fontFamily: 'IBM Plex Mono,monospace', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, color: t.theadText, background: t.theadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
+                        style={{ position: 'sticky', top: 0, left: 0, zIndex: 3, padding: isMobile ? '8px 10px' : '10px 16px', textAlign: col.right ? 'right' : 'left', fontSize: isMobile ? 9 : 10, fontFamily: 'IBM Plex Mono,monospace', textTransform: 'uppercase', letterSpacing: '.07em', fontWeight: 600, color: t.theadText, background: t.theadBg, borderBottom: `1px solid ${t.border}`, cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: col.right ? 'flex-end' : 'flex-start', gap: 2, width: '100%' }}>
                           {col.label}<SortIcon colKey={col.key} sortConfig={sortConfig} theme={theme} />
                         </span>
@@ -1638,7 +1681,7 @@ useEffect(() => {
           </div>
         ) : (
           <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ overflow: 'auto', maxHeight: isMobile ? 360 : 480, WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
+            <div style={{ overflow: 'auto', maxHeight: isMobile ? 360 : 580, WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'] }}>
               {weeklyMatrix.rows.length > 0 ? (
                 <table style={{ borderCollapse: 'collapse', minWidth: '100%' }}>
                   <thead>
@@ -1770,7 +1813,7 @@ useEffect(() => {
           {detailView === 'weekly'
             ? `${weeklyMatrix.rows.length} produk · ${getUnitLabel(selectedUnit)} · ${weeklyWeeks.length} minggu`
             : selectedWeek === null
-              ? `${sortedProductDetails.length} produk · ${getUnitLabel(selectedUnit)} · semua minggu`
+              ? `${sortedProductDetails.length} produk · ${getUnitLabel(selectedUnit)} · ${parityLabel}`
               : `${sortedProductDetails.length} produk · ${getUnitLabel(selectedUnit)} · Week ${selectedWeek}`
           }
         </p>
