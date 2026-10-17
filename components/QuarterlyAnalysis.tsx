@@ -1053,7 +1053,7 @@ useEffect(() => {
                     onClick={() => overviewTableView.bar
                       ? openModal(
                           <OverviewTableView type="bar" data={filteredData} selectedUnit={selectedUnit} isOmzet={isOmzet} theme={theme} />,
-                          `${isOmzet ? 'Omzet per Kuartal' : 'Target vs Actual'} · ${getUnitLabel(selectedUnit)} — Tabel Data`,
+                          `${isOmzet ? 'Omzet per Kuartal' : 'Target vs Actual'} · ${getUnitLabel(selectedUnit)} Tabel Data`,
                         )
                       : setExpandedChart('bar')}
                     theme={theme}
@@ -1075,7 +1075,7 @@ useEffect(() => {
                     onClick={() => overviewTableView.pie
                       ? openModal(
                           <OverviewTableView type="pie" data={filteredData} selectedUnit={selectedUnit} isOmzet={isOmzet} theme={theme} />,
-                          `Distribusi Penjualan · ${getUnitLabel(selectedUnit)} — Tabel Data`,
+                          `Distribusi Penjualan · ${getUnitLabel(selectedUnit)}  Tabel Data`,
                         )
                       : setExpandedChart('pie')}
                     theme={theme}
@@ -1101,7 +1101,7 @@ useEffect(() => {
                 const achievement = hasQTarget ? (q.actual / q.target) * 100 : 0;
                 const hit         = q.actual >= q.target;
                 return (
-                  <div key={q.quarter} style={{ background: t.cardBg, border: `1px solid ${isOmzet ? t.borderCard : (!hasQTarget ? t.borderCard : (hit ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'))}`, borderLeft: `3px solid ${isOmzet ? t.btnText : (!hasQTarget ? t.textFaint : (hit ? '#10b981' : '#ef4444'))}`, borderRadius: 10, padding: 16 }}>
+                  <div key={q.quarter} style={{ background: t.cardBg, border: `2px solid ${isOmzet ? t.borderCard : (!hasQTarget ? t.borderCard : (hit ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'))}`, borderRadius: 10, padding: 16 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                       <span style={{ fontSize: 16, fontWeight: 800, color: t.text, fontFamily: 'IBM Plex Mono, monospace' }}>{q.quarter}</span>
                       {isOmzet
