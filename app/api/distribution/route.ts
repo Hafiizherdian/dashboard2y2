@@ -64,7 +64,7 @@ function timedQuery(label: string) {
 // (catatan definisi metrik & pola CTE dedup outlet sama seperti versi sebelumnya, tidak diubah, lihat komentar panjang di riwayat file ini)
 //
 // CACHE
-// Sebelum menjalankan 10 query paralel 
+// Sebelum menjalankan 11 query paralel 
 // (yang bisa >100 detik pada dataset besar tanpa cache di server dengan resource terbatas), 
 // dicek dulu apakah kombinasi filter yang sama sudah pernah dihitung baru-baru ini 
 // via lib/distributionCache.ts. Cache di-invalidate penuh setiap ada upload/delete
@@ -80,6 +80,11 @@ function timedQuery(label: string) {
 //   CTE outlet_agg sudah punya kolom outlet — sekarang ditambahkan
 //   COUNT(DISTINCT outlet), karena UI (tab Outlet) merender kolom Outlet
 //   dari field ini.
+// - BARU: query 'consecutiveStreak' (query ke-11) — outlet/produk yang
+//   ec > 1 dan plan > 1 selama minimal 4 minggu berturut-turut (gaps and
+//   islands). Memakai ${where} yang sama dengan query lain, jadi filter
+//   area, RBAC, salesman, produk, kota, file, dan rentang minggu ikut
+//   berlaku. Hasil masuk responseData.consecutiveStreak.
 //
 export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
@@ -165,6 +170,8 @@ export async function GET(request: NextRequest) {
       params.push(weekStart, weekEnd);
       
       const where = conditions.join(' AND ');
+      const whereStreak  = conditions.slice(0, -1).join(' AND ');
+      const paramsStreak = params.slice(0, -2);
 
       // WHERE tanpa filter salesman 
       const baseConditions: string[] = ['1=1'];
@@ -218,7 +225,7 @@ export async function GET(request: NextRequest) {
       
       const whereWithSal = withSalConditions.join(' AND ');
 
-      log('[GET] running queries in parallel...', { queryCount: 10 });
+      log('[GET] running queries in parallel...', { queryCount: 11 });
       const parallelStart = Date.now();
 
       const [
@@ -232,6 +239,7 @@ export async function GET(request: NextRequest) {
         outletTotalsQ,
         outletCountByTypeSalesmanQ,
         achSalesmanProductQ,
+        streakQ,
       ] = await Promise.all([
 
         timedQuery('achievementSalesman')(`
@@ -380,6 +388,41 @@ export async function GET(request: NextRequest) {
             CASE WHEN SUM(f_plan) > 0 THEN ROUND((SUM(f_avout)::numeric / SUM(f_plan)) * 100, 1) ELSE 0 END AS achievement_pct
           FROM outlet_agg GROUP BY salesman, product ORDER BY salesman, total_av_out DESC
         `, params),
+
+        // Streak minggu berturut-turut (gaps and islands).
+        // Catatan: threshold ec > 1 dan plan > 1 sengaja dipertahankan dari
+        // query asli. Kalau definisi "terpenuhi" harus sama dengan KPI lain,
+        // ganti jadi > 0.
+        timedQuery('consecutiveStreak')(`
+        WITH weekly AS (
+          SELECT DISTINCT area, customer_id, outlet, outlet_type, product, week_num
+          FROM distribution_records
+          WHERE ${whereStreak}
+            AND ec > 1
+            AND plan > 1
+            AND outlet IS NOT NULL
+        ),
+        grouped AS (
+          SELECT
+            area, customer_id, outlet, outlet_type, product, week_num,
+            week_num - ROW_NUMBER() OVER (
+              PARTITION BY area, customer_id, outlet, outlet_type, product
+              ORDER BY week_num
+            ) AS grp
+          FROM weekly
+        )
+        SELECT
+          area, customer_id, outlet, outlet_type, product,
+          COUNT(*)::int       AS jumlah_minggu_berturut,
+          MIN(week_num)       AS minggu_awal,
+          MAX(week_num)       AS minggu_akhir,
+          STRING_AGG(week_num::text, ', ' ORDER BY week_num) AS daftar_minggu
+        FROM grouped
+        GROUP BY area, customer_id, outlet, outlet_type, product, grp
+        HAVING COUNT(*) >= 4
+        ORDER BY jumlah_minggu_berturut DESC, area, outlet, outlet_type, product
+        LIMIT 200
+      `, paramsStreak),
       ]);
 
       const parallelMs = Date.now() - parallelStart;
@@ -402,6 +445,7 @@ export async function GET(request: NextRequest) {
         totalOutlets,
         outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,
         achievementSalesmanProduct: achSalesmanProductQ.rows,
+        consecutiveStreak:          streakQ.rows,
       };
 
       //    Simpan ke cache SEBELUM return, supaya request berikutnya dengan

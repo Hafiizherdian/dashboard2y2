@@ -11,7 +11,7 @@ import {
   Target, CheckCircle, ChartColumnIncreasing,
   Map as MapIcon, RefreshCw,
   ClipboardList, ClipboardCheck, CircleArrowDown, CircleCheck,
-  BookUser,
+  BookUser, Flame,
 } from 'lucide-react';
 import { AreaConfig } from '@/lib/areaConfig';
 
@@ -142,6 +142,17 @@ interface OutletCountByTypeSalesman {
   outlet_type:  string;
   outlet_count: number;
 }
+interface StreakRow {
+  area:                   string | null;
+  customer_id:            string;
+  outlet:                 string;
+  outlet_type:            string;
+  product:                string;
+  jumlah_minggu_berturut: number;
+  minggu_awal:            number;
+  minggu_akhir:           number;
+  daftar_minggu:          string;
+}
 interface Summary {
   total_plan:          number;
   total_actual:        number;
@@ -166,7 +177,8 @@ interface DistData {
   outletCountByType:            OutletCountByType[];
   outletCountByTypeSalesman:    OutletCountByTypeSalesman[];
   totalOutlets:                 number;
-  achievementSalesmanProduct:  AchSalesmanProductRow[]; 
+  achievementSalesmanProduct:   AchSalesmanProductRow[];
+  consecutiveStreak:            StreakRow[];
 }
 
 // Props dari page.tsx
@@ -222,10 +234,10 @@ function normRows(rows: any[]): any[] {
 // (bukan hasil SUM lintas salesman), jadi memfilternya di client dengan
 // `.filter(r => r.salesman === salesmanFilter)` aman dan tidak butuh
 // agregasi ulang apa pun — beda dari kasus reaggregate() lama di atas.
-// Konsekuensinya: summary (KPI cards), trend chart, dan achievementProduct
-// (view=Produk) TIDAK ikut ter-filter oleh salesman, karena tidak ada
-// versi granular per-salesman dari agregat tersebut di client. Kalau nanti
-// dibutuhkan, itu berarti query granular baru di server.
+// Konsekuensinya: summary (KPI cards), trend chart, achievementProduct
+// (view=Produk), dan consecutiveStreak TIDAK ikut ter-filter oleh salesman,
+// karena tidak ada versi granular per-salesman dari agregat tersebut di
+// client. Kalau nanti dibutuhkan, itu berarti query granular baru di server.
 
 // Sub-components
 function AchBadge({ pct, theme }: { pct: number; theme: Theme }) {
@@ -322,6 +334,7 @@ function DistributionTabs({
     { label: 'Achievement',                   icon: Award,                 color: t.tableHeadText, content: <AchievementContent data={data} theme={theme} salesmanFilter={salesmanFilter} /> },
     { label: 'Trend Mingguan',                icon: ChartColumnIncreasing, color: t.tableHeadText, content: <TrendContent       data={data} theme={theme} /> },
     { label: 'Outlet',                        icon: Store,                 color: t.tableHeadText, content: <CoverageContent    data={data} theme={theme} salesmanFilter={salesmanFilter} /> },
+    { label: 'Repeat Order',                  icon: Store,                 color: t.tableHeadText, content: <StreakContent      data={data} theme={theme} /> },
   ];
 
   return (
@@ -335,9 +348,9 @@ function DistributionTabs({
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 padding: '10px 18px', background: 'transparent', border: 'none',
-                borderBottom: isActive ? `2px solid #1c9706` : '2px solid transparent',
+                borderBottom: isActive ? `4px solid #1c9706` : '2px solid transparent',
                 cursor: 'pointer', fontSize: 11,
-                fontWeight: isActive ? 700 : 500,
+                fontWeight: isActive ? 700 : 700,
                 fontFamily: 'IBM Plex Mono, monospace',
                 color: isActive ? t.tabActiveText : t.tableHeadText,
                 whiteSpace: 'nowrap', transition: 'all 0.15s', marginBottom: -1,
@@ -384,7 +397,7 @@ function AchievementSalesmanProductContent({
   );
 
   return (
-    <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10, padding: '12px 14px' }}>
+    <div style={{ background: t.accordionBg, border: `1px solid ${t.border}`, borderRadius: 10 }}>
       {/* <div style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace', marginBottom: 10 }}>
         Achievement Salesman x Produk
       </div> */}
@@ -393,7 +406,7 @@ function AchievementSalesmanProductContent({
           Belum ada data.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 580 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
             <thead>
               <tr>
@@ -883,6 +896,181 @@ function CoverageContent({
   );
 }
 
+// Streak Content — outlet x produk dengan EC & Plan terpenuhi berturut-turut.
+// Baris dengan customer_id sama digabung jadi 1 baris, dan kolom
+// "Daftar Minggu" diganti kolom W1–W52 (sel terisi = minggu itu masuk streak).
+// Data streak TIDAK per-salesman, jadi tidak ikut filter salesman.
+const ALL_WEEKS = Array.from({ length: 52 }, (_, i) => i + 1);
+
+function parseWeeks(r: StreakRow): number[] {
+  // Ambil angka dari daftar_minggu (format "W1, W2" / "1,2,3" sama-sama aman)
+  const fromList = (r.daftar_minggu ?? '').match(/\d+/g)?.map(Number) ?? [];
+  if (fromList.length > 0) return fromList;
+  // Fallback: streak itu berurutan, jadi pakai rentang awal–akhir
+  const out: number[] = [];
+  for (let w = r.minggu_awal; w <= r.minggu_akhir; w++) out.push(w);
+  return out;
+}
+
+function StreakContent({ data, theme }: { data: DistData; theme: Theme }) {
+  const t = tk[theme];
+  const [search,    setSearch]    = useState('');
+  const [minStreak, setMinStreak] = useState(4);
+
+  const all = data.consecutiveStreak ?? [];
+
+  // 1) filter di level streak (min. minggu + search)
+// 2) gabungkan per customer_id + produk → 1 baris.
+//    Produk beda = baris beda. Streak berbeda dari customer & produk
+//    yang sama tetap digabung (minggunya di-union).
+const rows = useMemo(() => {
+  const q = search.trim().toLowerCase();
+  const filtered = all.filter(r =>
+    r.jumlah_minggu_berturut >= minStreak &&
+    (!q ||
+      (r.outlet      ?? '').toLowerCase().includes(q) ||
+      (r.product     ?? '').toLowerCase().includes(q) ||
+      (r.customer_id ?? '').toLowerCase().includes(q))
+  );
+
+  const map = new Map<string, {
+    customer_id: string;
+    outlet:      string;
+    outlet_type: string;
+    product:     string;
+    weeks:       Set<number>;
+  }>();
+
+  filtered.forEach(r => {
+    const key = `${r.customer_id || r.outlet}||${r.product || ''}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        customer_id: r.customer_id,
+        outlet:      r.outlet,
+        outlet_type: r.outlet_type,
+        product:     r.product,
+        weeks:       new Set(),
+      });
+    }
+    parseWeeks(r).forEach(w => map.get(key)!.weeks.add(w));
+  });
+
+  // Urutkan supaya baris customer yang sama berdekatan
+  return Array.from(map.values()).sort((a, b) =>
+    (a.customer_id ?? '').localeCompare(b.customer_id ?? '') ||
+    (a.product ?? '').localeCompare(b.product ?? '')
+  );
+}, [all, search, minStreak]);
+
+// Jumlah customer unik (bukan jumlah baris, karena 1 customer bisa >1 produk)
+const uniqueCustomers = useMemo(
+  () => new Set(rows.map(r => r.customer_id || r.outlet)).size,
+  [rows]
+);
+
+  const inputStyle = {
+    height: 26, padding: '0 8px',
+    background: t.inputBg, border: `1px solid ${t.inputBorder}`,
+    borderRadius: 5, color: t.text, fontSize: 10,
+    fontFamily: 'IBM Plex Mono,monospace', outline: 'none',
+  } as const;
+
+  // Lebar kolom sticky (kiri)
+  const W_NO = 36, W_CUST = 120, W_OUT = 150, W_TYPE = 130, W_PROD = 150;
+  const stickyBase = { position: 'sticky' as const, background: t.cardBg };
+  const thBase = {
+    padding: '8px 12px', fontSize: 9, fontWeight: 700,
+    textTransform: 'uppercase' as const, letterSpacing: '0.07em',
+    color: t.tableHeadText, borderBottom: `1px solid ${t.border}`,
+    whiteSpace: 'nowrap' as const, position: 'sticky' as const,
+    top: 0, background: t.tableHeadBg,
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Cari outlet / produk / customer ID"
+          style={{ ...inputStyle, width: 240 }}
+        />
+        <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>Min. repeat</span>
+        <select value={minStreak} onChange={e => setMinStreak(+e.target.value)} style={inputStyle}>
+          {[2, 4, 8].map(n => (
+            <option key={n} value={n} style={{ background: t.selectBg }}>{n} minggu</option>
+          ))}
+        </select>
+        {/* <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>
+          Kriteria: EC &gt; 1 dan Plan &gt; 1 tiap minggu
+        </span> */}
+      </div>
+
+      <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
+          <table style={{ borderCollapse: 'collapse', fontFamily: 'IBM Plex Mono,monospace' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thBase, textAlign: 'left', left: 0,                              zIndex: 30, minWidth: W_NO,   width: W_NO }}>#</th>
+                <th style={{ ...thBase, textAlign: 'left', left: W_NO,                           zIndex: 30, minWidth: W_CUST, width: W_CUST }}>Customer ID</th>
+                <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST,                  zIndex: 30, minWidth: W_OUT,  width: W_OUT }}>Outlet</th>
+                <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST + W_OUT,          zIndex: 30, minWidth: W_TYPE, width: W_TYPE }}>Tipe Outlet</th>
+                <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST + W_OUT + W_TYPE, zIndex: 30, minWidth: W_PROD, width: W_PROD, borderRight: `2px solid ${t.border}` }}>Produk</th>
+                {ALL_WEEKS.map(w => (
+                  <th key={w} style={{ ...thBase, textAlign: 'center', zIndex: 20, padding: '8px 0', minWidth: 30, width: 30 }}>
+                    W{w}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan={5 + ALL_WEEKS.length} style={{ padding: '24px', textAlign: 'center', color: t.textMuted, fontSize: 11 }}>Belum ada data</td></tr>
+              ) : rows.map((r, i) => (
+                <tr key={`${r.customer_id}-${r.outlet}-${r.product}`}>
+                  <td style={{ ...stickyBase, left: 0, zIndex: 10, padding: '7px 12px', fontSize: 10, color: t.textMuted }}>{i + 1}</td>
+                  <td style={{ ...stickyBase, left: W_NO, zIndex: 10, padding: '7px 12px', fontSize: 10, color: t.textSub, whiteSpace: 'nowrap' }}>{r.customer_id || '—'}</td>
+                  <td style={{ ...stickyBase, left: W_NO + W_CUST, zIndex: 10, padding: '7px 12px', fontSize: 11, fontWeight: 600, color: t.text, whiteSpace: 'nowrap' }}>{r.outlet}</td>
+                  <td style={{ ...stickyBase, left: W_NO + W_CUST + W_OUT, zIndex: 10, padding: '7px 12px', fontSize: 11, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', minWidth: W_TYPE, width: W_TYPE }}>
+                    {r.outlet_type}
+                  </td>
+                  <td style={{ ...stickyBase, left: W_NO + W_CUST + W_OUT + W_TYPE, zIndex: 10, padding: '7px 12px', fontSize: 10, color: t.text, whiteSpace: 'nowrap', minWidth: W_PROD, width: W_PROD, borderRight: `2px solid ${t.border}` }}>
+                    {r.product || '—'}
+                  </td>
+                  {ALL_WEEKS.map(w => {
+                    const on = r.weeks.has(w);
+                    return (
+                      <td key={w}
+                        title={on ? `${r.outlet} (W${w})` : undefined}
+                        style={{
+                          padding: 0, textAlign: 'center', width: 30, minWidth: 40, height: 28,
+                          background: on ? 'rgba(16,185,129,0.22)' : (i % 2 === 1 ? t.rowAlt : 'transparent'),
+                          borderLeft: `1px solid ${t.border}`,
+                          color: on ? t.posText : t.textFaint,
+                          fontSize: 10, fontWeight: 700,
+                        }}>
+                        {on ? '✓' : 'X'}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding: '8px 12px', borderTop: `1px solid ${t.border}`, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>
+          {/* <span><b style={{ color: t.text }}>{uniqueCustomers}</b> customer</span> */}
+          {/* <span><b style={{ color: t.text }}>{rows.length}</b> baris (customer × produk)</span>    */}
+          {all.length >= 200 && (
+            <span style={{ color: t.warnText }}>Dibatasi 200 baris teratas dari server</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Constants
 const EMPTY_DATA: DistData = {
   summary: {
@@ -900,6 +1088,7 @@ const EMPTY_DATA: DistData = {
   outletCountByTypeSalesman: [],
   totalOutlets:              0,
   achievementSalesmanProduct: [],
+  consecutiveStreak:         [],
 };
 
 const WEEKS_ARR = Array.from({ length: 52 }, (_, i) => i + 1);
@@ -1057,6 +1246,13 @@ export default function DistributionSection({
       total_av_out:    parseFloat(r.total_av_out    ?? 0),
       achievement_pct: parseFloat(r.achievement_pct ?? 0),
       outlet_count:    parseInt(r.outlet_count      ?? 0),
+    }));
+    raw.consecutiveStreak = (raw.consecutiveStreak ?? []).map((r: any) => ({
+      ...r,
+      jumlah_minggu_berturut: Number(r.jumlah_minggu_berturut ?? 0),
+      minggu_awal:            Number(r.minggu_awal            ?? 0),
+      minggu_akhir:           Number(r.minggu_akhir           ?? 0),
+      daftar_minggu:          String(r.daftar_minggu          ?? ''),
     }));
     return raw as DistData;
   };
