@@ -988,24 +988,24 @@ const uniqueCustomers = useMemo(
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <input
+      {/* <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}> */}
+        {/* <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Cari outlet / produk / customer ID"
           style={{ ...inputStyle, width: 240 }}
-        />
-        <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>Min. repeat</span>
+        /> */}
+        {/* <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>Min. repeat</span>
         <select value={minStreak} onChange={e => setMinStreak(+e.target.value)} style={inputStyle}>
           {[2, 4, 8].map(n => (
             <option key={n} value={n} style={{ background: t.selectBg }}>{n} minggu</option>
           ))}
-        </select>
+        </select> */}
         {/* <span style={{ fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>
           Kriteria: EC &gt; 1 dan Plan &gt; 1 tiap minggu
         </span> */}
-      </div>
+      {/* </div> */}
 
       <div style={{ border: `1px solid ${t.border}`, borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
@@ -1062,9 +1062,9 @@ const uniqueCustomers = useMemo(
         <div style={{ padding: '8px 12px', borderTop: `1px solid ${t.border}`, display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' }}>
           {/* <span><b style={{ color: t.text }}>{uniqueCustomers}</b> customer</span> */}
           {/* <span><b style={{ color: t.text }}>{rows.length}</b> baris (customer × produk)</span>    */}
-          {all.length >= 200 && (
+          {/* {all.length >= 200 && (
             <span style={{ color: t.warnText }}>Dibatasi 200 baris teratas dari server</span>
-          )}
+          )} */}
         </div>
       </div>
     </div>

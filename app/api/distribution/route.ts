@@ -398,18 +398,27 @@ export async function GET(request: NextRequest) {
           SELECT DISTINCT area, customer_id, outlet, outlet_type, product, week_num
           FROM distribution_records
           WHERE ${whereStreak}
-            AND ec > 1
-            AND plan > 1
+            AND ec   >= 1
+            AND plan >= 1
             AND outlet IS NOT NULL
+        ),
+        flagged AS (
+          SELECT
+            area, customer_id, outlet, outlet_type, product, week_num,
+            week_num - LAG(week_num) OVER (
+              PARTITION BY area, customer_id, outlet, outlet_type, product
+              ORDER BY week_num
+            ) AS gap
+          FROM weekly
         ),
         grouped AS (
           SELECT
             area, customer_id, outlet, outlet_type, product, week_num,
-            week_num - ROW_NUMBER() OVER (
+            SUM(CASE WHEN gap IS NULL OR gap > 2 THEN 1 ELSE 0 END) OVER (
               PARTITION BY area, customer_id, outlet, outlet_type, product
               ORDER BY week_num
             ) AS grp
-          FROM weekly
+          FROM flagged
         )
         SELECT
           area, customer_id, outlet, outlet_type, product,
@@ -421,7 +430,7 @@ export async function GET(request: NextRequest) {
         GROUP BY area, customer_id, outlet, outlet_type, product, grp
         HAVING COUNT(*) >= 4
         ORDER BY jumlah_minggu_berturut DESC, area, outlet, outlet_type, product
-        LIMIT 200
+        
       `, paramsStreak),
       ]);
 
