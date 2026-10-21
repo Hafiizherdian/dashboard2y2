@@ -57,34 +57,88 @@ function timedQuery(label: string) {
   };
 }
 
-// 
+// Filter lokasi / outlet (Kota, Kecamatan, Kelurahan, Outlet).
+// Dipakai oleh semua builder WHERE supaya aturannya konsisten.
+//  - city / district / village : pencocokan EXACT (case-insensitive), karena
+//    nilainya dipilih dari dropdown. (Dulu city pakai ILIKE '%...%' sehingga
+//    "Bandung" ikut menangkap "Kabupaten Bandung".)
+//  - outlet : pencocokan sebagian (ILIKE '%...%'), karena input-nya kolom
+//    ketik. Karakter wildcard (% _ \) di-escape supaya dianggap teks biasa.
+// Nama kolom ditulis literal di sini (bukan dari input user), nilainya selalu
+// lewat parameter $n, jadi aman dari SQL injection.
+// Mengembalikan indeks parameter berikutnya.
+interface GeoFilters {
+  city:     string;
+  district: string;
+  village:  string;
+  outlet:   string;
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, ch => `\\${ch}`);
+}
+
+function applyGeoFilters(
+  conds: string[],
+  prms: any[],
+  startIdx: number,
+  g: GeoFilters,
+): number {
+  let i = startIdx;
+  if (g.city)     { conds.push(`LOWER(city)     = LOWER($${i++})`);          prms.push(g.city); }
+  if (g.district) { conds.push(`LOWER(district) = LOWER($${i++})`);          prms.push(g.district); }
+  if (g.village)  { conds.push(`LOWER(village)  = LOWER($${i++})`);          prms.push(g.village); }
+  if (g.outlet)   { conds.push(`outlet ILIKE $${i++} ESCAPE '\\'`);          prms.push(`%${escapeLike(g.outlet)}%`); }
+  return i;
+}
+
+// Kondisi area + RBAC. Nilai di-sanitize lalu di-inline (pola yang sama
+// dengan kode sebelumnya).
+function buildAreaConditions(
+  reqAreas: string[],
+  allowedAreas: string[] | undefined,
+  isRoot: boolean,
+): string[] {
+  const out: string[] = [];
+  if (reqAreas.length > 0) {
+    const safe = reqAreas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
+    out.push(`area IN (${safe.map(a => `'${a}'`).join(',')})`);
+  }
+  if (!isRoot && allowedAreas && allowedAreas.length > 0) {
+    const safe = allowedAreas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
+    out.push(`area IN (${safe.map(a => `'${a}'`).join(',')})`);
+  }
+  return out;
+}
+
+//
 // GET
-// 
+//
 //
 // (catatan definisi metrik & pola CTE dedup outlet sama seperti versi sebelumnya, tidak diubah, lihat komentar panjang di riwayat file ini)
 //
 // CACHE
-// Sebelum menjalankan 11 query paralel 
-// (yang bisa >100 detik pada dataset besar tanpa cache di server dengan resource terbatas), 
-// dicek dulu apakah kombinasi filter yang sama sudah pernah dihitung baru-baru ini 
+// Sebelum menjalankan 12 query paralel
+// (yang bisa >100 detik pada dataset besar tanpa cache di server dengan resource terbatas),
+// dicek dulu apakah kombinasi filter yang sama sudah pernah dihitung baru-baru ini
 // via lib/distributionCache.ts. Cache di-invalidate penuh setiap ada upload/delete
-// file baru (lihat invalidateAll() di POST & DELETE di bawah), 
+// file baru (lihat invalidateAll() di POST & DELETE di bawah),
 // jadi user nggak akan pernah lihat data yang basi.
 //
 // PERUBAHAN:
 // - 3 query yang dulu ada (achievementAreaSalesman, achievementAreaProduct,
 //   achievementAreaOutletType) DIHAPUS karena tidak pernah dikonsumsi oleh
-//   DistributionSection.tsx — cuma numpang lewat di normalizeResponse tanpa
-//   pernah dirender. Menghapusnya mengurangi beban 13 -> 10 query paralel.
-// - Query 'coverage' tadinya TIDAK mengembalikan outlet_count meski
-//   CTE outlet_agg sudah punya kolom outlet — sekarang ditambahkan
-//   COUNT(DISTINCT outlet), karena UI (tab Outlet) merender kolom Outlet
-//   dari field ini.
-// - BARU: query 'consecutiveStreak' (query ke-11) — outlet/produk yang
-//   ec > 1 dan plan > 1 selama minimal 4 minggu berturut-turut (gaps and
-//   islands). Memakai ${where} yang sama dengan query lain, jadi filter
-//   area, RBAC, salesman, produk, kota, file, dan rentang minggu ikut
-//   berlaku. Hasil masuk responseData.consecutiveStreak.
+//   DistributionSection.tsx.
+// - Query 'coverage' mengembalikan outlet_count (COUNT(DISTINCT outlet)).
+// - Query 'consecutiveStreak': outlet/produk dengan ec >= 1 dan plan >= 1,
+//   dikelompokkan jadi streak. Selisih antar minggu <= 2 masih dianggap
+//   berturut-turut (mendukung plan 2 mingguan: W1, W3, W5). Memakai
+//   ${whereStreak} (semua filter kecuali rentang minggu).
+// - BARU: filter city (kini exact), district, village, outlet. Masuk ke cache
+//   key dan ke semua builder WHERE (where, whereBase, whereWithSal).
+// - BARU: query 'filterOptions' (query ke-12) — daftar DISTINCT outlet,
+//   village, district, city untuk dropdown di frontend. Hanya difilter area +
+//   RBAC (tanpa filter lain) supaya opsi tidak menyusut saat filter aktif.
 //
 export async function GET(request: NextRequest) {
   return withAuth(request, 'view_files', async (session) => {
@@ -108,31 +162,42 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // MODIFIKASI: Baca area sebagai string lalu pecah jadi array untuk support multiple areas
+      // Baca area sebagai string lalu pecah jadi array untuk support multiple areas
       const areaParam  = searchParams.get('area') || '';
       const reqAreas   = areaParam.split(',').map(a => a.trim()).filter(Boolean);
-      
+
       const salesman   = searchParams.get('salesman') || '';
       const product    = searchParams.get('product') || '';
       const weekStart  = parseInt(searchParams.get('weekStart') || '1');
       const weekEnd    = parseInt(searchParams.get('weekEnd') || '52');
-      const city       = searchParams.get('city') || '';
       const fileId     = searchParams.get('fileId') || '';
       const outletType = searchParams.get('outletType') || '';
 
+      // Filter lokasi / outlet
+      const geo: GeoFilters = {
+        city:     (searchParams.get('city')     || '').trim(),
+        district: (searchParams.get('district') || '').trim(),
+        village:  (searchParams.get('village')  || '').trim(),
+        outlet:   (searchParams.get('outlet')   || '').trim(),
+      };
+
+      const isRoot = session.role === 'root';
+
       log('[GET] request received', {
         user: session.username, role: session.role,
-        area: reqAreas.join(','), salesman, product, city, fileId, outletType,
+        area: reqAreas.join(','), salesman, product, fileId, outletType,
+        ...geo,
         weekStart, weekEnd,
       });
 
-      // Cek cache dulu sebelum sentuh DB  
+      // Cek cache dulu sebelum sentuh DB
       const cacheParams = {
-        area: reqAreas.join(','), salesman, product, city, fileId, outletType,
+        area: reqAreas.join(','), salesman, product, fileId, outletType,
+        city: geo.city, district: geo.district, village: geo.village, outlet: geo.outlet,
         weekStart: String(weekStart), weekEnd: String(weekEnd),
         // area kena RBAC per session, jadi ikut masuk key supaya user dengan
         // allowed_areas beda, hasil cache satu sama lain
-        allowedAreas: session.role !== 'root' ? (session.allowed_areas ?? []).slice().sort().join(',') : 'root',
+        allowedAreas: !isRoot ? (session.allowed_areas ?? []).slice().sort().join(',') : 'root',
       };
 
       const cached = getCached(cacheParams);
@@ -142,90 +207,61 @@ export async function GET(request: NextRequest) {
       }
       log('[GET] cache MISS — menjalankan query', cacheParams);
 
-      // WHERE dengan semua filter (dipakai mayoritas query) 
+      const areaConditions = buildAreaConditions(reqAreas, session.allowed_areas, isRoot);
+
+      // WHERE dengan semua filter (dipakai mayoritas query)
       const params: any[] = [];
       let idx = 1;
-      const conditions: string[] = ['1=1'];
-
-      // --- PERUBAHAN DI SINI: Hardcode string aman ke query ---
-      if (reqAreas.length > 0) {
-        const safeAreas = reqAreas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        conditions.push(`area IN (${inClause})`);
-      }
-      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
-        const safeAreas = session.allowed_areas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        conditions.push(`area IN (${inClause})`);
-      }
-      // ---------------------------------------------------------
+      const conditions: string[] = ['1=1', ...areaConditions];
 
       if (salesman)   { conditions.push(`salesman ILIKE $${idx++}`);    params.push(`%${salesman}%`); }
       if (product)    { conditions.push(`product ILIKE $${idx++}`);     params.push(`%${product}%`);  }
-      if (city)       { conditions.push(`city ILIKE $${idx++}`);        params.push(`%${city}%`);     }
       if (fileId)     { conditions.push(`dist_file_id = $${idx++}`);    params.push(parseInt(fileId)); }
       if (outletType) { conditions.push(`outlet_type ILIKE $${idx++}`); params.push(outletType); }
-      
+      idx = applyGeoFilters(conditions, params, idx, geo);
+
       conditions.push(`week_num BETWEEN $${idx++} AND $${idx++}`);
       params.push(weekStart, weekEnd);
-      
-      const where = conditions.join(' AND ');
-      const whereStreak  = conditions.slice(0, -1).join(' AND ');
-      const paramsStreak = params.slice(0, -2);
 
-      // WHERE tanpa filter salesman 
-      const baseConditions: string[] = ['1=1'];
+      const where = conditions.join(' AND ');
+      // Streak tidak dibatasi rentang minggu (kondisi terakhir = week_num)
+      // const whereStreak  = conditions.slice(0, -1).join(' AND ');
+      // const paramsStreak = params.slice(0, -2);
+
+      // WHERE tanpa filter salesman
+      const baseConditions: string[] = ['1=1', ...areaConditions];
       const baseParams: any[] = [];
       let baseIdx = 1;
-      
-      if (reqAreas.length > 0) { 
-        const safeAreas = reqAreas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        baseConditions.push(`area IN (${inClause})`);
-      }
-      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
-        const safeAreas = session.allowed_areas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        baseConditions.push(`area IN (${inClause})`);
-      }
 
       if (product)    { baseConditions.push(`product ILIKE $${baseIdx++}`);     baseParams.push(`%${product}%`);  }
-      if (city)       { baseConditions.push(`city ILIKE $${baseIdx++}`);        baseParams.push(`%${city}%`);     }
       if (fileId)     { baseConditions.push(`dist_file_id = $${baseIdx++}`);    baseParams.push(parseInt(fileId)); }
       if (outletType) { baseConditions.push(`outlet_type ILIKE $${baseIdx++}`); baseParams.push(outletType); }
-      
+      baseIdx = applyGeoFilters(baseConditions, baseParams, baseIdx, geo);
+
       baseConditions.push(`week_num BETWEEN $${baseIdx++} AND $${baseIdx++}`);
       baseParams.push(weekStart, weekEnd);
-      
+
       const whereBase = baseConditions.join(' AND ');
 
-      // WHERE dengan salesman tapi TANPA filter product 
-      const withSalConditions: string[] = ['1=1'];
+      // WHERE dengan salesman tapi TANPA filter product
+      const withSalConditions: string[] = ['1=1', ...areaConditions];
       const withSalParams: any[] = [];
       let withSalIdx = 1;
-      
-      if (reqAreas.length > 0) { 
-        const safeAreas = reqAreas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        withSalConditions.push(`area IN (${inClause})`);
-      }
-      if (session.role !== 'root' && session.allowed_areas?.length > 0) {
-        const safeAreas = session.allowed_areas.map(a => a.replace(/[^a-zA-Z0-9_]/g, ''));
-        const inClause = safeAreas.map(a => `'${a}'`).join(',');
-        withSalConditions.push(`area IN (${inClause})`);
-      }
 
       if (salesman)   { withSalConditions.push(`salesman ILIKE $${withSalIdx++}`);    withSalParams.push(`%${salesman}%`); }
-      if (city)       { withSalConditions.push(`city ILIKE $${withSalIdx++}`);        withSalParams.push(`%${city}%`);     }
       if (fileId)     { withSalConditions.push(`dist_file_id = $${withSalIdx++}`);    withSalParams.push(parseInt(fileId)); }
       if (outletType) { withSalConditions.push(`outlet_type ILIKE $${withSalIdx++}`); withSalParams.push(outletType); }
-      
+      withSalIdx = applyGeoFilters(withSalConditions, withSalParams, withSalIdx, geo);
+
       withSalConditions.push(`week_num BETWEEN $${withSalIdx++} AND $${withSalIdx++}`);
       withSalParams.push(weekStart, weekEnd);
-      
+
       const whereWithSal = withSalConditions.join(' AND ');
 
-      log('[GET] running queries in parallel...', { queryCount: 11 });
+      // WHERE khusus opsi dropdown: hanya area + RBAC (tanpa parameter)
+      const whereAreaOnly = ['1=1', ...areaConditions].join(' AND ');
+
+      log('[GET] running queries in parallel...', { queryCount: 12 });
       const parallelStart = Date.now();
 
       const [
@@ -240,6 +276,7 @@ export async function GET(request: NextRequest) {
         outletCountByTypeSalesmanQ,
         achSalesmanProductQ,
         streakQ,
+        filterOptionsQ,
       ] = await Promise.all([
 
         timedQuery('achievementSalesman')(`
@@ -389,15 +426,15 @@ export async function GET(request: NextRequest) {
           FROM outlet_agg GROUP BY salesman, product ORDER BY salesman, total_av_out DESC
         `, params),
 
-        // Streak minggu berturut-turut (gaps and islands).
-        // Catatan: threshold ec > 1 dan plan > 1 sengaja dipertahankan dari
-        // query asli. Kalau definisi "terpenuhi" harus sama dengan KPI lain,
-        // ganti jadi > 0.
+        // Streak minggu berturut-turut.
+        // Hanya minggu dengan ec >= 1 DAN plan >= 1. Selisih antar minggu <= 2
+        // masih satu streak (plan mingguan = selisih 1, plan 2 mingguan =
+        // selisih 2). Selisih > 2 memutus streak.
         timedQuery('consecutiveStreak')(`
         WITH weekly AS (
           SELECT DISTINCT area, customer_id, outlet, outlet_type, product, week_num
           FROM distribution_records
-          WHERE ${whereStreak}
+          WHERE ${where}
             AND ec   >= 1
             AND plan >= 1
             AND outlet IS NOT NULL
@@ -430,8 +467,20 @@ export async function GET(request: NextRequest) {
         GROUP BY area, customer_id, outlet, outlet_type, product, grp
         HAVING COUNT(*) >= 4
         ORDER BY jumlah_minggu_berturut DESC, area, outlet, outlet_type, product
-        
-      `, paramsStreak),
+      `, params),
+
+        // Opsi dropdown filter Kota / Kecamatan / Kelurahan / Outlet.
+        // Hanya difilter area + RBAC, supaya opsi tidak menyusut ketika
+        // filter lain aktif.
+        timedQuery('filterOptions')(`
+          SELECT
+            ARRAY_AGG(DISTINCT outlet   ORDER BY outlet)   FILTER (WHERE outlet   IS NOT NULL AND outlet   <> '') AS outlets,
+            ARRAY_AGG(DISTINCT village  ORDER BY village)  FILTER (WHERE village  IS NOT NULL AND village  <> '') AS villages,
+            ARRAY_AGG(DISTINCT district ORDER BY district) FILTER (WHERE district IS NOT NULL AND district <> '') AS districts,
+            ARRAY_AGG(DISTINCT city     ORDER BY city)     FILTER (WHERE city     IS NOT NULL AND city     <> '') AS cities
+          FROM distribution_records
+          WHERE ${whereAreaOnly}
+        `),
       ]);
 
       const parallelMs = Date.now() - parallelStart;
@@ -441,6 +490,14 @@ export async function GET(request: NextRequest) {
       const totalOutlets = parseInt(
         outletTotalsQ.rows.find((r: any) => Number(r.is_total) === 1)?.outlet_count ?? '0'
       );
+
+      const fo = filterOptionsQ.rows[0] ?? {};
+      const filterOptions = {
+        outlets:   fo.outlets   ?? [],
+        villages:  fo.villages  ?? [],
+        districts: fo.districts ?? [],
+        cities:    fo.cities    ?? [],
+      };
 
       const responseData = {
         summary:                    summaryQ.rows[0] ?? {},
@@ -455,10 +512,11 @@ export async function GET(request: NextRequest) {
         outletCountByTypeSalesman:  outletCountByTypeSalesmanQ.rows,
         achievementSalesmanProduct: achSalesmanProductQ.rows,
         consecutiveStreak:          streakQ.rows,
+        filterOptions,
       };
 
-      //    Simpan ke cache SEBELUM return, supaya request berikutnya dengan
-      //    filter yang sama nggak perlu tunggu query lagi 
+      // Simpan ke cache SEBELUM return, supaya request berikutnya dengan
+      // filter yang sama nggak perlu tunggu query lagi
       setCached(cacheParams, responseData);
 
       const totalMs = Date.now() - getStart;
@@ -479,9 +537,9 @@ export async function GET(request: NextRequest) {
   });
 }
 
-// 
+//
 // POST — Upload file Excel distribusi
-// 
+//
 export async function POST(request: NextRequest) {
   return withAuth(request, 'upload_file', async (session) => {
 
@@ -662,7 +720,7 @@ export async function POST(request: NextRequest) {
 
         await client.query('COMMIT');
 
-        //  Invalidate cache — data distribusi berubah, semua hasil GET yang di-cache sebelumnya sudah nggak akurat lagi
+        // Invalidate cache — data distribusi berubah, semua hasil GET yang di-cache sebelumnya sudah nggak akurat lagi
         invalidateAll();
 
         log('=== UPLOAD DISTRIBUSI SELESAI ✓ ===', {
@@ -697,11 +755,11 @@ export async function POST(request: NextRequest) {
   });
 }
 
-// 
+//
 // DELETE
-// 
-// FK dist_file_id -> distribution_files(id) sudah ON DELETE CASCADE, 
-// jadi cukup hapus row file-nya, distribution_records terkait ikut kehapus otomatis oleh Postgres dalam satu transaksi  
+//
+// FK dist_file_id -> distribution_files(id) sudah ON DELETE CASCADE,
+// jadi cukup hapus row file-nya, distribution_records terkait ikut kehapus otomatis oleh Postgres dalam satu transaksi
 // (atomic, tanpa perlu DELETE manual dua tahap).
 export async function DELETE(request: NextRequest) {
   return withAuth(request, 'delete_file', async () => {

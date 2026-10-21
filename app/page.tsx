@@ -9,7 +9,7 @@ import L4WC4WAnalysis from '@/components/L4WC4WAnalysis';
 import YearOnYearGrowth from '@/components/YearOnYearGrowth';
 import AnalysisSection from '@/components/AnalysisSection';
 import OutletContributionSection from '@/components/OutletContributionSection';
-import DistributionSection from '@/components/DistributionSection';
+import DistributionSection, { DistUIState } from '@/components/DistributionSection';
 import PiutangComponent from '@/components/PiutangSections';
 import StockSection from '@/components/StockSection';
 import OverviewTab from '@/components/OverviewTab';
@@ -851,6 +851,7 @@ function DashboardInner() {
   const [distData, setDistData] = useState<any>(null);
   const [distLoaded,    setDistLoaded]    = useState(false);
   const [distLoading,   setDistLoading]  = useState(false);
+  const [distUI, setDistUI] = useState<DistUIState | null>(null);
 
   const [data,setData]=useState<SalesData>(EMPTY_DATA);
 
@@ -1081,7 +1082,7 @@ function DashboardInner() {
           />
         );
       case 'analysis':  return <AnalysisSection data={data} theme={theme}/>;
-      case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd}
+      case 'distribution': return (<DistributionSection theme={theme} areas={areas} areaFilter={applied.af} weekStart={distWeekStart} weekEnd={distWeekEnd} onWeekStartChange={setDistWeekStart} onWeekEndChange={setDistWeekEnd} uiState={distUI} onUiStateChange={(patch) => setDistUI((prev: DistUIState | null) => ({ ...(prev as DistUIState), ...patch }))}
                                     cachedData={distData} onDataLoaded={(d) => { setDistData(d); setDistLoaded(true); }} loaded={distLoaded} loading={distLoading} onLoadingChange={setDistLoading} />);
       case 'piutang': return <PiutangComponent data={data.piutangList ?? []} weeklyData={data.weeklyData} theme={theme}/>
       case 'stock': return <StockSection theme={theme} areas={areas} data={data.stockList ?? []}/>;

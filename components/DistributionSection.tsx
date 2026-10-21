@@ -166,6 +166,16 @@ interface Summary {
   overall_achievement: number;
 }
 
+// Opsi dropdown untuk filter Kota / Kecamatan / Kelurahan / Outlet.
+// Dikirim server dari query terpisah (hanya difilter area), supaya opsi
+// tidak menyusut saat filter lain aktif.
+interface FilterOptions {
+  outlets:   string[];
+  villages:  string[];
+  districts: string[];
+  cities:    string[];
+}
+
 interface DistData {
   summary:                      Summary;
   achievementSalesman:          AchRow[];
@@ -179,6 +189,27 @@ interface DistData {
   totalOutlets:                 number;
   achievementSalesmanProduct:   AchSalesmanProductRow[];
   consecutiveStreak:            StreakRow[];
+  filterOptions?:               FilterOptions;
+}
+
+// State UI yang disimpan di page.tsx supaya selamat saat user pindah menu
+// (komponen ini di-unmount). Pola sama dengan tab Outlet: yang disimpan hanya
+// filter yang SUDAH DITERAPKAN + opsi dropdown. Pilihan yang belum diterapkan
+// tidak dipulihkan (tabel yang tampil memang belum mengikutinya).
+export interface DistUIState {
+  area: string;
+  applied: {
+    weekStart: number; weekEnd: number;
+    product: string; outletType: string;
+    city: string; district: string; village: string; outlet: string;
+  };
+  salesman: string; // filter salesman instan di client
+  options: {
+    products:    string[];
+    outletTypes: string[];
+    salesmen:    string[];
+    geo:         FilterOptions;
+  };
 }
 
 // Props dari page.tsx
@@ -195,11 +226,17 @@ interface DistributionSectionProps {
   loaded?:            boolean;
   loading?:           boolean;
   onLoadingChange?:   (v: boolean) => void;
+  uiState?:           DistUIState | null;
+  onUiStateChange?:   (patch: Partial<DistUIState>) => void;
 }
 
 // Helpers
 const fmtN     = (v: number) => (v ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 1 });
 const achColor = (p: number) => p >= 100 ? '#10b981' : p >= 80 ? '#f59e0b' : '#ef4444';
+
+const EMPTY_FILTER_OPTIONS: FilterOptions = {
+  outlets: [], villages: [], districts: [], cities: [],
+};
 
 function normRows(rows: any[]): any[] {
   return rows.map(r => ({
@@ -223,9 +260,10 @@ function normRows(rows: any[]): any[] {
 // sama di beberapa baris (misal lintas minggu / lintas tipe outlet).
 //
 // Sekarang: fetch ke /api/distribution HANYA terjadi ketika tombol "Terapkan"
-// ditekan (loadData) atau saat areaFilter berganti (reset). Filter Produk dan
-// Tipe Outlet TIDAK auto-fetch begitu dipilih — nilainya cuma disimpan di
-// state lokal dan baru dikirim ke server saat "Terapkan" ditekan.
+// ditekan (loadData) atau saat areaFilter berganti (reset). Filter Produk,
+// Tipe Outlet, Kota, Kecamatan, Kelurahan, dan Outlet TIDAK auto-fetch begitu
+// dipilih — nilainya cuma disimpan di state lokal dan baru dikirim ke server
+// saat "Terapkan" ditekan.
 //
 // FILTER SALESMAN — PERUBAHAN:
 // Salesman TIDAK LAGI dikirim ke server / memicu refetch. Semua tabel yang
@@ -321,10 +359,14 @@ function DistributionTabs({
   data,
   theme,
   salesmanFilter,
+  weekStart,
+  weekEnd,
 }: {
   data: DistData;
   theme: Theme;
   salesmanFilter: string;
+  weekStart: number;
+  weekEnd: number;
 }) {
   const t = tk[theme];
   const [tabValue, setTabValue] = useState(0);
@@ -334,7 +376,7 @@ function DistributionTabs({
     { label: 'Achievement',                   icon: Award,                 color: t.tableHeadText, content: <AchievementContent data={data} theme={theme} salesmanFilter={salesmanFilter} /> },
     { label: 'Trend Mingguan',                icon: ChartColumnIncreasing, color: t.tableHeadText, content: <TrendContent       data={data} theme={theme} /> },
     { label: 'Outlet',                        icon: Store,                 color: t.tableHeadText, content: <CoverageContent    data={data} theme={theme} salesmanFilter={salesmanFilter} /> },
-    { label: 'Repeat Order',                  icon: Store,                 color: t.tableHeadText, content: <StreakContent      data={data} theme={theme} /> },
+    { label: 'Repeat Order',                  icon: Store,                 color: t.tableHeadText, content: <StreakContent      data={data} theme={theme} weekStart={weekStart} weekEnd={weekEnd} /> },
   ];
 
   return (
@@ -535,28 +577,28 @@ function AchievementContent({
                     view === 'salesman' ? ['#', 'Salesman', 'Plan', 'Av-Out', 'Achievement', 'Outlet'] :
                     view === 'product'  ? ['#', 'Produk', 'Kategori', 'Plan', 'Av-Out', 'Achievement'] :
                                           ['#', 'Kota', 'Kecamatan', 'Plan', 'Av-Out', 'Achievement', 'Outlet'];
-                                          
+
                   return headers.map((h, i) => {
                     // Jika view salesman, rata kanan mulai index 2. Jika product/area, mulai index 3.
                     const isRightAligned = view === 'salesman' ? i > 1 : i > 2;
-                    
+
                     return (
-                      <th 
-                        key={i} 
-                        style={{ 
-                          padding: '8px 12px', 
-                          textAlign: isRightAligned ? 'right' : 'left', 
-                          fontSize: 9, 
-                          fontWeight: 700, 
-                          textTransform: 'uppercase', 
-                          letterSpacing: '0.07em', 
-                          color: t.tableHeadText, 
-                          borderBottom: `1px solid ${t.border}`, 
-                          whiteSpace: 'nowrap', 
-                          position: 'sticky', 
-                          top: 0, 
-                          zIndex: 20, 
-                          background: t.tableHeadBg 
+                      <th
+                        key={i}
+                        style={{
+                          padding: '8px 12px',
+                          textAlign: isRightAligned ? 'right' : 'left',
+                          fontSize: 9,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.07em',
+                          color: t.tableHeadText,
+                          borderBottom: `1px solid ${t.border}`,
+                          whiteSpace: 'nowrap',
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 20,
+                          background: t.tableHeadBg
                         }}
                       >
                         {h}
@@ -575,17 +617,17 @@ function AchievementContent({
                   onMouseEnter={e => (e.currentTarget.style.background = t.rowHover)}
                   onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 1 ? t.rowAlt : 'transparent')}>
                   <td style={{ padding: '8px 12px', fontSize: 10, color: t.textMuted }}>{i + 1}</td>
-                  
+
                   {/* Kolom utama (Salesman / Produk / Kota) */}
                   <td style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, color: t.text, whiteSpace: 'nowrap' }}>
                     {view === 'salesman' ? r.salesman : view === 'product' ? r.product : r.city}
                   </td>
-                  
+
                   {/* Kolom tambahan jika view == product */}
                   {view === 'product' && (
                     <td style={{ padding: '8px 12px', fontSize: 10, color: t.text }}>{r.category || '—'}</td>
                   )}
-                  
+
                   {/* Kolom tambahan jika view == area (Kecamatan) */}
                   {view === 'area' && (
                     <td style={{ padding: '8px 12px', fontSize: 11, color: t.text, whiteSpace: 'nowrap' }}>{r.district || '—'}</td>
@@ -898,7 +940,8 @@ function CoverageContent({
 
 // Streak Content — outlet x produk dengan EC & Plan terpenuhi berturut-turut.
 // Baris dengan customer_id sama digabung jadi 1 baris, dan kolom
-// "Daftar Minggu" diganti kolom W1–W52 (sel terisi = minggu itu masuk streak).
+// "Daftar Minggu" diganti kolom W (sel terisi = minggu itu masuk streak).
+// Kolom W yang tampil mengikuti rentang minggu filter utama (weekStart–weekEnd).
 // Data streak TIDAK per-salesman, jadi tidak ikut filter salesman.
 const ALL_WEEKS = Array.from({ length: 52 }, (_, i) => i + 1);
 
@@ -912,61 +955,67 @@ function parseWeeks(r: StreakRow): number[] {
   return out;
 }
 
-function StreakContent({ data, theme }: { data: DistData; theme: Theme }) {
+function StreakContent({ data, theme, weekStart, weekEnd }: { data: DistData; theme: Theme; weekStart: number; weekEnd: number }) {
   const t = tk[theme];
   const [search,    setSearch]    = useState('');
   const [minStreak, setMinStreak] = useState(4);
 
+  // Kolom minggu mengikuti filter utama
+  const weekCols = useMemo(
+    () => ALL_WEEKS.filter(w => w >= weekStart && w <= weekEnd),
+    [weekStart, weekEnd]
+  );
+
   const all = data.consecutiveStreak ?? [];
 
   // 1) filter di level streak (min. minggu + search)
-// 2) gabungkan per customer_id + produk → 1 baris.
-//    Produk beda = baris beda. Streak berbeda dari customer & produk
-//    yang sama tetap digabung (minggunya di-union).
-const rows = useMemo(() => {
-  const q = search.trim().toLowerCase();
-  const filtered = all.filter(r =>
-    r.jumlah_minggu_berturut >= minStreak &&
-    (!q ||
-      (r.outlet      ?? '').toLowerCase().includes(q) ||
-      (r.product     ?? '').toLowerCase().includes(q) ||
-      (r.customer_id ?? '').toLowerCase().includes(q))
+  // 2) gabungkan per customer_id + produk → 1 baris.
+  //    Produk beda = baris beda. Streak berbeda dari customer & produk
+  //    yang sama tetap digabung (minggunya di-union).
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = all.filter(r =>
+      r.jumlah_minggu_berturut >= minStreak &&
+      (!q ||
+        (r.outlet      ?? '').toLowerCase().includes(q) ||
+        (r.product     ?? '').toLowerCase().includes(q) ||
+        (r.customer_id ?? '').toLowerCase().includes(q))
+    );
+
+    const map = new Map<string, {
+      customer_id: string;
+      outlet:      string;
+      outlet_type: string;
+      product:     string;
+      weeks:       Set<number>;
+    }>();
+
+    filtered.forEach(r => {
+      const key = `${r.customer_id || r.outlet}||${r.product || ''}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          customer_id: r.customer_id,
+          outlet:      r.outlet,
+          outlet_type: r.outlet_type,
+          product:     r.product,
+          weeks:       new Set(),
+        });
+      }
+      parseWeeks(r).forEach(w => map.get(key)!.weeks.add(w));
+    });
+
+    // Urutkan supaya baris customer yang sama berdekatan
+    return Array.from(map.values()).sort((a, b) =>
+      (a.customer_id ?? '').localeCompare(b.customer_id ?? '') ||
+      (a.product ?? '').localeCompare(b.product ?? '')
+    );
+  }, [all, search, minStreak]);
+
+  // Jumlah customer unik (bukan jumlah baris, karena 1 customer bisa >1 produk)
+  const uniqueCustomers = useMemo(
+    () => new Set(rows.map(r => r.customer_id || r.outlet)).size,
+    [rows]
   );
-
-  const map = new Map<string, {
-    customer_id: string;
-    outlet:      string;
-    outlet_type: string;
-    product:     string;
-    weeks:       Set<number>;
-  }>();
-
-  filtered.forEach(r => {
-    const key = `${r.customer_id || r.outlet}||${r.product || ''}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        customer_id: r.customer_id,
-        outlet:      r.outlet,
-        outlet_type: r.outlet_type,
-        product:     r.product,
-        weeks:       new Set(),
-      });
-    }
-    parseWeeks(r).forEach(w => map.get(key)!.weeks.add(w));
-  });
-
-  // Urutkan supaya baris customer yang sama berdekatan
-  return Array.from(map.values()).sort((a, b) =>
-    (a.customer_id ?? '').localeCompare(b.customer_id ?? '') ||
-    (a.product ?? '').localeCompare(b.product ?? '')
-  );
-}, [all, search, minStreak]);
-
-// Jumlah customer unik (bukan jumlah baris, karena 1 customer bisa >1 produk)
-const uniqueCustomers = useMemo(
-  () => new Set(rows.map(r => r.customer_id || r.outlet)).size,
-  [rows]
-);
 
   const inputStyle = {
     height: 26, padding: '0 8px',
@@ -1017,7 +1066,7 @@ const uniqueCustomers = useMemo(
                 <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST,                  zIndex: 30, minWidth: W_OUT,  width: W_OUT }}>Outlet</th>
                 <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST + W_OUT,          zIndex: 30, minWidth: W_TYPE, width: W_TYPE }}>Tipe Outlet</th>
                 <th style={{ ...thBase, textAlign: 'left', left: W_NO + W_CUST + W_OUT + W_TYPE, zIndex: 30, minWidth: W_PROD, width: W_PROD, borderRight: `2px solid ${t.border}` }}>Produk</th>
-                {ALL_WEEKS.map(w => (
+                {weekCols.map(w => (
                   <th key={w} style={{ ...thBase, textAlign: 'center', zIndex: 20, padding: '8px 0', minWidth: 30, width: 30 }}>
                     W{w}
                   </th>
@@ -1026,7 +1075,7 @@ const uniqueCustomers = useMemo(
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={5 + ALL_WEEKS.length} style={{ padding: '24px', textAlign: 'center', color: t.textMuted, fontSize: 11 }}>Belum ada data</td></tr>
+                <tr><td colSpan={5 + weekCols.length} style={{ padding: '24px', textAlign: 'center', color: t.textMuted, fontSize: 11 }}>Belum ada data</td></tr>
               ) : rows.map((r, i) => (
                 <tr key={`${r.customer_id}-${r.outlet}-${r.product}`}>
                   <td style={{ ...stickyBase, left: 0, zIndex: 10, padding: '7px 12px', fontSize: 10, color: t.textMuted }}>{i + 1}</td>
@@ -1038,7 +1087,7 @@ const uniqueCustomers = useMemo(
                   <td style={{ ...stickyBase, left: W_NO + W_CUST + W_OUT + W_TYPE, zIndex: 10, padding: '7px 12px', fontSize: 10, color: t.text, whiteSpace: 'nowrap', minWidth: W_PROD, width: W_PROD, borderRight: `2px solid ${t.border}` }}>
                     {r.product || '—'}
                   </td>
-                  {ALL_WEEKS.map(w => {
+                  {weekCols.map(w => {
                     const on = r.weeks.has(w);
                     return (
                       <td key={w}
@@ -1089,6 +1138,7 @@ const EMPTY_DATA: DistData = {
   totalOutlets:              0,
   achievementSalesmanProduct: [],
   consecutiveStreak:         [],
+  filterOptions:             EMPTY_FILTER_OPTIONS,
 };
 
 const WEEKS_ARR = Array.from({ length: 52 }, (_, i) => i + 1);
@@ -1109,6 +1159,8 @@ export default function DistributionSection({
   loaded    = false,
   loading   = false,
   onLoadingChange,
+  uiState,
+  onUiStateChange,
 }: DistributionSectionProps) {
   const t = tk[theme];
 
@@ -1119,25 +1171,48 @@ export default function DistributionSection({
   const setLoading   = onLoadingChange   ?? (() => {});
   const areaFilter   = areaFromPage;
 
-  const [productFilter,    setProductFilter]    = useState('');
-  const [outletTypeFilter, setOutletTypeFilter] = useState('');
-  const [salesmanFilter,   setSalesmanFilter]   = useState('');
+  // Pulihkan state yang tersimpan di page.tsx — hanya kalau area-nya sama dan
+  // datanya lengkap (applied + options sudah pernah disimpan oleh fetch sukses).
+  const restored =
+    uiState && uiState.area === areaFromPage && uiState.applied && uiState.options
+      ? uiState
+      : null;
+
+  const [productFilter,    setProductFilter]    = useState(restored?.applied.product    ?? '');
+  const [outletTypeFilter, setOutletTypeFilter] = useState(restored?.applied.outletType ?? '');
+  const [salesmanFilter,   setSalesmanFilter]   = useState(restored?.salesman           ?? '');
+
+  // Filter lokasi / outlet — sama seperti Produk & Tipe Outlet, baru dikirim
+  // ke server saat tombol "Terapkan" ditekan.
+  const [cityFilter,     setCityFilter]     = useState(restored?.applied.city     ?? '');
+  const [districtFilter, setDistrictFilter] = useState(restored?.applied.district ?? '');
+  const [villageFilter,  setVillageFilter]  = useState(restored?.applied.village  ?? '');
+  const [outletFilter,   setOutletFilter]   = useState(restored?.applied.outlet   ?? '');
 
   // ── Snapshot filter yang TERAKHIR SUKSES di-fetch (minggu + dropdown
-  //    Produk/Tipe Outlet). Salesman TIDAK masuk sini lagi — dia difilter
-  //    di client secara instan, jadi tidak pernah "belum diterapkan".
-  const [appliedFilters, setAppliedFilters] = useState({
+  //    Produk/Tipe Outlet/Kota/Kecamatan/Kelurahan/Outlet). Salesman TIDAK
+  //    masuk sini — dia difilter di client secara instan, jadi tidak
+  //    pernah "belum diterapkan".
+  const [appliedFilters, setAppliedFilters] = useState(restored?.applied ?? {
     weekStart: weekStartProp,
     weekEnd:   weekEndProp,
     product:   '',
     outletType:'',
+    city:      '',
+    district:  '',
+    village:   '',
+    outlet:    '',
   });
 
   const unapplied = loaded && (
     weekStart         !== appliedFilters.weekStart  ||
     weekEnd           !== appliedFilters.weekEnd    ||
-    productFilter      !== appliedFilters.product    ||
-    outletTypeFilter   !== appliedFilters.outletType
+    productFilter     !== appliedFilters.product    ||
+    outletTypeFilter  !== appliedFilters.outletType ||
+    cityFilter        !== appliedFilters.city       ||
+    districtFilter    !== appliedFilters.district   ||
+    villageFilter     !== appliedFilters.village    ||
+    outletFilter      !== appliedFilters.outlet
   );
 
   // Dot animasi "mengambil data" saat loading (sinkron dengan filter bar utama)
@@ -1149,39 +1224,49 @@ export default function DistributionSection({
     }
   }, [loading]);
 
-  // Dropdown filter (product/outletType/salesman/city) tidak dari cachedData
-  // saja — kita simpan pilihan opsi dari load PERTAMA (tanpa filter) supaya
-  // opsi dropdown tidak menyusut begitu salah satu filter lain aktif.
-  const [productOptions,    setProductOptions]    = useState<string[]>([]);
-  const [outletTypeOptions, setOutletTypeOptions] = useState<string[]>([]);
-  const [salesmanOptions,   setSalesmanOptions]   = useState<string[]>([]);
+  // Dropdown filter (product/outletType/salesman/city/district/village/outlet)
+  // tidak dari cachedData saja — kita simpan pilihan opsi dari load PERTAMA
+  // (tanpa filter) supaya opsi dropdown tidak menyusut begitu salah satu
+  // filter lain aktif.
+  const [productOptions,    setProductOptions]    = useState<string[]>(restored?.options.products    ?? []);
+  const [outletTypeOptions, setOutletTypeOptions] = useState<string[]>(restored?.options.outletTypes ?? []);
+  const [salesmanOptions,   setSalesmanOptions]   = useState<string[]>(restored?.options.salesmen    ?? []);
+  const [filterOptions,     setFilterOptions]     = useState<FilterOptions>(restored?.options.geo    ?? EMPTY_FILTER_OPTIONS);
 
-  // FIX: dulu isInitialLoad dihitung dari `!loaded` (prop dari PARENT).
-  // Masalahnya `loaded` itu state punya page.tsx, bukan state lokal komponen
-  // ini — kalau parent sudah punya loaded=true duluan (misal karena pindah
-  // tab lalu balik lagi, atau area yang sama sudah pernah dimuat di sesi
-  // yang sama), klik "Terapkan" PERTAMA di komponen ini langsung dianggap
-  // "bukan initial load", sehingga productOptions/outletTypeOptions/
-  // salesmanOptions TIDAK PERNAH diisi sama sekali -> dropdown filter tidak
-  // pernah muncul. Sekarang dipakai flag LOKAL (optionsReadyRef) yang murni
-  // menandai "apakah komponen ini sendiri sudah pernah berhasil mengisi
-  // opsi dropdown", lepas dari state `loaded` milik parent.
-  const optionsReadyRef = useRef(false);
+  // Flag LOKAL yang menandai "apakah opsi dropdown sudah terisi", lepas dari
+  // state `loaded` milik parent. Kalau state dipulihkan dari page.tsx, opsi
+  // sudah ada, jadi dianggap siap.
+  const optionsReadyRef = useRef(!!restored);
 
   // Ref untuk mencegah race condition: kalau user ganti filter dengan cepat,
   // hanya response fetch TERAKHIR yang boleh commit ke state.
   const requestSeq = useRef(0);
 
+  // Reset hanya kalau area benar-benar berganti. Dilewati saat pertama dipasang
+  // (termasuk saat kembali dari menu lain) supaya state yang dipulihkan utuh.
+  const prevAreaRef = useRef(areaFilter);
   useEffect(() => {
+    if (prevAreaRef.current === areaFilter) return;
+    prevAreaRef.current = areaFilter;
+
     setProductFilter('');
     setOutletTypeFilter('');
     setSalesmanFilter('');
+    setCityFilter('');
+    setDistrictFilter('');
+    setVillageFilter('');
+    setOutletFilter('');
     setProductOptions([]);
     setOutletTypeOptions([]);
     setSalesmanOptions([]);
+    setFilterOptions(EMPTY_FILTER_OPTIONS);
     optionsReadyRef.current = false; // area ganti -> opsi dropdown harus di-fetch ulang
     // reset snapshot juga supaya indikator "Belum diterapkan" tidak salah nyala
-    setAppliedFilters({ weekStart, weekEnd, product: '', outletType: '' });
+    setAppliedFilters({
+      weekStart, weekEnd,
+      product: '', outletType: '',
+      city: '', district: '', village: '', outlet: '',
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areaFilter]);
 
@@ -1189,7 +1274,18 @@ export default function DistributionSection({
     setProductFilter('');
     setOutletTypeFilter('');
     setSalesmanFilter('');
+    setCityFilter('');
+    setDistrictFilter('');
+    setVillageFilter('');
+    setOutletFilter('');
   }, []);
+
+  // Salesman instan (tidak fetch) — simpan ke parent supaya ikut selamat
+  // saat pindah menu.
+  const handleSalesmanChange = (v: string) => {
+    setSalesmanFilter(v);
+    onUiStateChange?.({ salesman: v });
+  };
 
   const normalizeResponse = (raw: any): DistData => {
     raw.summary = {
@@ -1254,13 +1350,19 @@ export default function DistributionSection({
       minggu_akhir:           Number(r.minggu_akhir           ?? 0),
       daftar_minggu:          String(r.daftar_minggu          ?? ''),
     }));
+    raw.filterOptions = {
+      outlets:   raw.filterOptions?.outlets   ?? [],
+      villages:  raw.filterOptions?.villages  ?? [],
+      districts: raw.filterOptions?.districts ?? [],
+      cities:    raw.filterOptions?.cities    ?? [],
+    };
     return raw as DistData;
   };
 
   // fetchData: satu-satunya jalur ambil data. Selalu request langsung ke
   // server dengan filter aktif sebagai query param — TIDAK ADA agregasi ulang
-  // di client. `isInitialLoad` menandai fetch pertama (tanpa filter product/
-  // outletType) supaya opsi dropdown diisi dari situ.
+  // di client. `isInitialLoad` menandai fetch pertama (tanpa filter) supaya
+  // opsi dropdown diisi dari situ.
   //
   // Salesman TIDAK dikirim lagi ke server — dia difilter di client (lihat
   // AchievementContent & CoverageContent) karena datanya sudah granular
@@ -1268,6 +1370,10 @@ export default function DistributionSection({
   const fetchData = useCallback(async (opts: {
     product?:    string;
     outletType?: string;
+    city?:       string;
+    district?:   string;
+    village?:    string;
+    outlet?:     string;
     isInitialLoad?: boolean;
   } = {}) => {
     if (!areaFilter) return;
@@ -1277,8 +1383,12 @@ export default function DistributionSection({
     try {
       const p = new URLSearchParams({ weekStart: String(weekStart), weekEnd: String(weekEnd) });
       p.append('area', areaFilter);
-      if (opts.product)    p.append('product', opts.product);
+      if (opts.product)    p.append('product',    opts.product);
       if (opts.outletType) p.append('outletType', opts.outletType);
+      if (opts.city)       p.append('city',       opts.city);
+      if (opts.district)   p.append('district',   opts.district);
+      if (opts.village)    p.append('village',    opts.village);
+      if (opts.outlet)     p.append('outlet',     opts.outlet);
 
       const r = await fetch(`/api/distribution?${p}`);
       if (!r.ok) return;
@@ -1290,47 +1400,68 @@ export default function DistributionSection({
 
       const data = normalizeResponse(j.data);
 
+      const applied = {
+        weekStart, weekEnd,
+        product:    opts.product    ?? '',
+        outletType: opts.outletType ?? '',
+        city:       opts.city       ?? '',
+        district:   opts.district   ?? '',
+        village:    opts.village    ?? '',
+        outlet:     opts.outlet     ?? '',
+      };
+
       if (opts.isInitialLoad) {
-        setProductOptions(
-          Array.from(new Set(data.achievementProduct.map(r => r.product).filter(Boolean))).sort() as string[]
-        );
-        setOutletTypeOptions(
-          Array.from(new Set(data.outletCountByType.map(r => r.outlet_type).filter(Boolean))).sort() as string[]
-        );
-        setSalesmanOptions(
-          Array.from(new Set(data.achievementSalesman.map(r => r.salesman).filter(Boolean))).sort() as string[]
-        );
+        const options = {
+          products: Array.from(new Set(data.achievementProduct.map(r => r.product).filter(Boolean))).sort() as string[],
+          outletTypes: Array.from(new Set(data.outletCountByType.map(r => r.outlet_type).filter(Boolean))).sort() as string[],
+          salesmen: Array.from(new Set(data.achievementSalesman.map(r => r.salesman).filter(Boolean))).sort() as string[],
+          geo: data.filterOptions ?? EMPTY_FILTER_OPTIONS,
+        };
+        setProductOptions(options.products);
+        setOutletTypeOptions(options.outletTypes);
+        setSalesmanOptions(options.salesmen);
+        setFilterOptions(options.geo);
         optionsReadyRef.current = true;
+
+        // Load pertama (atau setelah ganti area): simpan state lengkap ke parent.
+        // Salesman pasti kosong di titik ini karena dropdown-nya baru muncul
+        // setelah opsi terisi.
+        onUiStateChange?.({ area: areaFilter, applied, salesman: '', options });
+      } else {
+        // Opsi sudah tersimpan di parent, cukup perbarui filter yang diterapkan.
+        onUiStateChange?.({ area: areaFilter, applied });
       }
 
       onDataLoaded?.(data);
       // Snapshot disimpan HANYA setelah fetch sukses → sumber kebenaran untuk
       // indikator "Belum diterapkan".
-      setAppliedFilters({
-        weekStart, weekEnd,
-        product:    opts.product    ?? '',
-        outletType: opts.outletType ?? '',
-      });
+      setAppliedFilters(applied);
     } finally {
       if (mySeq === requestSeq.current) setLoading(false);
     }
-  }, [weekStart, weekEnd, areaFilter, onDataLoaded, setLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart, weekEnd, areaFilter, onDataLoaded, onUiStateChange, setLoading]);
 
   // Tombol "Terapkan" → SATU-SATUNYA pemicu fetch untuk minggu maupun filter
-  // dropdown Produk / Tipe Outlet. Salesman TIDAK dikirim di sini lagi —
-  // dia sudah aktif secara instan begitu dipilih (lihat salesmanFilter yang
-  // diteruskan langsung ke DistributionTabs di bawah).
+  // dropdown Produk / Tipe Outlet / Kota / Kecamatan / Kelurahan / Outlet.
+  // Salesman TIDAK dikirim di sini — dia sudah aktif secara instan begitu
+  // dipilih (lihat salesmanFilter yang diteruskan langsung ke
+  // DistributionTabs di bawah).
   //
-  // `isInitialLoad` cuma true di load PERTAMA (saat `loaded` masih false),
-  // supaya opsi dropdown (productOptions dkk) diisi dari situ dan tidak
-  // menyusut/reset tiap kali "Terapkan" ditekan ulang dengan filter aktif.
+  // `isInitialLoad` cuma true di load PERTAMA (saat opsi belum pernah terisi),
+  // supaya opsi dropdown diisi dari situ dan tidak menyusut/reset tiap kali
+  // "Terapkan" ditekan ulang dengan filter aktif.
   const loadData = useCallback(() => {
     fetchData({
       product:       productFilter    || undefined,
       outletType:    outletTypeFilter || undefined,
+      city:          cityFilter       || undefined,
+      district:      districtFilter   || undefined,
+      village:       villageFilter    || undefined,
+      outlet:        outletFilter.trim() || undefined,
       isInitialLoad: !optionsReadyRef.current,
     });
-  }, [fetchData, productFilter, outletTypeFilter]);
+  }, [fetchData, productFilter, outletTypeFilter, cityFilter, districtFilter, villageFilter, outletFilter]);
 
   const data     = cachedData ?? EMPTY_DATA;
   const s        = data.summary;
@@ -1345,7 +1476,10 @@ export default function DistributionSection({
       .join(', ');
   }, [areaFilter, areas]);
 
-  const hasActiveFilter = !!(productFilter || outletTypeFilter || salesmanFilter);
+  const hasActiveFilter = !!(
+    productFilter || outletTypeFilter || salesmanFilter ||
+    cityFilter || districtFilter || villageFilter || outletFilter
+  );
 
   const selectStyle = (active: boolean) => ({
     height: 26, padding: '0 6px',
@@ -1367,6 +1501,30 @@ export default function DistributionSection({
   const divider    = <div style={{ width: 1, height: 16, background: t.border, margin: '0 2px' }} />;
   const labelStyle = { fontSize: 9, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace' };
 
+  // Dropdown generik untuk filter Kota / Kecamatan / Kelurahan.
+  const renderGeoSelect = (
+    label: string,
+    value: string,
+    setValue: (v: string) => void,
+    options: string[],
+    allLabel: string,
+  ) => {
+    if (options.length === 0) return null;
+    return (
+      <>
+        {divider}
+        <span style={labelStyle}>{label}</span>
+        <select value={value} onChange={e => setValue(e.target.value)} style={selectStyle(!!value)}>
+          <option value="" style={{ background: t.selectBg }}>{allLabel}</option>
+          {options.map(o => <option key={o} value={o} style={{ background: t.selectBg }}>{o}</option>)}
+        </select>
+        {value && (
+          <button onClick={() => setValue('')} title={`Reset filter ${label.toLowerCase()}`} style={clearBtnStyle}>×</button>
+        )}
+      </>
+    );
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: 'IBM Plex Sans,sans-serif' }}>
       <style>{`
@@ -1376,7 +1534,7 @@ export default function DistributionSection({
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Distribusi</div>
+          {/* <div style={{ fontSize: 14, fontWeight: 700, color: t.text, fontFamily: 'IBM Plex Mono,monospace' }}>Distribusi</div>
           <div style={{ fontSize: 10, color: t.textMuted, fontFamily: 'IBM Plex Mono,monospace', marginTop: 2 }}>
             Achievement = Av-Out / Plan
             {areaNames && (
@@ -1384,7 +1542,7 @@ export default function DistributionSection({
                 Area: {areaNames}
               </span>
             )}
-          </div>
+          </div> */}
         </div>
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1427,22 +1585,47 @@ export default function DistributionSection({
             </>
           )}
 
+          {/* ── Filter baru: Kota · Kecamatan · Kelurahan · Outlet ── */}
+          {loaded && renderGeoSelect('Kota',      cityFilter,     setCityFilter,     filterOptions.cities,    'Semua Kota')}
+          {loaded && renderGeoSelect('Kecamatan', districtFilter, setDistrictFilter, filterOptions.districts, 'Semua Kecamatan')}
+          {loaded && renderGeoSelect('Kelurahan', villageFilter,  setVillageFilter,  filterOptions.villages,  'Semua Kelurahan')}
+
+          {loaded && filterOptions.outlets.length > 0 && (
+            <>
+              {divider}
+              <span style={labelStyle}>Outlet</span>
+              <input
+                list="distribution-outlet-options"
+                value={outletFilter}
+                onChange={e => setOutletFilter(e.target.value)}
+                placeholder="Cari outlet"
+                style={{ ...selectStyle(!!outletFilter), width: 150, maxWidth: 150 }}
+              />
+              <datalist id="distribution-outlet-options">
+                {filterOptions.outlets.map(o => <option key={o} value={o} />)}
+              </datalist>
+              {outletFilter && (
+                <button onClick={() => setOutletFilter('')} title="Reset filter outlet" style={clearBtnStyle}>×</button>
+              )}
+            </>
+          )}
+
           {loaded && salesmanOptions.length > 0 && (
             <>
               {divider}
               <span style={labelStyle}>Salesman</span>
-              <select value={salesmanFilter} onChange={e => setSalesmanFilter(e.target.value)} style={selectStyle(!!salesmanFilter)}>
+              <select value={salesmanFilter} onChange={e => handleSalesmanChange(e.target.value)} style={selectStyle(!!salesmanFilter)}>
                 <option value="" style={{ background: t.selectBg }}>Semua Salesman</option>
                 {salesmanOptions.map(s => <option key={s} value={s} style={{ background: t.selectBg }}>{s}</option>)}
               </select>
               {salesmanFilter && (
-                <button onClick={() => setSalesmanFilter('')} title="Reset filter salesman" style={clearBtnStyle}>×</button>
+                <button onClick={() => handleSalesmanChange('')} title="Reset filter salesman" style={clearBtnStyle}>×</button>
               )}
               <span style={{ ...labelStyle, fontSize: 8, opacity: 0.7 }}>(instan)</span>
             </>
           )}
 
-          {/* Indikator status: dot animasi saat loading, atau "Belum diterapkan" saat filter Produk/Tipe Outlet/Minggu berubah */}
+          {/* Indikator status: dot animasi saat loading, atau "Belum diterapkan" saat filter berubah */}
           {loading ? (
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
@@ -1513,6 +1696,8 @@ export default function DistributionSection({
             data={data}
             theme={theme}
             salesmanFilter={salesmanFilter}
+            weekStart={appliedFilters.weekStart}
+            weekEnd={appliedFilters.weekEnd}
           />
         </>
       )}
