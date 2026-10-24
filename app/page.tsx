@@ -157,7 +157,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, theme, setT
                 <div style={{color:t.textMuted,fontSize:8,fontFamily:'IBM Plex Mono,monospace',letterSpacing:'0.1em',textTransform:'uppercase'}}>Dashboard</div>
               </div>
             </div>
-            <button onClick={()=>setCollapsed(true)} style={{background:t.inputBg,border:`1px solid ${t.borderInput}`,cursor:'pointer',color:t.textMuted,borderRadius:6,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <button onClick={()=>setCollapsed(true)} style={{background:t.inputBg,border:`1px solid ${t.text}`,cursor:'pointer',color:t.text,borderRadius:6,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center'}}>
               <ChevronLeft size={11}/>
             </button>
           </>
