@@ -92,8 +92,7 @@ function applyGeoFilters(
   return i;
 }
 
-// Kondisi area + RBAC. Nilai di-sanitize lalu di-inline (pola yang sama
-// dengan kode sebelumnya).
+// Kondisi area + RBAC. Nilai di-sanitize lalu di-inline 
 function buildAreaConditions(
   reqAreas: string[],
   allowedAreas: string[] | undefined,
@@ -195,8 +194,7 @@ export async function GET(request: NextRequest) {
         area: reqAreas.join(','), salesman, product, fileId, outletType,
         city: geo.city, district: geo.district, village: geo.village, outlet: geo.outlet,
         weekStart: String(weekStart), weekEnd: String(weekEnd),
-        // area kena RBAC per session, jadi ikut masuk key supaya user dengan
-        // allowed_areas beda, hasil cache satu sama lain
+        // area kena RBAC per session, jadi ikut masuk key supaya user dengan allowed_areas beda, hasil cache satu sama lain
         allowedAreas: !isRoot ? (session.allowed_areas ?? []).slice().sort().join(',') : 'root',
       };
 
@@ -428,11 +426,10 @@ export async function GET(request: NextRequest) {
 
         // Streak minggu berturut-turut.
         // Hanya minggu dengan ec >= 1 DAN plan >= 1. Selisih antar minggu <= 2
-        // masih satu streak (plan mingguan = selisih 1, plan 2 mingguan =
-        // selisih 2). Selisih > 2 memutus streak.
+        // masih satu streak (plan mingguan = selisih 1, plan 2 mingguan = selisih 2). Selisih > 2 memutus streak.
         timedQuery('consecutiveStreak')(`
         WITH weekly AS (
-          SELECT DISTINCT area, customer_id, outlet, outlet_type, product, week_num
+          SELECT DISTINCT area, salesman, customer_id, outlet, outlet_type, product, week_num
           FROM distribution_records
           WHERE ${where}
             AND ec   >= 1
@@ -441,39 +438,39 @@ export async function GET(request: NextRequest) {
         ),
         flagged AS (
           SELECT
-            area, customer_id, outlet, outlet_type, product, week_num,
+            area, salesman, customer_id, outlet, outlet_type, product, week_num,
             week_num - LAG(week_num) OVER (
-              PARTITION BY area, customer_id, outlet, outlet_type, product
+              PARTITION BY area, salesman, customer_id, outlet, outlet_type, product
               ORDER BY week_num
             ) AS gap
           FROM weekly
         ),
         grouped AS (
           SELECT
-            area, customer_id, outlet, outlet_type, product, week_num,
+            area, salesman, customer_id, outlet, outlet_type, product, week_num,
             SUM(CASE WHEN gap IS NULL OR gap > 2 THEN 1 ELSE 0 END) OVER (
-              PARTITION BY area, customer_id, outlet, outlet_type, product
+              PARTITION BY area, salesman, customer_id, outlet, outlet_type, product
               ORDER BY week_num
             ) AS grp
           FROM flagged
         )
         SELECT
-          area, customer_id, outlet, outlet_type, product,
+          area, salesman, customer_id, outlet, outlet_type, product,
           COUNT(*)::int       AS jumlah_minggu_berturut,
           MIN(week_num)       AS minggu_awal,
           MAX(week_num)       AS minggu_akhir,
           STRING_AGG(week_num::text, ', ' ORDER BY week_num) AS daftar_minggu
         FROM grouped
-        GROUP BY area, customer_id, outlet, outlet_type, product, grp
+        GROUP BY area, salesman, customer_id, outlet, outlet_type, product, grp
         HAVING COUNT(*) >= 4
-        ORDER BY jumlah_minggu_berturut DESC, area, outlet, outlet_type, product
-      `, params),
+        ORDER BY jumlah_minggu_berturut DESC, area, salesman, outlet, outlet_type, product
+        `, params),
 
         // Opsi dropdown filter Kota / Kecamatan / Kelurahan / Outlet.
-        // Hanya difilter area + RBAC, supaya opsi tidak menyusut ketika
-        // filter lain aktif.
+        // Hanya difilter area + RBAC, supaya opsi tidak menyusut ketika filter lain aktif.
         timedQuery('filterOptions')(`
           SELECT
+            Array_AGG(DISTINCT salesman ORDER BY salesman) FILTER (WHERE salesman IS NOT NULL AND salesman <> '') AS salesman,
             ARRAY_AGG(DISTINCT outlet   ORDER BY outlet)   FILTER (WHERE outlet   IS NOT NULL AND outlet   <> '') AS outlets,
             ARRAY_AGG(DISTINCT village  ORDER BY village)  FILTER (WHERE village  IS NOT NULL AND village  <> '') AS villages,
             ARRAY_AGG(DISTINCT district ORDER BY district) FILTER (WHERE district IS NOT NULL AND district <> '') AS districts,
@@ -493,6 +490,7 @@ export async function GET(request: NextRequest) {
 
       const fo = filterOptionsQ.rows[0] ?? {};
       const filterOptions = {
+        salesman:  fo.salesman  ?? [],
         outlets:   fo.outlets   ?? [],
         villages:  fo.villages  ?? [],
         districts: fo.districts ?? [],
@@ -515,8 +513,7 @@ export async function GET(request: NextRequest) {
         filterOptions,
       };
 
-      // Simpan ke cache SEBELUM return, supaya request berikutnya dengan
-      // filter yang sama nggak perlu tunggu query lagi
+      // Simpan ke cache SEBELUM return, supaya request berikutnya dengan filter yang sama nggak perlu tunggu query lagi
       setCached(cacheParams, responseData);
 
       const totalMs = Date.now() - getStart;
