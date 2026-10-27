@@ -10,7 +10,7 @@ import { useAuth } from '@/lib/auth/AuthContext';
 
 type Theme = 'dark' | 'light';
 
-// ─── Window width ─────────────────────────────────────────────────
+// Window width
 function useWindowWidth() {
   const [w, setW] = useState(() => typeof window !== 'undefined' ? window.innerWidth : 1280);
   useEffect(() => {
@@ -21,9 +21,7 @@ function useWindowWidth() {
   return w;
 }
 
-// ─────────────────────────────────────────────────────────────────
 // DESIGN TOKENS
-// ─────────────────────────────────────────────────────────────────
 const T = {
   dark: {
     page:'#05060d', card:'#0c0d16', cardRaised:'#10111e', modal:'#0e0f1c',
@@ -98,7 +96,7 @@ interface Tok {
   addBg:string; addBd:string; shadow:string;
 }
 
-// ─── Quarter color coding ─────────────────────────────────────────
+// Quarter color
 const QC_DARK = {
   Q1:{dot:'#818cf8',band:'rgba(99,102,241,0.12)',bandHd:'rgba(99,102,241,0.22)',line:'rgba(99,102,241,0.28)',tx:'#a5b4fc',txHd:'#c7d2fe',muted:'rgba(99,102,241,0.06)'},
   Q2:{dot:'#34d399',band:'rgba(16,185,129,0.09)',bandHd:'rgba(16,185,129,0.18)',line:'rgba(16,185,129,0.26)',tx:'#6ee7b7',txHd:'#a7f3d0',muted:'rgba(16,185,129,0.05)'},
@@ -115,7 +113,7 @@ const QC_LIGHT = {
 type QKey = 'Q1'|'Q2'|'Q3'|'Q4';
 function getQC(theme:'dark'|'light') { return theme==='dark' ? QC_DARK : QC_LIGHT; }
 
-// ─── Constants ────────────────────────────────────────────────────
+// Constants
 const QUARTERS = ['Q1','Q2','Q3','Q4'] as const;
 type Quarter   = typeof QUARTERS[number];
 const QUARTER_INDEX: Record<Quarter,number> = { Q1:1, Q2:2, Q3:3, Q4:4 };
@@ -139,7 +137,7 @@ const getMWG = (q:Quarter) => MWG[q];
 
 const globalWeek = (qNum:number, wo:number): number => (qNum - 1) * 13 + wo + 1;
 
-// ─── API types ─────────────────────────────────────────────────────
+// API types
 interface AreaTargetProduct {
   product: string;
   weeks: Record<number, number>;
@@ -157,7 +155,7 @@ type WeekValues  = Record<string,number>;
 type ProdWeekMap = Record<string,WeekValues>;
 interface AreaConfig { id:string; name?:string; description?:string; }
 
-// ─── Helpers ──────────────────────────────────────────────────────
+// Helpers
 const r2   = (n:number) => Math.round((n+Number.EPSILON)*100)/100;
 const fmtN = (n:number) => (n||0).toLocaleString('id-ID',{minimumFractionDigits:0,maximumFractionDigits:2});
 
@@ -198,10 +196,7 @@ function apiToWeekMap(products: AreaTargetProduct[]): ProdWeekMap {
   return res;
 }
 
-// ─────────────────────────────────────────────────────────────────
 // ATOMS
-// ─────────────────────────────────────────────────────────────────
-
 function Spinner({ sz=12, color='#6366f1' }: { sz?:number; color?:string }) {
   return (
     <svg style={{animation:'spin .65s linear infinite',width:sz,height:sz,flexShrink:0}} viewBox="0 0 24 24" fill="none">
@@ -258,9 +253,8 @@ function Btn({ v, onClick, disabled, children, sz='sm', full, t }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
+
 // AREA FILTER DROPDOWN
-// ─────────────────────────────────────────────────────────────────
 function AreaDropdown({ areas, sel, onToggle, onAll, onClear, t, theme }: {
   areas:AreaConfig[]; sel:Set<string>;
   onToggle:(id:string)=>void; onAll:()=>void; onClear:()=>void; t:Tok; theme:'dark'|'light';
@@ -354,9 +348,7 @@ function AreaDropdown({ areas, sel, onToggle, onAll, onClear, t, theme }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
 // EDITABLE CELL
-// ─────────────────────────────────────────────────────────────────
 const EditableCell = React.memo(function EC({ id, initialValue, onChange, t }: {
   id:string; initialValue:number; onChange:(id:string,v:number)=>void; t:Tok;
 }) {
@@ -408,9 +400,8 @@ const EditableCell = React.memo(function EC({ id, initialValue, onChange, t }: {
   );
 },(p,n)=>p.initialValue===n.initialValue&&p.id===n.id);
 
-// ─────────────────────────────────────────────────────────────────
+
 // EXPANDED PRODUCT ROWS
-// ─────────────────────────────────────────────────────────────────
 function ExpandedProductRows({ areaId, year, t, theme }: {
   areaId:string; year:string; t:Tok; theme:'dark'|'light';
 }) {
@@ -980,9 +971,8 @@ function ExpandedProductRows({ areaId, year, t, theme }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────
-// MAIN — AreaManagement
-// ─────────────────────────────────────────────────────────────────
+
+// MAIN AreaManagement
 export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; onAreasChange?:(areas:AreaConfig[])=>void }) {
   const { user, getAccessibleAreas } = useAuth() as any;
   const t   = T[theme] as Tok;
@@ -1000,7 +990,7 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
   const YEARS = ['2023','2024','2025','2026','2027','2028'];
   const yearRef = useRef<HTMLDivElement>(null);
 
-  // ── State untuk edit nama area ────────────────────────────────
+  // State untuk edit nama area
   const [editAreaId,   setEditAreaId]   = useState<string|null>(null);
   const [editAreaName, setEditAreaName] = useState('');
   const [savingArea,   setSavingArea]   = useState(false);
@@ -1056,7 +1046,7 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
     setDelId(null);
   };
 
-  // ── Handler edit nama area ────────────────────────────────────
+  // Handler edit nama area
   const startEditArea = (area: AreaConfig) => {
     setEditAreaId(area.id);
     setEditAreaName(area.name || area.id.replace('area_','').replace(/_/g,' '));
@@ -1279,7 +1269,7 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
                   <div style={{width:6,height:6,borderRadius:'50%',background:'#6366f1',flexShrink:0}}/>
 
                   {isEditingThisArea ? (
-                    /* ── Mode edit: input + tombol save/cancel ── */
+                    /* Mode edit: input + tombol save/cancel */
                     <>
                       <input
                         ref={editAreaRef}
@@ -1314,7 +1304,7 @@ export default function AreaManagement({ theme, onAreasChange }: { theme:Theme; 
                       </div>
                     </>
                   ) : (
-                    /* ── Mode normal: nama + tombol edit + hapus ── */
+                    /* Mode normal: nama + tombol edit + hapus */
                     <>
                       <span style={{
                         fontSize:12,fontWeight:700,color:t.tx1,

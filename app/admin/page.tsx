@@ -11,10 +11,10 @@ import {
   Layers, LogOut, BarChart3, TrendingUp,
 } from 'lucide-react';
 import { UploadedFile, DatabaseStats } from '@/types/database';
-import AreaManagement from '@/components/AreaManagement';
-import RegionManagement from '@/components/RegionManagement';
+import AreaManagement from '@/components/admin/AreaManagement';
+import RegionManagement from '@/components/admin/RegionManagement';
 import { AuthProvider, useAuth } from '@/lib/auth/AuthContext';
-import UserManagement from '@/components/UserManagement';
+import UserManagement from '@/components/admin/UserManagement';
 import { ROLE_LABELS, UserRole } from '@/lib/auth/types';
 
 // Komponen yang sudah dipisah
@@ -26,7 +26,7 @@ import { tk, Theme, Tokens, FONT_SANS, FONT_MONO } from '@/components/admin/shar
 import UploadPiutangTab from '@/components/admin/UploadPiutangTab';
 import UploadStockTab from '@/components/admin/UploadStockTab'
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// Toast
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 interface Toast { id: string; type: ToastType; title: string; message?: string }
 
@@ -66,7 +66,7 @@ function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── Theme ────────────────────────────────────────────────────────────────────
+// Theme
 const ThemeCtx = createContext<{ theme: Theme; setTheme: (t: Theme) => void; t: Tokens }>({ theme: 'light', setTheme: () => {}, t: tk.light });
 const useTheme = () => useContext(ThemeCtx);
 
@@ -77,7 +77,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <ThemeCtx.Provider value={{ theme, setTheme, t: tk[theme] as Tokens }}>{children}</ThemeCtx.Provider>;
 }
 
-// ─── Admin Guard ──────────────────────────────────────────────────────────────
+// Admin Guard
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user, can, loading } = useAuth();
   const [dots, setDots] = useState(0);
@@ -137,7 +137,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// ─── Responsive ───────────────────────────────────────────────────────────────
+// Responsive
 const BP_MD = 768;
 const SIDEBAR_W = 252;
 const SIDEBAR_W_COLLAPSED = 64;
@@ -148,14 +148,14 @@ function useWindowWidth() {
   return width;
 }
 
-// ─── Role config ──────────────────────────────────────────────────────────────
+// Role config
 const ROLE_CFG: Record<UserRole, { Icon: React.ComponentType<any>; color: string; bg: string; border: string }> = {
   root:  { Icon: ShieldAlert, color: '#a78bfa', bg: 'rgba(167,139,250,0.1)',  border: 'rgba(167,139,250,0.25)' },
   admin: { Icon: ShieldCheck, color: '#60a5fa', bg: 'rgba(96,165,250,0.1)',   border: 'rgba(96,165,250,0.25)'  },
   user:  { Icon: Shield,      color: '#34d399', bg: 'rgba(52,211,153,0.1)',   border: 'rgba(52,211,153,0.25)'  },
 };
 
-// ─── Nav sections ─────────────────────────────────────────────────────────────
+// Nav sections
 const NAV_SECTIONS = [
   {
     section: 'DATA',
@@ -199,7 +199,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string; icon: React.C
   settings:            { title: 'Pengaturan',        subtitle: 'Akun & konfigurasi',            icon: Settings,   color: '#f59e0b' },
 };
 
-// ─── NavItem ──────────────────────────────────────────────────────────────────
+// NavItem
 function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, accent = '#6366f1' }: {
   label: string; icon: React.ComponentType<any>; active: boolean; collapsed: boolean;
   badge?: number; onClick: () => void; accent?: string;
@@ -229,7 +229,7 @@ function NavItem({ label, icon: Icon, active, collapsed, badge: bdg, onClick, ac
   );
 }
 
-// ─── Sidebar content ──────────────────────────────────────────────────────────
+// Sidebar content
 function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can, uploadedFiles, isMobile, onClose }: {
   activeTab: string; setActiveTab: (id: string) => void;
   collapsed: boolean; setCollapsed: (v: boolean) => void;
@@ -326,7 +326,7 @@ function SidebarContent({ activeTab, setActiveTab, collapsed, setCollapsed, can,
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// Sidebar
 function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, can, uploadedFiles, isMobile, mobileOpen, onMobileClose }: {
   activeTab: string; setActiveTab: (id: string) => void;
   collapsed: boolean; setCollapsed: (v: boolean) => void;
@@ -352,7 +352,7 @@ function Sidebar({ activeTab, setActiveTab, collapsed, setCollapsed, can, upload
   );
 }
 
-// ─── Topbar ───────────────────────────────────────────────────────────────────
+// Topbar
 function Topbar({ activeTab, onMobileMenuToggle }: { activeTab: string; onMobileMenuToggle: () => void }) {
   const { t } = useTheme();
   const w = useWindowWidth();
@@ -380,7 +380,7 @@ function Topbar({ activeTab, onMobileMenuToggle }: { activeTab: string; onMobile
   );
 }
 
-// ─── Dashboard Content ────────────────────────────────────────────────────────
+// Dashboard Content
 function DashboardContent() {
   const { t, theme } = useTheme();
   const { addToast } = useToast();
@@ -493,7 +493,7 @@ function DashboardContent() {
   );
 }
 
-// ─── Root export ──────────────────────────────────────────────────────────────
+// Root export
 export default function AdminDashboard() {
   return (
     <AuthProvider>
